@@ -2,8 +2,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { geoDistance, geoGraticule10, geoOrthographic, geoPath } from "d3-geo";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { feature } from "topojson-client";
-import type { FeatureCollection } from "geojson";
+import { feature, mesh } from "topojson-client";
+import type { FeatureCollection, GeoJsonProperties, Geometry } from "geojson";
 import world110 from "world-atlas/countries-110m.json";
 import { api, filterQS, type Bucket, type Filters, type Item } from "../api/client";
 import { IconClose } from "../components/Icons";
@@ -45,8 +45,10 @@ export default function MapPage() {
   const [spinning, setSpinning] = useState(true);
   const [dragging, setDragging] = useState(false);
   const [selected, setSelected] = useState<Point | null>(null);
-  // adaptive detail: start with the light 110m topology, lazy-load 50m on zoom
+  // adaptive detail: start with the light 110m topology, lazy-load 50m
+  // coastlines + state boundaries on zoom
   const [topo, setTopo] = useState<unknown>(world110);
+  const [statesTopo, setStatesTopo] = useState<unknown>(null);
   const detailLoaded = useRef(false);
   const animRef = useRef<number | null>(null);
   const dragRef = useRef<{ x: number; y: number; lambda: number; phi: number; moved: number } | null>(null);
@@ -77,12 +79,18 @@ export default function MapPage() {
     return () => ro.disconnect();
   }, []);
 
-  // fetch the detailed coastlines once the user zooms in far enough
+  // fetch the detailed coastlines + state boundaries once the user zooms in
   useEffect(() => {
     if (view.scale >= DETAIL_ZOOM && !detailLoaded.current) {
       detailLoaded.current = true;
-      import("world-atlas/countries-50m.json").then(
-        (m) => setTopo((m as { default?: unknown }).default ?? m),
+      Promise.all([
+        import("world-atlas/countries-50m.json"),
+        import("../data/states-50m.json"),
+      ]).then(
+        ([c, s]) => {
+          setTopo((c as { default?: unknown }).default ?? c);
+          setStatesTopo((s as { default?: unknown }).default ?? s);
+        },
         () => {
           detailLoaded.current = false; // retry on the next zoom
         }
@@ -95,6 +103,17 @@ export default function MapPage() {
     const objects = t.objects as unknown as { countries: Parameters<typeof feature>[1] };
     return feature(t, objects.countries) as unknown as FeatureCollection;
   }, [topo]);
+  const states = useMemo(() => {
+    if (!statesTopo) return null;
+    const t = statesTopo as Parameters<typeof feature>[0];
+    const obj = (t.objects as unknown as { states: Parameters<typeof feature>[1] }).states;
+    return {
+      // interior borders as ONE path (cheap to render every frame)
+      borders: mesh(t, obj as Parameters<typeof mesh>[1], (a, b) => a !== b) as Geometry,
+      // polygons only carry hover titles
+      feats: feature(t, obj) as unknown as FeatureCollection<Geometry, GeoJsonProperties>,
+    };
+  }, [statesTopo]);
   const graticule = useMemo(() => geoGraticule10(), []);
 
   const projection = useMemo(
@@ -264,6 +283,24 @@ export default function MapPage() {
             {countries.features.map((f, i) => (
               <path key={i} d={path(f) ?? undefined} fill="#2f3865" stroke="#4a5896" strokeWidth={0.55} />
             ))}
+            {/* state boundaries + hover names, once zoomed into detail */}
+            {states && view.scale >= DETAIL_ZOOM && (
+              <g>
+                <path
+                  d={path(states.borders) ?? undefined}
+                  fill="none"
+                  stroke="rgba(211, 231, 255, 0.22)"
+                  strokeWidth={0.6}
+                  strokeDasharray="3 2"
+                  pointerEvents="none"
+                />
+                {states.feats.features.map((f, i) => (
+                  <path key={i} className="state-poly" d={path(f) ?? undefined}>
+                    <title>{`${f.properties?.name ?? "?"}, ${f.properties?.admin ?? ""}`}</title>
+                  </path>
+                ))}
+              </g>
+            )}
             {/* light sheen on top of land for the 3D feel */}
             <path d={path({ type: "Sphere" }) ?? undefined} fill="url(#sheen)" pointerEvents="none" />
 
