@@ -1,9 +1,11 @@
+import asyncio
 import os
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from .. import db
+from ..jobs import pipeline
 from ..jobs import scan as scan_job
 from ..jobs.runner import manager
 from ..services import volumes as vol_svc
@@ -59,3 +61,14 @@ def start_scan(body: ScanIn):
     job_id = manager.create("scan", root_id=body.root_id)
     manager.start(job_id, scan_job.run_scan(job_id, body.root_id))
     return {"job_id": job_id}
+
+
+@router.post("/process")
+def start_pipeline(body: ScanIn):
+    """Index the root, then auto-run every processing step in sequence."""
+    if manager.any_running("scan"):
+        raise HTTPException(409, "a scan is already running")
+    if not db.query_one("SELECT id FROM roots WHERE id=?", (body.root_id,)):
+        raise HTTPException(404, "no such root")
+    asyncio.run_coroutine_threadsafe(pipeline.run_pipeline(body.root_id), manager.loop)
+    return {"ok": True}

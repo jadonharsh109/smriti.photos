@@ -12,12 +12,15 @@ from .api import albums, dupes, events, jobs, media, people, places, roots, syst
 async def lifespan(app: FastAPI):
     import asyncio
 
+    from .jobs import pipeline
     from .jobs.runner import manager
 
     config.ensure_dirs()
     db.connect()
     manager.set_loop(asyncio.get_running_loop())
+    watcher = asyncio.get_running_loop().create_task(pipeline.auto_scan_loop())
     yield
+    watcher.cancel()
     db.close()
 
 

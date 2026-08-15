@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, fmtBytes, type Job, type Root, type Volume } from "../api/client";
 import Portal from "../components/Portal";
 
@@ -8,6 +8,10 @@ interface FsList {
   parent: string | null;
   dirs: { name: string; path: string }[];
   media_count: number;
+}
+interface AppSettings {
+  auto_scan: boolean;
+  auto_scan_minutes: number;
 }
 interface Stats {
   photos: number;
@@ -24,33 +28,83 @@ interface Stats {
   face_model_ready: boolean;
 }
 
+const STAGES: { kind: string; label: string }[] = [
+  { kind: "scan", label: "Index" },
+  { kind: "geocode", label: "Locate" },
+  { kind: "events", label: "Events" },
+  { kind: "neardup", label: "Duplicates" },
+  { kind: "faces", label: "Faces" },
+  { kind: "recluster", label: "People" },
+];
+const STAGE_LABEL = Object.fromEntries(STAGES.map((s) => [s.kind, s.label]));
+
+const fmtLine = (time: string, j: Job) =>
+  `${time}  ${STAGE_LABEL[j.kind] ?? j.kind} · ${j.status}` +
+  (j.total > 0 ? ` ${j.done}/${j.total}` : "") +
+  (j.errors ? ` (${j.errors} errors)` : "") +
+  (j.message ? ` — ${j.message}` : "");
+
 export default function SettingsPage() {
   const qc = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [showLogs, setShowLogs] = useState(false);
+  const [log, setLog] = useState<string[]>([]);
+  const logRef = useRef<HTMLDivElement>(null);
 
   const { data: volumes } = useQuery({ queryKey: ["volumes"], queryFn: () => api.get<Volume[]>("/api/volumes") });
   const { data: roots } = useQuery({ queryKey: ["roots"], queryFn: () => api.get<Root[]>("/api/roots") });
   const { data: jobs } = useQuery({
     queryKey: ["jobs"],
-    queryFn: () => api.get<Job[]>("/api/jobs?limit=12"),
-    refetchInterval: 3000,
+    queryFn: () => api.get<Job[]>("/api/jobs?limit=30"),
+    refetchInterval: 2500,
   });
   const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: () => api.get<Stats>("/api/stats") });
+  const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: () => api.get<AppSettings>("/api/settings") });
+
+  // live log: seed with recent history once, then append from the SSE stream
+  useEffect(() => {
+    let dead = false;
+    api.get<Job[]>("/api/jobs?limit=30").then((history) => {
+      if (dead) return;
+      const lines = [...history]
+        .reverse()
+        .map((j) => fmtLine(j.started_at ? new Date(j.started_at * 1000).toLocaleTimeString() : "—", j));
+      setLog(lines);
+    });
+    const es = new EventSource("/api/jobs/stream");
+    es.addEventListener("job", (e) => {
+      const j: Job = JSON.parse((e as MessageEvent).data);
+      setLog((prev) => [...prev.slice(-299), fmtLine(new Date().toLocaleTimeString(), j)]);
+    });
+    return () => {
+      dead = true;
+      es.close();
+    };
+  }, []);
+
+  // keep the console pinned to the latest line
+  useEffect(() => {
+    const el = logRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [log, showLogs]);
 
   const addRoot = useMutation({
     mutationFn: (path: string) => api.post<{ id: number }>("/api/roots", { path }),
-    onSuccess: () => {
+    onSuccess: async (r) => {
       qc.invalidateQueries({ queryKey: ["roots"] });
       setPickerOpen(false);
+      await api.post("/api/process", { root_id: r.id }); // index + everything else, automatically
+      setShowLogs(true);
+      qc.invalidateQueries({ queryKey: ["jobs"] });
     },
+  });
+  const reprocess = useMutation({
+    mutationFn: (rootId: number) => api.post("/api/process", { root_id: rootId }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["jobs"] }),
   });
   const delRoot = useMutation({
     mutationFn: (id: number) => api.del(`/api/roots/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["roots"] }),
-  });
-  const scan = useMutation({
-    mutationFn: (rootId: number) => api.post("/api/scan", { root_id: rootId }),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["jobs"] }),
   });
   const runJob = useMutation({
     mutationFn: (url: string) => api.post(url),
@@ -60,6 +114,22 @@ export default function SettingsPage() {
     mutationFn: (id: number) => api.post(`/api/jobs/${id}/cancel`),
     onSettled: () => qc.invalidateQueries({ queryKey: ["jobs"] }),
   });
+  const saveSettings = useMutation({
+    mutationFn: (patch: Partial<AppSettings>) => api.post<AppSettings>("/api/settings", patch),
+    onSuccess: (s) => qc.setQueryData(["settings"], s),
+  });
+  const checkNow = useMutation({
+    mutationFn: () => api.post("/api/autoscan/run"),
+    onSuccess: () => {
+      setShowLogs(true);
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+    },
+  });
+
+  // latest job per stage drives the pipeline strip
+  const latest: Record<string, Job> = {};
+  for (const j of jobs ?? []) if (!latest[j.kind]) latest[j.kind] = j;
+  const running = (jobs ?? []).find((j) => j.status === "running");
 
   return (
     <div className="page">
@@ -67,8 +137,8 @@ export default function SettingsPage() {
         <div>
           <h1>Library setup</h1>
           <p className="sub">
-            Drives, folders and background jobs. Indexing never modifies your files; deleting always goes to the
-            recoverable macOS Trash.
+            Add a folder and Smriti does the rest — indexing, locations, events, duplicates, faces and people
+            all run automatically.
           </p>
         </div>
       </header>
@@ -97,28 +167,133 @@ export default function SettingsPage() {
             + Add folder
           </button>
         </div>
-        {(roots ?? []).length === 0 && <p className="muted">Pick the folder on your SSD that holds your photos.</p>}
+        {(roots ?? []).length === 0 && (
+          <p className="muted">
+            Pick the folder that holds your photos — everything else happens on its own.
+          </p>
+        )}
         {(roots ?? []).map((r) => (
           <div className="list-row" key={r.id}>
             <strong>{r.abs_path}</strong>
             <span className="muted small">{r.file_count} files indexed</span>
             <span className={`badge ${r.is_online ? "green" : "red"}`}>{r.is_online ? "online" : "offline"}</span>
             <span className="spacer" />
-            <button onClick={() => scan.mutate(r.id)} disabled={!r.is_online || scan.isPending}>
-              Scan
+            <button
+              onClick={() => reprocess.mutate(r.id)}
+              disabled={!r.is_online || !!running}
+              title="Re-index this folder and re-run all processing"
+            >
+              Re-process
             </button>
             <button className="danger" onClick={() => delRoot.mutate(r.id)}>
               Remove
             </button>
           </div>
         ))}
-        {scan.error ? <p className="small" style={{ color: "var(--danger)" }}>{String(scan.error)}</p> : null}
+        {(addRoot.error || reprocess.error) && (
+          <p className="small" style={{ color: "var(--danger)" }}>{String(addRoot.error ?? reprocess.error)}</p>
+        )}
+
+        {/* pipeline status strip */}
+        <div className="row" style={{ marginTop: 14, gap: 8 }}>
+          {STAGES.map((s) => {
+            const j = latest[s.kind];
+            const state =
+              j?.status === "running" ? "run" : j?.status === "done" ? "done" : j?.status === "failed" ? "fail" : "";
+            return (
+              <span key={s.kind} className={`chip stage ${state}`} title={j?.message ?? ""}>
+                {state === "run" ? <span className="spin" /> : <span className="dot" />}
+                {s.label}
+                {state === "run" && j!.total > 0 && (
+                  <span className="faint">{Math.round((j!.done / j!.total) * 100)}%</span>
+                )}
+              </span>
+            );
+          })}
+          {running && (
+            <button className="small" onClick={() => cancelJob.mutate(running.id)}>
+              Cancel
+            </button>
+          )}
+        </div>
+        {!stats?.face_model_ready && (
+          <p className="muted small" style={{ marginTop: 10 }}>
+            Faces &amp; People will be skipped until the models are downloaded — run{" "}
+            <code>uv run python scripts/fetch_models.py</code> once (≈280 MB, the only download the app ever needs).
+          </p>
+        )}
       </div>
 
       <div className="panel">
-        <h2>Processing</h2>
         <div className="row">
-          <button onClick={() => runJob.mutate("/api/places/geocode")}>Locate photos (offline geocode)</button>
+          <h2 style={{ marginBottom: 0 }}>Automatic scanning</h2>
+          <span className="spacer" />
+          <button className="small" onClick={() => checkNow.mutate()} disabled={!!running || checkNow.isPending}>
+            Check now
+          </button>
+          <button
+            className={`switch${settings?.auto_scan ? " on" : ""}`}
+            aria-pressed={settings?.auto_scan ?? false}
+            title={settings?.auto_scan ? "Turn off automatic scanning" : "Turn on automatic scanning"}
+            onClick={() => saveSettings.mutate({ auto_scan: !settings?.auto_scan })}
+          />
+        </div>
+        <p className="muted small" style={{ marginTop: 8 }}>
+          Smriti watches your folders for new photos and processes them automatically
+          {settings?.auto_scan ? ` — checking every ${settings.auto_scan_minutes} minutes.` : " — currently off."}
+        </p>
+        {settings?.auto_scan && (
+          <div className="row" style={{ marginTop: 10 }}>
+            <span className="muted small">Check every</span>
+            <div className="seg">
+              {[10, 30, 60].map((m) => (
+                <button
+                  key={m}
+                  className={settings.auto_scan_minutes === m ? "on" : ""}
+                  onClick={() => saveSettings.mutate({ auto_scan_minutes: m })}
+                >
+                  {m === 60 ? "1 hour" : `${m} min`}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {checkNow.error && <p className="small" style={{ color: "var(--danger)" }}>{String(checkNow.error)}</p>}
+      </div>
+
+      <div className="panel">
+        <div className="row">
+          <h2 style={{ marginBottom: 0 }}>Activity</h2>
+          <span className="muted small">
+            {running
+              ? `${STAGE_LABEL[running.kind] ?? running.kind} running${running.total > 0 ? ` — ${running.done}/${running.total}` : ""}…`
+              : "idle"}
+          </span>
+          <span className="spacer" />
+          <button onClick={() => setShowLogs((s) => !s)}>{showLogs ? "Hide logs" : "Show logs"}</button>
+        </div>
+        {showLogs && (
+          <div className="logbox" ref={logRef}>
+            {log.length === 0 ? (
+              <span className="faint">Nothing yet — add a folder to start.</span>
+            ) : (
+              log.map((l, i) => (
+                <div key={i} className="log-line">
+                  {l}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="panel">
+        <h2>Manual steps</h2>
+        <p className="muted small" style={{ marginBottom: 10 }}>
+          Everything above runs automatically — use these only to re-run a single step.
+        </p>
+        <div className="row">
+          <button onClick={() => runJob.mutate("/api/places/geocode")}>Locate photos</button>
           <button onClick={() => runJob.mutate("/api/events/rebuild")}>Rebuild events</button>
           <button onClick={() => runJob.mutate("/api/dupes/run")}>Find near-duplicates</button>
           <button onClick={() => runJob.mutate("/api/faces/scan")} disabled={!stats?.face_model_ready}>
@@ -128,39 +303,7 @@ export default function SettingsPage() {
             Group into people
           </button>
         </div>
-        {!stats?.face_model_ready && (
-          <p className="muted small" style={{ marginTop: 10 }}>
-            Face models not downloaded yet — run <code>uv run python scripts/fetch_models.py</code> once (≈280 MB, the
-            only download the app ever needs).
-          </p>
-        )}
         {runJob.error ? <p className="small" style={{ color: "var(--danger)" }}>{String(runJob.error)}</p> : null}
-      </div>
-
-      <div className="panel">
-        <h2>Recent jobs</h2>
-        {(jobs ?? []).length === 0 && <p className="muted small">Nothing has run yet.</p>}
-        {(jobs ?? []).map((j) => (
-          <div className="list-row" key={j.id}>
-            <span className="badge">{j.kind}</span>
-            <span
-              className={`small ${j.status === "failed" || j.status === "interrupted" ? "" : "muted"}`}
-              style={j.status === "failed" ? { color: "var(--danger)" } : undefined}
-            >
-              {j.status}
-            </span>
-            {j.status === "running" && j.total > 0 && (
-              <div className="progress">
-                <div style={{ width: `${Math.round((j.done / j.total) * 100)}%` }} />
-              </div>
-            )}
-            <span className="muted small">
-              {j.done}/{j.total} {j.message ?? ""}
-            </span>
-            <span className="spacer" />
-            {j.status === "running" && <button onClick={() => cancelJob.mutate(j.id)}>Cancel</button>}
-          </div>
-        ))}
       </div>
 
       {stats && (
@@ -217,7 +360,7 @@ function FolderPicker({ onPick, onClose }: { onPick: (path: string) => void; onC
         <footer>
           <button onClick={onClose}>Cancel</button>
           <button className="primary" onClick={() => onPick(path)}>
-            Use this folder
+            Use this folder &amp; process everything
           </button>
         </footer>
       </div>

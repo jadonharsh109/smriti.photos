@@ -40,6 +40,8 @@ export interface Job {
   errors: number;
   message: string | null;
   root_id: number | null;
+  started_at?: number;
+  finished_at?: number | null;
 }
 
 export interface Volume {
