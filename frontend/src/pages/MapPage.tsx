@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { feature } from "topojson-client";
 import type { FeatureCollection } from "geojson";
-import world from "world-atlas/countries-110m.json";
+import world110 from "world-atlas/countries-110m.json";
 import { api, filterQS, type Bucket, type Filters, type Item } from "../api/client";
 import { IconClose } from "../components/Icons";
 
@@ -17,6 +17,9 @@ interface Point {
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+const MAX_ZOOM = 24;
+const DETAIL_ZOOM = 4; // past this, swap in the high-res 50m coastlines
 
 interface View {
   lambda: number;
@@ -42,6 +45,9 @@ export default function MapPage() {
   const [spinning, setSpinning] = useState(true);
   const [dragging, setDragging] = useState(false);
   const [selected, setSelected] = useState<Point | null>(null);
+  // adaptive detail: start with the light 110m topology, lazy-load 50m on zoom
+  const [topo, setTopo] = useState<unknown>(world110);
+  const detailLoaded = useRef(false);
   const animRef = useRef<number | null>(null);
   const dragRef = useRef<{ x: number; y: number; lambda: number; phi: number; moved: number } | null>(null);
 
@@ -71,11 +77,24 @@ export default function MapPage() {
     return () => ro.disconnect();
   }, []);
 
+  // fetch the detailed coastlines once the user zooms in far enough
+  useEffect(() => {
+    if (view.scale >= DETAIL_ZOOM && !detailLoaded.current) {
+      detailLoaded.current = true;
+      import("world-atlas/countries-50m.json").then(
+        (m) => setTopo((m as { default?: unknown }).default ?? m),
+        () => {
+          detailLoaded.current = false; // retry on the next zoom
+        }
+      );
+    }
+  }, [view.scale]);
+
   const countries = useMemo(() => {
-    const topo = world as unknown as Parameters<typeof feature>[0];
-    const objects = topo.objects as unknown as { countries: Parameters<typeof feature>[1] };
-    return feature(topo, objects.countries) as unknown as FeatureCollection;
-  }, []);
+    const t = topo as Parameters<typeof feature>[0];
+    const objects = t.objects as unknown as { countries: Parameters<typeof feature>[1] };
+    return feature(t, objects.countries) as unknown as FeatureCollection;
+  }, [topo]);
   const graticule = useMemo(() => geoGraticule10(), []);
 
   const projection = useMemo(
@@ -111,7 +130,7 @@ export default function MapPage() {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       cancelFly();
-      setView((v) => ({ ...v, scale: clamp(v.scale * Math.exp(-e.deltaY * 0.0013), 1, 8) }));
+      setView((v) => ({ ...v, scale: clamp(v.scale * Math.exp(-e.deltaY * 0.0013), 1, MAX_ZOOM) }));
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
@@ -278,8 +297,8 @@ export default function MapPage() {
 
           {/* floating controls */}
           <div className="globe-ctl">
-            <button className="icon-btn" title="Zoom in" onClick={() => { cancelFly(); setView((v) => ({ ...v, scale: clamp(v.scale * 1.45, 1, 8) })); }}>＋</button>
-            <button className="icon-btn" title="Zoom out" onClick={() => { cancelFly(); setView((v) => ({ ...v, scale: clamp(v.scale / 1.45, 1, 8) })); }}>－</button>
+            <button className="icon-btn" title="Zoom in" onClick={() => { cancelFly(); setView((v) => ({ ...v, scale: clamp(v.scale * 1.45, 1, MAX_ZOOM) })); }}>＋</button>
+            <button className="icon-btn" title="Zoom out" onClick={() => { cancelFly(); setView((v) => ({ ...v, scale: clamp(v.scale / 1.45, 1, MAX_ZOOM) })); }}>－</button>
             <button className="icon-btn" title="Reset view" onClick={resetView}>⟲</button>
             <button
               className={`icon-btn${spinning && !selected ? " on" : ""}`}
