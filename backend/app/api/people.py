@@ -127,3 +127,17 @@ def recluster():
     job_id = manager.create("recluster")
     manager.start(job_id, faces_job.run_recluster(job_id))
     return {"job_id": job_id}
+
+
+@router.post("/faces/reset")
+def reset_people():
+    """Forget every person — names, manual fixes, clusters — and regroup all
+    faces from scratch. Detections/embeddings are kept, so no re-scan needed."""
+    if manager.any_running("faces") or manager.any_running("recluster"):
+        raise HTTPException(409, "a face job is already running")
+    with db.transaction() as conn:
+        conn.execute("UPDATE faces SET person_id=NULL, assign_src=NULL")
+        conn.execute("DELETE FROM persons")
+    job_id = manager.create("recluster")
+    manager.start(job_id, faces_job.run_recluster(job_id))
+    return {"job_id": job_id}

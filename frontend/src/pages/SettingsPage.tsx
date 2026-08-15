@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { api, fmtBytes, type Job, type Root, type Volume } from "../api/client";
+import { ConfirmDialog } from "../components/Dialogs";
 import Portal from "../components/Portal";
 
 interface FsList {
@@ -47,6 +48,7 @@ const fmtLine = (time: string, j: Job) =>
 export default function SettingsPage() {
   const qc = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [confirmingReset, setConfirmingReset] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const logRef = useRef<HTMLDivElement>(null);
@@ -302,9 +304,26 @@ export default function SettingsPage() {
           <button onClick={() => runJob.mutate("/api/faces/recluster")} disabled={!stats?.face_model_ready}>
             Group into people
           </button>
+          <button className="danger" onClick={() => setConfirmingReset(true)} disabled={!stats?.face_model_ready}>
+            Reset people…
+          </button>
         </div>
         {runJob.error ? <p className="small" style={{ color: "var(--danger)" }}>{String(runJob.error)}</p> : null}
       </div>
+
+      {confirmingReset && (
+        <ConfirmDialog
+          title="Reset all people?"
+          body="Every person is forgotten — names, merges and manual fixes included — and all faces are regrouped from scratch. Face detection is kept, so this only takes a moment."
+          confirmLabel="Reset & regroup"
+          danger
+          onConfirm={() => {
+            runJob.mutate("/api/faces/reset");
+            setShowLogs(true);
+          }}
+          onClose={() => setConfirmingReset(false)}
+        />
+      )}
 
       {stats && (
         <div className="panel">
