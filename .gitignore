@@ -1,0 +1,9 @@
+data/
+test-library/
+.venv/
+node_modules/
+dist/
+__pycache__/
+*.pyc
+*.tsbuildinfo
+.DS_Store

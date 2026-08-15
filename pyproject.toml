@@ -1,0 +1,22 @@
+[project]
+name = "photos-organizer"
+version = "0.1.0"
+description = "Local Google-Photos-style photo/video organizer (FastAPI + React, fully offline)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pillow>=11.0",
+    "pillow-heif>=0.18",
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "imagehash>=4.3.1",
+    "sse-starlette>=2.1",
+    "onnxruntime>=1.18",
+    "scikit-learn>=1.4",
+    "reverse-geocoder>=1.5.1",
+    "send2trash>=2.1.0",
+]
+
+[tool.uv]
+package = false
