@@ -52,6 +52,10 @@ export default function MapPage() {
   const detailLoaded = useRef(false);
   const animRef = useRef<number | null>(null);
   const dragRef = useRef<{ x: number; y: number; lambda: number; phi: number; moved: number } | null>(null);
+  // flick-to-spin: track drag velocity, coast with friction on release
+  const [coasting, setCoasting] = useState(false);
+  const inertiaRef = useRef<number | null>(null);
+  const velRef = useRef({ x: 0, y: 0, t: 0, vl: 0, vp: 0 });
 
   const { data: points } = useQuery({
     queryKey: ["map-points"],
@@ -127,20 +131,20 @@ export default function MapPage() {
   );
   const path = useMemo(() => geoPath(projection), [projection]);
 
-  // idle auto-rotation (pauses on interaction / selection)
+  // idle auto-rotation: a lazy drift (pauses on interaction / selection / coasting)
   useEffect(() => {
-    if (!spinning || dragging || selected) return;
+    if (!spinning || dragging || selected || coasting) return;
     let raf: number;
     let last = performance.now();
     const tick = (t: number) => {
       const dt = Math.min(t - last, 64);
       last = t;
-      setView((v) => ({ ...v, lambda: v.lambda + dt * 0.0035 }));
+      setView((v) => ({ ...v, lambda: v.lambda + dt * 0.0012 }));
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [spinning, dragging, selected]);
+  }, [spinning, dragging, selected, coasting]);
 
   // wheel zoom needs a non-passive native listener
   useEffect(() => {
@@ -155,11 +159,46 @@ export default function MapPage() {
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
+  const cancelCoast = () => {
+    if (inertiaRef.current != null) {
+      cancelAnimationFrame(inertiaRef.current);
+      inertiaRef.current = null;
+      setCoasting(false);
+    }
+  };
+
   const cancelFly = () => {
     if (animRef.current != null) {
       cancelAnimationFrame(animRef.current);
       animRef.current = null;
     }
+    cancelCoast();
+  };
+
+  const startCoast = (vl0: number, vp0: number) => {
+    let vl = clamp(vl0, -0.45, 0.45); // even the hardest flick stays graceful
+    let vp = clamp(vp0, -0.25, 0.25);
+    let last = performance.now();
+    setCoasting(true);
+    const tick = (t: number) => {
+      const dt = Math.min(t - last, 50);
+      last = t;
+      const decay = Math.exp(-dt / 650); // friction time-constant
+      vl *= decay;
+      vp *= decay;
+      setView((v) => ({
+        ...v,
+        lambda: v.lambda + vl * dt,
+        phi: clamp(v.phi + vp * dt, -85, 85),
+      }));
+      if (Math.abs(vl) < 0.0015 && Math.abs(vp) < 0.0015) {
+        inertiaRef.current = null;
+        setCoasting(false); // idle drift takes over
+        return;
+      }
+      inertiaRef.current = requestAnimationFrame(tick);
+    };
+    inertiaRef.current = requestAnimationFrame(tick);
   };
 
   const flyTo = (target: View, done?: () => void) => {
@@ -205,10 +244,11 @@ export default function MapPage() {
     flyTo({ lambda: viewRef.current.lambda, phi: -22, scale: 1 }, () => setSpinning(true));
   };
 
-  // drag to rotate
+  // drag to rotate (with flick momentum)
   const onPointerDown = (e: React.PointerEvent) => {
     cancelFly();
     dragRef.current = { x: e.clientX, y: e.clientY, lambda: viewRef.current.lambda, phi: viewRef.current.phi, moved: 0 };
+    velRef.current = { x: e.clientX, y: e.clientY, t: performance.now(), vl: 0, vp: 0 };
     setDragging(true);
   };
   const onPointerMove = (e: React.PointerEvent) => {
@@ -219,10 +259,26 @@ export default function MapPage() {
     d.moved = Math.max(d.moved, Math.abs(dx) + Math.abs(dy));
     const k = 0.28 / viewRef.current.scale;
     setView((v) => ({ ...v, lambda: d.lambda + dx * k, phi: clamp(d.phi - dy * k, -85, 85) }));
+    // smoothed release velocity in degrees/ms
+    const vel = velRef.current;
+    const now = performance.now();
+    const dt = Math.max(1, now - vel.t);
+    vel.vl = 0.7 * (((e.clientX - vel.x) * k) / dt) + 0.3 * vel.vl;
+    vel.vp = 0.7 * ((-(e.clientY - vel.y) * k) / dt) + 0.3 * vel.vp;
+    vel.x = e.clientX;
+    vel.y = e.clientY;
+    vel.t = now;
   };
   const endDrag = () => {
+    const wasDragging = dragRef.current != null;
     dragRef.current = null;
     setDragging(false);
+    if (!wasDragging) return;
+    const { vl, vp, t } = velRef.current;
+    const held = performance.now() - t > 120; // paused before letting go: no flick
+    if (!held && (Math.abs(vl) > 0.01 || Math.abs(vp) > 0.01)) {
+      startCoast(vl, vp);
+    }
   };
   const wasDrag = () => (dragRef.current?.moved ?? 0) > 5;
 
