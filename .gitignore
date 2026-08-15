@@ -1,4 +1,4 @@
-data/
+/data/
 test-library/
 .venv/
 node_modules/
