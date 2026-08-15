@@ -1554,6 +1554,104 @@ code {
 .reveal.d2 { transition-delay: 0.16s; }
 .reveal.d3 { transition-delay: 0.24s; }
 
+/* ============================================================
+   Locked section
+   ============================================================ */
+.lock-center {
+  min-height: calc(100vh - 120px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lock-card {
+  width: 400px;
+  max-width: 92vw;
+  text-align: center;
+  background: var(--glass);
+  border: 1px solid var(--stroke-2);
+  border-radius: var(--r-panel);
+  backdrop-filter: var(--blur-heavy);
+  -webkit-backdrop-filter: var(--blur-heavy);
+  box-shadow: var(--shadow-2), inset 0 1px 0 var(--specular);
+  padding: 34px 34px 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  animation: popIn 0.4s var(--spring) both;
+}
+.lock-card.wide { width: 480px; }
+.lock-card h2 { font-size: 20px; font-weight: 760; letter-spacing: -0.4px; }
+.lock-card .muted { font-size: 13.5px; line-height: 1.6; }
+.lock-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 62px;
+  height: 62px;
+  border-radius: 20px;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(255, 178, 94, 0.35), rgba(255, 123, 156, 0.32) 55%, rgba(185, 107, 255, 0.3));
+  border: 1px solid rgba(255, 178, 94, 0.4);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 6px 20px rgba(255, 123, 156, 0.25);
+  margin-bottom: 4px;
+}
+.lock-icon.big { width: 84px; height: 84px; border-radius: 26px; margin-bottom: 16px; }
+.lock-input { width: 100%; text-align: center; font-size: 15px; letter-spacing: 1px; }
+input[type="password"].lock-input,
+.lock-card input[type="password"],
+.lock-card input[type="text"] {
+  font: inherit;
+  color: var(--fg);
+  background: var(--glass);
+  border: 1px solid var(--stroke);
+  border-radius: 13px;
+  padding: 11px 14px;
+  width: 100%;
+  text-align: center;
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18);
+  transition: border-color 0.16s, box-shadow 0.16s;
+}
+.lock-card input:focus {
+  outline: none;
+  border-color: rgba(255, 178, 94, 0.6);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.14), 0 0 0 4px rgba(255, 178, 94, 0.16);
+}
+.modal input[type="password"] {
+  font: inherit;
+  color: var(--fg);
+  background: var(--glass);
+  border: 1px solid var(--stroke);
+  border-radius: 13px;
+  padding: 9px 14px;
+  width: 100%;
+}
+.modal input[type="password"]:focus {
+  outline: none;
+  border-color: rgba(124, 196, 255, 0.6);
+  box-shadow: 0 0 0 4px rgba(124, 196, 255, 0.16);
+}
+.code-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  width: 100%;
+  margin-top: 12px;
+}
+.code-chip {
+  font: 15px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: 1.5px;
+  padding: 12px 10px;
+  border-radius: 12px;
+  background: rgba(2, 4, 10, 0.5);
+  border: 1px solid rgba(255, 178, 94, 0.28);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+  color: var(--saffron);
+  user-select: all;
+}
+
 /* ---- accessibility ---- */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

@@ -114,6 +114,14 @@ export const IconChevronR = (p: IconProps) => (
   </Svg>
 );
 
+export const IconLock = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="5" y="10.5" width="14" height="9.5" rx="2.5" />
+    <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" />
+    <path d="M12 14.5v2" />
+  </Svg>
+);
+
 export const IconTrash = (p: IconProps) => (
   <Svg {...p}>
     <path d="M4.5 6.5h15M9.5 6V4.8a1.8 1.8 0 0 1 1.8-1.8h1.4a1.8 1.8 0 0 1 1.8 1.8V6M6.5 6.5l.8 12.2a2 2 0 0 0 2 1.8h5.4a2 2 0 0 0 2-1.8l.8-12.2M10 10.5v6M14 10.5v6" />

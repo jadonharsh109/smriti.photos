@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config, db
-from .api import albums, dupes, events, jobs, media, people, places, roots, system, timeline, volumes
+from .api import albums, dupes, events, jobs, locked, media, people, places, roots, system, timeline, volumes
 
 
 @asynccontextmanager
@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Photos Organizer", lifespan=lifespan)
 
-for r in (system, volumes, roots, jobs, timeline, media, people, places, albums, events, dupes):
+for r in (system, volumes, roots, jobs, timeline, media, people, places, albums, events, dupes, locked):
     app.include_router(r.router, prefix="/api")
 
 # Production: serve the built frontend (dev uses the Vite server + /api proxy)

@@ -35,18 +35,20 @@ interface Props {
   onClose: () => void;
   onPrev?: () => void;
   onNext?: () => void;
+  /** appended to media/detail URLs (e.g. the locked-section token) */
+  qs?: string;
 }
 
 const ZOOM = 2.5;
 
-export default function Lightbox({ item, onClose, onPrev, onNext }: Props) {
+export default function Lightbox({ item, onClose, onPrev, onNext, qs = "" }: Props) {
   const [showInfo, setShowInfo] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const qc = useQueryClient();
   // always loaded (cheap, cached): also tells us whether the drive is online
   const { data: detail } = useQuery({
     queryKey: ["file", item.id],
-    queryFn: () => api.get<Detail>(`/api/files/${item.id}`),
+    queryFn: () => api.get<Detail>(`/api/files/${item.id}${qs}`),
   });
   const offline = detail?.volume != null && !detail.volume.is_online;
   const driveLabel = detail?.volume?.label ?? "its drive";
@@ -157,7 +159,7 @@ export default function Lightbox({ item, onClose, onPrev, onNext }: Props) {
       <div className="lb-stage" onClick={(e) => e.stopPropagation()}>
         {item.media_type === "video" && (offline || mediaError) ? (
           <div className="lb-unavailable">
-            <img src={`/api/thumb/${item.id}`} alt="" className="lb-unavail-poster" />
+            <img src={`/api/thumb/${item.id}${qs}`} alt="" className="lb-unavail-poster" />
             <div className="lb-unavail-body">
               <span className="lb-unavail-icon">🗄</span>
               <strong>{offline ? "Drive not connected" : "Video unavailable"}</strong>
@@ -172,8 +174,8 @@ export default function Lightbox({ item, onClose, onPrev, onNext }: Props) {
           <video
             key={item.id}
             className="lb-media"
-            src={`/api/media/${item.id}`}
-            poster={`/api/thumb/${item.id}`}
+            src={`/api/media/${item.id}${qs}`}
+            poster={`/api/thumb/${item.id}${qs}`}
             controls
             autoPlay
             onError={() => setMediaError(true)}
@@ -183,7 +185,7 @@ export default function Lightbox({ item, onClose, onPrev, onNext }: Props) {
             key={item.id}
             ref={imgRef}
             className="lb-media"
-            src={`/api/preview/${item.id}`}
+            src={`/api/preview/${item.id}${qs}`}
             alt=""
             draggable={false}
             style={{
@@ -225,7 +227,7 @@ export default function Lightbox({ item, onClose, onPrev, onNext }: Props) {
             <IconDownload />
           </button>
         ) : (
-          <a href={`/api/media/${item.id}`} download>
+          <a href={`/api/media/${item.id}${qs}`} download>
             <button className="icon-btn" title="Download original">
               <IconDownload />
             </button>

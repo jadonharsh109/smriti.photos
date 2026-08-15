@@ -9,10 +9,12 @@ interface Props {
   selected?: Set<number>;
   onToggleSelect?: (id: number) => void;
   targetRowHeight?: number;
+  /** appended to thumb URLs (e.g. the locked-section token) */
+  thumbQS?: string;
 }
 
 /** Flickr-style justified rows of thumbnails (pure layout, no virtualization). */
-export default function JustifiedGrid({ items, width, onOpen, selected, onToggleSelect, targetRowHeight = 220 }: Props) {
+export default function JustifiedGrid({ items, width, onOpen, selected, onToggleSelect, targetRowHeight = 220, thumbQS = "" }: Props) {
   const layout = useMemo(
     () =>
       justifiedLayout(
@@ -39,7 +41,7 @@ export default function JustifiedGrid({ items, width, onOpen, selected, onToggle
             }}
           >
             <img
-              src={`/api/thumb/${it.id}`}
+              src={`/api/thumb/${it.id}${thumbQS}`}
               loading="lazy"
               alt=""
               ref={(el) => {

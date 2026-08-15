@@ -31,10 +31,13 @@ def exact():
     rows = db.query(
         "SELECT content_hash, COUNT(*) n FROM files "
         "WHERE status='active' AND content_hash IS NOT NULL "
+        "AND id NOT IN (SELECT file_id FROM locked_items) "
         "GROUP BY content_hash HAVING n > 1 ORDER BY n DESC LIMIT 500",
     )
     for r in rows:
-        items = db.query(ITEM_FIELDS + "WHERE f.content_hash=? AND f.status='active'", (r["content_hash"],))
+        items = db.query(
+            ITEM_FIELDS + "WHERE f.content_hash=? AND f.status='active' "
+            "AND f.id NOT IN (SELECT file_id FROM locked_items)", (r["content_hash"],))
         items = [dict(i) for i in items]
         best = max(items, key=lambda i: ((i["width"] or 0) * (i["height"] or 0), i["size_bytes"]))
         for i in items:
@@ -52,7 +55,8 @@ def near():
     for g in db.query("SELECT * FROM dupe_groups WHERE kind='near' ORDER BY id"):
         items = db.query(
             ITEM_FIELDS + "JOIN dupe_group_items dgi ON dgi.file_id=f.id "
-            "WHERE dgi.group_id=? AND f.status='active'", (g["id"],),
+            "WHERE dgi.group_id=? AND f.status='active' "
+            "AND f.id NOT IN (SELECT file_id FROM locked_items)", (g["id"],),
         )
         keepers = {r["file_id"] for r in db.query(
             "SELECT file_id FROM dupe_group_items WHERE group_id=? AND is_suggested_keeper=1", (g["id"],))}

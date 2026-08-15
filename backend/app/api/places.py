@@ -14,9 +14,11 @@ def summary():
         "(SELECT pl2.file_id FROM file_places pl2 "
         " JOIN files f2 ON f2.id=pl2.file_id JOIN metadata m2 ON m2.file_id=f2.id "
         " WHERE pl2.country=pl.country AND COALESCE(pl2.city,'')=COALESCE(pl.city,'') AND f2.status='active' "
+        " AND f2.id NOT IN (SELECT file_id FROM locked_items) "
         " ORDER BY m2.taken_at DESC LIMIT 1) AS cover "
         "FROM file_places pl JOIN files f ON f.id=pl.file_id "
         "WHERE f.status='active' AND pl.country IS NOT NULL "
+        "AND f.id NOT IN (SELECT file_id FROM locked_items) "
         "GROUP BY pl.country, pl.city ORDER BY pl.country, n DESC",
     )
     countries: dict[str, dict] = {}
@@ -39,6 +41,7 @@ def points(precision: int = 1):
         "FROM metadata m JOIN files f ON f.id=m.file_id "
         "LEFT JOIN file_places pl ON pl.file_id=m.file_id "
         "WHERE m.gps_lat IS NOT NULL AND f.status='active' "
+        "AND f.id NOT IN (SELECT file_id FROM locked_items) "
         "GROUP BY ROUND(m.gps_lat, ?), ROUND(m.gps_lon, ?)",
         (precision, precision, precision, precision),
     )

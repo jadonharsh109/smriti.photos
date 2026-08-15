@@ -24,9 +24,12 @@ class ItemsIn(BaseModel):
 @router.get("/albums")
 def list_albums():
     return [dict(r) for r in db.query(
-        "SELECT a.*, (SELECT COUNT(*) FROM album_items ai WHERE ai.album_id=a.id) AS count, "
-        "COALESCE(a.cover_file_id, (SELECT ai.file_id FROM album_items ai WHERE ai.album_id=a.id "
-        "ORDER BY ai.position LIMIT 1)) AS cover "
+        "SELECT a.*, (SELECT COUNT(*) FROM album_items ai "
+        " WHERE ai.album_id=a.id AND ai.file_id NOT IN (SELECT file_id FROM locked_items)) AS count, "
+        # cover: the stored one unless locked, else the first visible item
+        "(SELECT ai.file_id FROM album_items ai WHERE ai.album_id=a.id "
+        " AND ai.file_id NOT IN (SELECT file_id FROM locked_items) "
+        " ORDER BY (ai.file_id = a.cover_file_id) DESC, ai.position LIMIT 1) AS cover "
         "FROM albums a ORDER BY a.created_at DESC",
     )]
 
@@ -46,7 +49,8 @@ def album_detail(album_id: int):
         "SELECT f.id, f.media_type, m.width, m.height, m.duration_s, ai.position "
         "FROM album_items ai JOIN files f ON f.id=ai.file_id "
         "LEFT JOIN metadata m ON m.file_id=f.id "
-        "WHERE ai.album_id=? AND f.status='active' ORDER BY ai.position",
+        "WHERE ai.album_id=? AND f.status='active' "
+        "AND f.id NOT IN (SELECT file_id FROM locked_items) ORDER BY ai.position",
         (album_id,),
     )
     return {**dict(row), "items": [dict(i) for i in items]}

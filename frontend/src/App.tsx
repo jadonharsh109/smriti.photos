@@ -3,6 +3,7 @@ import {
   IconAlbum,
   IconCopy,
   IconGlobe,
+  IconLock,
   IconPeople,
   IconPhotos,
   IconPin,
@@ -27,6 +28,7 @@ const NAV: { sec: string; items: { to: string; label: string; Icon: typeof IconP
       { to: "/places", label: "Places", Icon: IconPin },
       { to: "/map", label: "Map", Icon: IconGlobe },
       { to: "/events", label: "Events", Icon: IconSparkle },
+      { to: "/locked", label: "Locked", Icon: IconLock },
     ],
   },
   {

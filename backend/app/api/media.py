@@ -7,12 +7,19 @@ from pydantic import BaseModel
 from send2trash import send2trash
 
 from .. import db
-from ..services import thumbs
+from ..services import lock, thumbs
 from ..services import volumes as vol_svc
 
 router = APIRouter()
 
 IMMUTABLE = {"Cache-Control": "public, max-age=31536000, immutable"}
+
+
+def _guard_locked(file_id: int, lt: str | None) -> None:
+    """Locked files' bytes require the unlock token (query param `lt` —
+    <img>/<video> tags can't send headers)."""
+    if lock.is_locked_file(file_id) and not lock.check_token(lt):
+        raise HTTPException(401, "locked")
 
 VIDEO_TYPES = {".mp4": "video/mp4", ".m4v": "video/mp4", ".mov": "video/quicktime",
                ".webm": "video/webm", ".mkv": "video/x-matroska", ".avi": "video/x-msvideo",
@@ -27,7 +34,8 @@ def _file_or_404(file_id: int):
 
 
 @router.get("/thumb/{file_id}")
-def thumb(file_id: int):
+def thumb(file_id: int, lt: str | None = None):
+    _guard_locked(file_id, lt)
     p = thumbs.thumb_path(file_id)
     if not p.exists():
         raise HTTPException(404, "no thumbnail")
@@ -35,10 +43,11 @@ def thumb(file_id: int):
 
 
 @router.get("/preview/{file_id}")
-def preview(file_id: int):
+def preview(file_id: int, lt: str | None = None):
+    _guard_locked(file_id, lt)
     row = _file_or_404(file_id)
     if row["media_type"] == "video":
-        return thumb(file_id)
+        return thumb(file_id, lt)
     p = thumbs.preview_path(file_id)
     if not p.exists():
         abs_path = vol_svc.abs_path_for_file(row)
@@ -50,7 +59,8 @@ def preview(file_id: int):
 
 
 @router.get("/media/{file_id}")
-def media(file_id: int, request: Request):
+def media(file_id: int, request: Request, lt: str | None = None):
+    _guard_locked(file_id, lt)
     row = _file_or_404(file_id)
     abs_path = vol_svc.abs_path_for_file(row)
     if abs_path is None or not os.path.exists(abs_path):
@@ -134,7 +144,8 @@ def delete_files(body: DeleteIn):
 
 
 @router.get("/files/{file_id}")
-def file_detail(file_id: int):
+def file_detail(file_id: int, lt: str | None = None):
+    _guard_locked(file_id, lt)
     row = _file_or_404(file_id)
     meta = db.query_one("SELECT * FROM metadata WHERE file_id=?", (file_id,))
     place = db.query_one("SELECT * FROM file_places WHERE file_id=?", (file_id,))

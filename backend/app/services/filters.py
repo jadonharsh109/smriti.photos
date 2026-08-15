@@ -5,7 +5,9 @@ event) is the same query with different filters."""
 def build(person_id=None, country=None, city=None, album_id=None, event_id=None, day=None, solo=False,
           media_type=None):
     joins = ["JOIN metadata m ON m.file_id = f.id"]
-    where = ["f.status = 'active'", "m.taken_at IS NOT NULL"]
+    # locked-section files are invisible to every grid
+    where = ["f.status = 'active'", "m.taken_at IS NOT NULL",
+             "f.id NOT IN (SELECT file_id FROM locked_items)"]
     params: list = []
     if media_type in ("photo", "video"):
         where.append("f.media_type = ?")

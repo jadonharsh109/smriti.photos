@@ -71,7 +71,8 @@ def _dir_size(path) -> int:
 @router.get("/stats")
 def stats():
     counts = {r["media_type"]: r["n"] for r in
-              db.query("SELECT media_type, COUNT(*) n FROM files WHERE status='active' GROUP BY media_type")}
+              db.query("SELECT media_type, COUNT(*) n FROM files WHERE status='active' "
+                       "AND id NOT IN (SELECT file_id FROM locked_items) GROUP BY media_type")}
     return {
         "photos": counts.get("photo", 0),
         "videos": counts.get("video", 0),

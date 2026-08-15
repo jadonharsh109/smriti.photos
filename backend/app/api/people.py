@@ -30,10 +30,14 @@ def list_people(include_hidden: bool = False):
     where = "" if include_hidden else "WHERE p.is_hidden=0"
     rows = db.query(
         f"SELECT p.id, p.name, p.is_hidden, "
-        "COALESCE(p.cover_face_id, (SELECT fa.id FROM faces fa WHERE fa.person_id=p.id "
-        " ORDER BY fa.det_score DESC LIMIT 1)) AS cover_face_id, "
+        # cover: prefer the stored one, but never a face from a locked photo
+        "(SELECT fa.id FROM faces fa JOIN files fv ON fv.id=fa.file_id "
+        " WHERE fa.person_id=p.id AND fv.status='active' "
+        " AND fv.id NOT IN (SELECT file_id FROM locked_items) "
+        " ORDER BY (fa.id = p.cover_face_id) DESC, fa.det_score DESC LIMIT 1) AS cover_face_id, "
         "(SELECT COUNT(DISTINCT fa.file_id) FROM faces fa JOIN files f ON f.id=fa.file_id "
-        " WHERE fa.person_id=p.id AND f.status='active') AS photo_count "
+        " WHERE fa.person_id=p.id AND f.status='active' "
+        " AND f.id NOT IN (SELECT file_id FROM locked_items)) AS photo_count "
         f"FROM persons p {where} ORDER BY photo_count DESC",
     )
     return [dict(r) for r in rows if r["photo_count"] > 0]
@@ -75,6 +79,7 @@ def person_faces(person_id: int, limit: int = 200):
     rows = db.query(
         "SELECT fa.id, fa.file_id, fa.det_score, fa.assign_src FROM faces fa "
         "JOIN files f ON f.id=fa.file_id WHERE fa.person_id=? AND f.status='active' "
+        "AND f.id NOT IN (SELECT file_id FROM locked_items) "
         "ORDER BY fa.det_score DESC LIMIT ?",
         (person_id, limit),
     )
@@ -94,10 +99,14 @@ def assign_face(face_id: int, body: FaceAssign):
 
 
 @router.get("/faces/{face_id}/thumb")
-def face_thumb(face_id: int):
+def face_thumb(face_id: int, lt: str | None = None):
+    from ..services import lock
+
     face = db.query_one("SELECT * FROM faces WHERE id=?", (face_id,))
     if not face:
         raise HTTPException(404, "no such face")
+    if lock.is_locked_file(face["file_id"]) and not lock.check_token(lt):
+        raise HTTPException(401, "locked")
     file_row = db.query_one("SELECT * FROM files WHERE id=?", (face["file_id"],))
     abs_path = vol_svc.abs_path_for_file(file_row) if file_row else None
     p = thumbs.ensure_face_crop(face, abs_path)

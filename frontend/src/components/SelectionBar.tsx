@@ -1,13 +1,90 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
+import { getLockedToken, lockedApi, setLockedToken } from "../lockedStore";
 import { ConfirmDialog, TextDialog } from "./Dialogs";
+import { IconLock } from "./Icons";
 import Portal from "./Portal";
 
 interface Album {
   id: number;
   name: string;
   count: number;
+}
+
+/** Hide-in-Locked flow: set-up hint / inline unlock / confirm, in one dialog. */
+function HideInLockedDialog({ ids, onDone, onClose }: { ids: number[]; onDone: () => void; onClose: () => void }) {
+  const nav = useNavigate();
+  const qc = useQueryClient();
+  const [pw, setPw] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const { data: status } = useQuery({ queryKey: ["locked", "status", !!getLockedToken()], queryFn: () => lockedApi.status() });
+
+  const hide = async () => {
+    await lockedApi.addItems(ids);
+    qc.invalidateQueries(); // vanish from every view
+    onDone();
+    onClose();
+  };
+
+  const unlockAndHide = async () => {
+    setError(null);
+    try {
+      const r = await lockedApi.unlock(pw);
+      setLockedToken(r.token);
+      await hide();
+    } catch (e) {
+      setError(String((e as Error).message));
+    }
+  };
+
+  const n = ids.length;
+  const unlocked = status?.unlocked && !!getLockedToken();
+  return (
+    <Portal>
+      <div className="modal-back" onClick={onClose}>
+        <div className="modal" style={{ width: 430 }} onClick={(e) => e.stopPropagation()}>
+          <header>Hide {n} {n === 1 ? "item" : "items"} in Locked</header>
+          <div className="modal-body" style={{ padding: "10px 24px 8px", display: "grid", gap: 10 }}>
+            {!status ? null : !status.configured ? (
+              <p className="muted">
+                The Locked section isn't set up yet. Create a passcode first — then hidden photos
+                disappear from Photos, Albums, People, Places, Map and Events.
+              </p>
+            ) : unlocked ? (
+              <p className="muted">
+                They'll disappear from every view and only show inside Locked after entering your passcode.
+              </p>
+            ) : (
+              <>
+                <p className="muted">Enter your Locked passcode to hide them.</p>
+                <input
+                  type="password"
+                  autoFocus
+                  placeholder="Passcode"
+                  value={pw}
+                  onChange={(e) => setPw(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && unlockAndHide()}
+                />
+                {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
+              </>
+            )}
+          </div>
+          <footer>
+            <button onClick={onClose}>Cancel</button>
+            {!status ? null : !status.configured ? (
+              <button className="primary" onClick={() => nav("/locked")}>Set up Locked</button>
+            ) : unlocked ? (
+              <button className="primary" onClick={hide}>Hide in Locked</button>
+            ) : (
+              <button className="primary" disabled={!pw} onClick={unlockAndHide}>Unlock & hide</button>
+            )}
+          </footer>
+        </div>
+      </div>
+    </Portal>
+  );
 }
 
 interface Props {
@@ -21,6 +98,7 @@ export default function SelectionBar({ selected, onClear, onSelectAll, extraActi
   const [pickerOpen, setPickerOpen] = useState(false);
   const [naming, setNaming] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [hiding, setHiding] = useState(false);
   const qc = useQueryClient();
   const { data: albums } = useQuery({
     queryKey: ["albums"],
@@ -70,6 +148,10 @@ export default function SelectionBar({ selected, onClear, onSelectAll, extraActi
           </div>
         )}
         {extraActions}
+        <button onClick={() => setHiding(true)} title="Hide in the passcode-protected Locked section">
+          <span style={{ display: "inline-flex", verticalAlign: "-3px", marginRight: 6 }}><IconLock size={15} /></span>
+          Hide in Locked
+        </button>
         <button className="danger" onClick={() => setConfirmingDelete(true)}>
           Delete
         </button>
@@ -87,6 +169,9 @@ export default function SelectionBar({ selected, onClear, onSelectAll, extraActi
           onConfirm={moveToTrash}
           onClose={() => setConfirmingDelete(false)}
         />
+      )}
+      {hiding && (
+        <HideInLockedDialog ids={[...selected]} onDone={onClear} onClose={() => setHiding(false)} />
       )}
       {naming && (
         <TextDialog
