@@ -3,6 +3,7 @@ import {
   IconAlbum,
   IconCopy,
   IconGlobe,
+  IconLock,
   IconPeople,
   IconPhotos,
   IconPin,
@@ -11,6 +12,7 @@ import {
 } from "./components/Icons";
 import JobsIndicator from "./components/JobsIndicator";
 import Logo from "./components/Logo";
+import { LockedProvider } from "./locked/LockedContext";
 
 const NAV: { sec: string; items: { to: string; label: string; Icon: typeof IconPhotos }[] }[] = [
   {
@@ -27,6 +29,7 @@ const NAV: { sec: string; items: { to: string; label: string; Icon: typeof IconP
       { to: "/places", label: "Places", Icon: IconPin },
       { to: "/map", label: "Map", Icon: IconGlobe },
       { to: "/events", label: "Events", Icon: IconSparkle },
+      { to: "/locked", label: "Locked", Icon: IconLock },
     ],
   },
   {
@@ -41,7 +44,7 @@ const NAV: { sec: string; items: { to: string; label: string; Icon: typeof IconP
 export default function App() {
   const location = useLocation();
   return (
-    <>
+    <LockedProvider>
       <div className="aurora">
         <i /><i /><i />
       </div>
@@ -79,6 +82,6 @@ export default function App() {
           <Outlet />
         </main>
       </div>
-    </>
+    </LockedProvider>
   );
 }

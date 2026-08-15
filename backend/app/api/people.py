@@ -31,7 +31,7 @@ def list_people(include_hidden: bool = False):
     rows = db.query(
         f"SELECT p.id, p.name, p.is_hidden, "
         "COALESCE(p.cover_face_id, (SELECT fa.id FROM faces fa WHERE fa.person_id=p.id "
-        " ORDER BY fa.det_score DESC LIMIT 1)) AS cover_face_id, "
+        " ORDER BY (fa.quality IS NULL), fa.quality DESC, fa.det_score DESC LIMIT 1)) AS cover_face_id, "
         "(SELECT COUNT(DISTINCT fa.file_id) FROM faces fa JOIN files f ON f.id=fa.file_id "
         " WHERE fa.person_id=p.id AND f.status='active') AS photo_count "
         f"FROM persons p {where} ORDER BY photo_count DESC",
@@ -75,7 +75,7 @@ def person_faces(person_id: int, limit: int = 200):
     rows = db.query(
         "SELECT fa.id, fa.file_id, fa.det_score, fa.assign_src FROM faces fa "
         "JOIN files f ON f.id=fa.file_id WHERE fa.person_id=? AND f.status='active' "
-        "ORDER BY fa.det_score DESC LIMIT ?",
+        "ORDER BY (fa.quality IS NULL), fa.quality DESC, fa.det_score DESC LIMIT ?",
         (person_id, limit),
     )
     return [dict(r) for r in rows]
@@ -117,6 +117,16 @@ def face_scan():
         raise HTTPException(400, "face models not downloaded — run: uv run python scripts/fetch_models.py")
     job_id = manager.create("faces")
     manager.start(job_id, faces_job.run_face_scan(job_id))
+    return {"job_id": job_id}
+
+
+@router.post("/faces/recompute_covers")
+def recompute_covers():
+    """Re-pick every person's cover photo with the quality scorer."""
+    if manager.any_running("faces") or manager.any_running("recluster") or manager.any_running("covers"):
+        raise HTTPException(409, "a face job is already running")
+    job_id = manager.create("covers")
+    manager.start(job_id, faces_job.run_recompute_covers(job_id))
     return {"job_id": job_id}
 
 

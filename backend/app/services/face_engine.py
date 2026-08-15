@@ -28,20 +28,24 @@ class FaceEngine:
 
     # -- public --------------------------------------------------------------
     def process(self, pil_img) -> list[dict]:
-        """-> [{x,y,w,h (normalized 0..1), score, embedding (512 float32)}]"""
+        """-> [{x,y,w,h (normalized 0..1), score, embedding (512 float32),
+        landmarks (5x2 float32 normalized), sharpness, brightness, contrast}]"""
         rgb = np.asarray(pil_img, dtype=np.uint8)
         H, W = rgb.shape[:2]
         dets = self._detect(rgb)
         out = []
         for bbox, kps, score in dets:
-            emb = self._embed(pil_img, kps)
+            emb, aligned = self._embed(pil_img, kps)
             x1, y1, x2, y2 = (float(v) for v in bbox)
+            lms = (kps.astype(np.float32) / np.array([W, H], dtype=np.float32)).reshape(-1)
             # plain Python floats — np.float32 would bind to SQLite as a BLOB
             out.append({
                 "x": max(0.0, x1 / W), "y": max(0.0, y1 / H),
                 "w": min(1.0, (x2 - x1) / W), "h": min(1.0, (y2 - y1) / H),
                 "score": float(score),
                 "embedding": emb,
+                "landmarks": lms,
+                **face_quality_metrics(aligned),
             })
         return out
 
@@ -95,7 +99,8 @@ class FaceEngine:
         return self._centers[key]
 
     # -- embedding (ArcFace) -------------------------------------------------
-    def _embed(self, pil_img, kps: np.ndarray) -> np.ndarray:
+    def _embed(self, pil_img, kps: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """-> (normalized 512-d embedding, aligned 112x112 RGB uint8 crop)"""
         from PIL import Image
 
         T = _similarity_transform(kps.astype(np.float32), ARCFACE_DST)
@@ -109,7 +114,22 @@ class FaceEngine:
         blob = ((arr - 127.5) / 127.5).transpose(2, 0, 1)[None]
         emb = self.rec.run(None, {self.rec_input: blob})[0].reshape(-1).astype(np.float32)
         n = np.linalg.norm(emb)
-        return emb / n if n > 0 else emb
+        return (emb / n if n > 0 else emb), arr.astype(np.uint8)
+
+
+def face_quality_metrics(rgb_crop: np.ndarray) -> dict:
+    """Sharpness/lighting stats on an aligned face crop. Measuring on the
+    fixed-size aligned crop makes the numbers comparable across photos
+    regardless of the face's pixel size in the original."""
+    gray = (0.299 * rgb_crop[..., 0] + 0.587 * rgb_crop[..., 1]
+            + 0.114 * rgb_crop[..., 2]).astype(np.float32)
+    lap = (4 * gray[1:-1, 1:-1] - gray[:-2, 1:-1] - gray[2:, 1:-1]
+           - gray[1:-1, :-2] - gray[1:-1, 2:])
+    return {
+        "sharpness": float(lap.var()),
+        "brightness": float(gray.mean()),
+        "contrast": float(gray.std()),
+    }
 
 
 def _similarity_transform(src: np.ndarray, dst: np.ndarray) -> np.ndarray:

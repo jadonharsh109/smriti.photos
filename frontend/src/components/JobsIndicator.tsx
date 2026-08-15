@@ -6,6 +6,7 @@ const LABELS: Record<string, string> = {
   scan: "Indexing",
   faces: "Finding faces",
   recluster: "Grouping people",
+  covers: "Choosing cover photos",
   geocode: "Locating",
   neardup: "Finding duplicates",
   events: "Building events",

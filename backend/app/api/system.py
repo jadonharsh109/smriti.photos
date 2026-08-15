@@ -23,12 +23,14 @@ def get_settings():
     return {
         "auto_scan": rows.get("auto_scan", "1") == "1",
         "auto_scan_minutes": int(rows.get("auto_scan_minutes", "30")),
+        "locked_auto_minutes": int(rows.get("locked_auto_minutes", "5")),
     }
 
 
 class SettingsIn(BaseModel):
     auto_scan: bool | None = None
     auto_scan_minutes: int | None = None
+    locked_auto_minutes: int | None = None
 
 
 @router.post("/settings")
@@ -37,6 +39,8 @@ def set_settings(body: SettingsIn):
         _put_setting("auto_scan", "1" if body.auto_scan else "0")
     if body.auto_scan_minutes is not None:
         _put_setting("auto_scan_minutes", str(max(5, min(1440, body.auto_scan_minutes))))
+    if body.locked_auto_minutes is not None:
+        _put_setting("locked_auto_minutes", str(max(1, min(60, body.locked_auto_minutes))))
     return get_settings()
 
 

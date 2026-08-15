@@ -17,6 +17,7 @@ dependencies = [
     "scikit-learn>=1.4",
     "reverse-geocoder>=1.5.1",
     "send2trash>=2.1.0",
+    "cryptography>=42",
 ]
 
 [project.urls]

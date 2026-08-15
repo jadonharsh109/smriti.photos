@@ -27,6 +27,7 @@ def process(file_id: int, path: str) -> dict:
             img.thumbnail((2200, 2200))
         faces = _engine.process(img)
         return {"file_id": file_id, "ok": True,
-                "faces": [{**f, "embedding": f["embedding"].tobytes()} for f in faces]}
+                "faces": [{**f, "embedding": f["embedding"].tobytes(),
+                           "landmarks": f["landmarks"].tobytes()} for f in faces]}
     except Exception as e:
         return {"file_id": file_id, "ok": False, "error": f"{type(e).__name__}: {e}"}

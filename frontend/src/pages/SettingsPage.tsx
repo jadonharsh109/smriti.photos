@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, fmtBytes, type Job, type Root, type Volume } from "../api/client";
-import { ConfirmDialog } from "../components/Dialogs";
+import { ConfirmDialog, PasswordDialog } from "../components/Dialogs";
 import Portal from "../components/Portal";
+import { useLocked, type LockedStatus } from "../locked/LockedContext";
 
 interface FsList {
   path: string;
@@ -13,6 +15,7 @@ interface FsList {
 interface AppSettings {
   auto_scan: boolean;
   auto_scan_minutes: number;
+  locked_auto_minutes: number;
 }
 interface Stats {
   photos: number;
@@ -49,6 +52,11 @@ export default function SettingsPage() {
   const qc = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
+  const [lockedDlg, setLockedDlg] = useState<
+    null | { kind: "current" } | { kind: "new"; current: string } | { kind: "unlock"; then: "enroll" | "remove" }
+  >(null);
+  const [lockedNote, setLockedNote] = useState<string | null>(null);
+  const lockedApi = useLocked();
   const [showLogs, setShowLogs] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const logRef = useRef<HTMLDivElement>(null);
@@ -62,6 +70,10 @@ export default function SettingsPage() {
   });
   const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: () => api.get<Stats>("/api/stats") });
   const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: () => api.get<AppSettings>("/api/settings") });
+  const { data: lockedStatus } = useQuery({
+    queryKey: ["locked", "status"],
+    queryFn: () => api.get<LockedStatus>("/api/locked/status"),
+  });
 
   // live log: seed with recent history once, then append from the SSE stream
   useEffect(() => {
@@ -127,6 +139,25 @@ export default function SettingsPage() {
       qc.invalidateQueries({ queryKey: ["jobs"] });
     },
   });
+
+  const doTouchId = async (what: "enroll" | "remove") => {
+    setLockedNote(null);
+    try {
+      if (what === "enroll") {
+        await lockedApi.enrollTouchId();
+        setLockedNote("Touch ID enabled for unlocking.");
+      } else {
+        await lockedApi.removeTouchId();
+        setLockedNote("Touch ID removed.");
+      }
+    } catch (e) {
+      setLockedNote(String((e as Error).message ?? e));
+    }
+  };
+  const touchId = (what: "enroll" | "remove") => {
+    if (lockedApi.token) doTouchId(what);
+    else setLockedDlg({ kind: "unlock", then: what });
+  };
 
   // latest job per stage drives the pipeline strip
   const latest: Record<string, Job> = {};
@@ -265,6 +296,59 @@ export default function SettingsPage() {
 
       <div className="panel">
         <div className="row">
+          <h2 style={{ marginBottom: 0 }}>Locked folder</h2>
+          <span className="spacer" />
+          {lockedStatus?.configured && (
+            <>
+              <button className="small" onClick={() => setLockedDlg({ kind: "current" })}>
+                Change PIN
+              </button>
+              {lockedApi.touchIdAvailable &&
+                (lockedStatus.webauthn_enrolled ? (
+                  <button className="small" onClick={() => touchId("remove")}>Remove Touch ID</button>
+                ) : (
+                  <button className="small" onClick={() => touchId("enroll")}>Enable Touch ID</button>
+                ))}
+            </>
+          )}
+        </div>
+        {!lockedStatus?.configured ? (
+          <p className="muted small" style={{ marginTop: 8 }}>
+            Not set up yet — open the <Link to="/locked">Locked Folder</Link> to create a PIN and start
+            hiding private photos.
+          </p>
+        ) : (
+          <>
+            <p className="muted small" style={{ marginTop: 8 }}>
+              Photos in the Locked Folder are encrypted and hidden everywhere else. It relocks when the tab
+              is hidden, after inactivity, or on demand. A forgotten PIN cannot be recovered.
+            </p>
+            <div className="row" style={{ marginTop: 10 }}>
+              <span className="muted small">Auto-lock after</span>
+              <div className="seg">
+                {[1, 5, 15].map((m) => (
+                  <button
+                    key={m}
+                    className={settings?.locked_auto_minutes === m ? "on" : ""}
+                    onClick={() => saveSettings.mutate({ locked_auto_minutes: m })}
+                  >
+                    {m} min
+                  </button>
+                ))}
+              </div>
+            </div>
+            {!lockedApi.touchIdAvailable && lockedStatus.webauthn_enrolled === false && (
+              <p className="muted small" style={{ marginTop: 8 }}>
+                Tip: open the app at http://localhost to enable Touch ID unlock.
+              </p>
+            )}
+          </>
+        )}
+        {lockedNote && <p className="small muted" style={{ marginTop: 8 }}>{lockedNote}</p>}
+      </div>
+
+      <div className="panel">
+        <div className="row">
           <h2 style={{ marginBottom: 0 }}>Activity</h2>
           <span className="muted small">
             {running
@@ -322,6 +406,54 @@ export default function SettingsPage() {
             setShowLogs(true);
           }}
           onClose={() => setConfirmingReset(false)}
+        />
+      )}
+
+      {lockedDlg?.kind === "current" && (
+        <PasswordDialog
+          title="Change Locked Folder PIN"
+          body="Enter your current PIN first."
+          placeholder="Current PIN"
+          submitLabel="Next"
+          onSubmit={(pin) => setLockedDlg({ kind: "new", current: pin })}
+          onClose={() => setLockedDlg(null)}
+        />
+      )}
+      {lockedDlg?.kind === "new" && (
+        <PasswordDialog
+          title="Choose a new PIN"
+          body="At least 6 characters — longer is stronger. There is no recovery if you forget it."
+          placeholder="New PIN"
+          submitLabel="Change PIN"
+          onSubmit={async (pin) => {
+            const current = lockedDlg.current;
+            setLockedDlg(null);
+            setLockedNote(null);
+            try {
+              await api.post("/api/locked/change-pin", { current_pin: current, new_pin: pin });
+              setLockedNote("PIN changed.");
+            } catch (e) {
+              setLockedNote(String((e as Error).message ?? e));
+            }
+          }}
+          onClose={() => setLockedDlg(null)}
+        />
+      )}
+      {lockedDlg?.kind === "unlock" && (
+        <PasswordDialog
+          title="Unlock Locked Folder"
+          body="Managing Touch ID needs the vault unlocked."
+          onSubmit={async (pin) => {
+            const then = lockedDlg.then;
+            setLockedDlg(null);
+            try {
+              await lockedApi.unlockPin(pin);
+              await doTouchId(then);
+            } catch (e) {
+              setLockedNote(String((e as Error).message ?? e));
+            }
+          }}
+          onClose={() => setLockedDlg(null)}
         />
       )}
 
