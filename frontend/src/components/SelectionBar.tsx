@@ -81,7 +81,7 @@ export default function SelectionBar({ selected, onClear, onSelectAll, extraActi
       {confirmingDelete && (
         <ConfirmDialog
           title={`Move ${selected.size} ${selected.size === 1 ? "item" : "items"} to Trash?`}
-          body="Originals go to the macOS Trash (recoverable there) and disappear from the library. Items on offline drives are skipped."
+          body="Originals go to the system Trash (recoverable there) and disappear from the library. Items on offline drives are skipped."
           confirmLabel="Move to Trash"
           danger
           onConfirm={moveToTrash}

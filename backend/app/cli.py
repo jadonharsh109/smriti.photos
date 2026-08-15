@@ -2,6 +2,7 @@
 import argparse
 import os
 import shutil
+import sys
 import threading
 import time
 import webbrowser
@@ -36,7 +37,11 @@ def main() -> None:
     from . import main as app_main
 
     if shutil.which(config.FFMPEG) is None:
-        print("⚠ ffmpeg not found — videos won't be indexed (brew install ffmpeg)")
+        hint = {
+            "darwin": "brew install ffmpeg",
+            "win32": "winget install ffmpeg",
+        }.get(sys.platform, "install ffmpeg via your package manager")
+        print(f"⚠ ffmpeg not found — videos won't be indexed ({hint})")
     if not (config.FACE_MODEL_DIR / "det_10g.onnx").exists():
         print("ℹ People is off until the face models are downloaded — run `smriti models` once (~280 MB)")
 

@@ -280,7 +280,7 @@ export default function Lightbox({ item, onClose, onPrev, onNext }: Props) {
         <span onClick={(e) => e.stopPropagation()}>
         <ConfirmDialog
           title={`Move this ${item.media_type} to Trash?`}
-          body="The original goes to the macOS Trash (recoverable there) and disappears from the library."
+          body="The original goes to the system Trash (recoverable there) and disappears from the library."
           confirmLabel="Move to Trash"
           danger
           onConfirm={async () => {

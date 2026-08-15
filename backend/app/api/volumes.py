@@ -1,4 +1,6 @@
 import os
+import sys
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
@@ -12,9 +14,22 @@ def volumes():
     return vol_svc.refresh_volumes()
 
 
+def _default_browse_path() -> str:
+    if sys.platform == "darwin" and os.path.isdir("/Volumes"):
+        return "/Volumes"
+    return str(Path.home())
+
+
 @router.get("/fs/list")
-def fs_list(path: str = "/Volumes"):
-    path = os.path.abspath(path)
+def fs_list(path: str = ""):
+    # empty path = the platform's natural starting point; on Windows that is
+    # the drive list ("This PC"), reachable again via parent == ""
+    if not path:
+        if sys.platform == "win32":
+            drives = [{"name": d, "path": d} for d in os.listdrives()]
+            return {"path": "This PC", "parent": None, "dirs": drives, "media_count": 0}
+        path = _default_browse_path()
+    path = os.path.abspath(os.path.expanduser(path))
     if not os.path.isdir(path):
         raise HTTPException(404, f"not a directory: {path}")
     entries = []
@@ -38,5 +53,7 @@ def fs_list(path: str = "/Volumes"):
     except PermissionError:
         raise HTTPException(403, f"no permission to read {path}")
     entries.sort(key=lambda x: x["name"].lower())
-    parent = os.path.dirname(path) if path != "/" else None
+    parent: str | None = os.path.dirname(path)
+    if parent == path:  # filesystem root: "/" (posix) or "C:\\" (windows)
+        parent = "" if sys.platform == "win32" else None  # "" = back to the drive list
     return {"path": path, "parent": parent, "dirs": entries, "media_count": media_count}

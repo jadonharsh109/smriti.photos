@@ -247,7 +247,7 @@ export default function LandingPage() {
                 <ul>
                   <li><span className="tick">✓</span> Face recognition runs on your CPU — photos never leave the machine</li>
                   <li><span className="tick">✓</span> Reverse geocoding from a bundled offline dataset</li>
-                  <li><span className="tick">✓</span> Originals stay untouched — deleting is always a recoverable move to the macOS Trash</li>
+                  <li><span className="tick">✓</span> Originals stay untouched — deleting is always a recoverable move to the system Trash</li>
                   <li><span className="tick">✓</span> Works with the network cable unplugged</li>
                 </ul>
               </div>

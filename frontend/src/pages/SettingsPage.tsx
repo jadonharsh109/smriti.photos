@@ -328,11 +328,13 @@ export default function SettingsPage() {
 }
 
 function FolderPicker({ onPick, onClose }: { onPick: (path: string) => void; onClose: () => void }) {
-  const [path, setPath] = useState("/Volumes");
+  // "" = the platform's natural starting point (macOS: /Volumes, Windows: drive list)
+  const [path, setPath] = useState("");
   const { data } = useQuery({
     queryKey: ["fs", path],
     queryFn: () => api.get<FsList>(`/api/fs/list?path=${encodeURIComponent(path)}`),
   });
+  const atSyntheticRoot = data?.path === "This PC";
   return (
     <Portal>
     <div className="modal-back" onClick={onClose}>
@@ -340,10 +342,14 @@ function FolderPicker({ onPick, onClose }: { onPick: (path: string) => void; onC
         <header>Choose a photos folder</header>
         <div className="modal-body">
           <div className="row" style={{ marginBottom: 8 }}>
-            <button disabled={!data?.parent} onClick={() => data?.parent && setPath(data.parent)}>
+            <button
+              disabled={data?.parent == null}
+              onClick={() => data && data.parent != null && setPath(data.parent)}
+            >
               ↑ Up
             </button>
-            <span className="muted small" style={{ wordBreak: "break-all" }}>{data?.path ?? path}</span>
+            <button onClick={() => setPath("~")}>Home</button>
+            <span className="muted small" style={{ wordBreak: "break-all" }}>{data?.path ?? "…"}</span>
           </div>
           {data?.media_count ? (
             <p className="small muted" style={{ marginBottom: 6 }}>
@@ -359,7 +365,11 @@ function FolderPicker({ onPick, onClose }: { onPick: (path: string) => void; onC
         </div>
         <footer>
           <button onClick={onClose}>Cancel</button>
-          <button className="primary" onClick={() => onPick(path)}>
+          <button
+            className="primary"
+            disabled={!data || atSyntheticRoot}
+            onClick={() => data && onPick(data.path)}
+          >
             Use this folder &amp; process everything
           </button>
         </footer>

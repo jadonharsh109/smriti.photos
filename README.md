@@ -16,7 +16,7 @@ FastAPI backend + React frontend with a macOS-style liquid-glass UI, served at
 - **Events** — trips auto-detected from gaps in your timeline, titled with city + dates.
 - **Albums** — virtual albums via multi-select or one-click "add all" from any person/place/event.
 - **Duplicates** — exact (BLAKE2) and near-duplicate (perceptual hash) finder with suggested
-  keepers; cleanup moves files to the **recoverable macOS Trash**, never a permanent delete.
+  keepers; cleanup moves files to the **recoverable system Trash**, never a permanent delete.
 - **Videos** — ffprobe metadata, poster frames, in-browser playback via HTTP range requests.
 - **Drive-aware** — volumes tracked by disk UUID; unplugging mid-scan interrupts safely and
   nothing is ever marked missing while a drive is offline.
@@ -31,6 +31,19 @@ brew services start smriti  # optional: keep it running in the background (auto-
 ```
 
 Installed this way, the library index lives in `~/.smriti` (override with `SMRITI_DATA_DIR`).
+
+## Install (Windows / Linux)
+
+Smriti is cross-platform — deletions go to the Recycle Bin on Windows, drives are tracked by
+volume GUID, and CI runs the full smoke test on Windows. With Python 3.12+:
+
+```powershell
+winget install ffmpeg          # optional, enables video indexing
+pip install <release wheel>    # or: uv tool install <release wheel>
+smriti                         # serves your library and opens the browser
+```
+
+The library index lives in `~/.smriti` on every platform.
 
 ## Running from source
 

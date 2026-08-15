@@ -71,7 +71,7 @@ export default function DupesPage() {
     );
     setDiscards(new Set());
     setTrashResult(
-      `Moved ${r.trashed} ${r.trashed === 1 ? "file" : "files"} to the macOS Trash` +
+      `Moved ${r.trashed} ${r.trashed === 1 ? "file" : "files"} to the system Trash` +
         (r.skipped_offline ? ` · ${r.skipped_offline} skipped (drive offline)` : "") +
         (r.errors.length ? ` · ${r.errors.length} failed` : "")
     );
@@ -89,7 +89,7 @@ export default function DupesPage() {
         <div>
           <h1>Duplicates</h1>
           <p className="sub">
-            Mark what to discard, then move it to the macOS Trash — always recoverable, never permanently erased.
+            Mark what to discard, then move it to the system Trash — always recoverable, never permanently erased.
           </p>
         </div>
         <div className="actions">
@@ -182,7 +182,7 @@ export default function DupesPage() {
       {confirmingTrash && (
         <ConfirmDialog
           title={`Move ${discards.size} ${discards.size === 1 ? "duplicate" : "duplicates"} to Trash?`}
-          body="Marked files go to the macOS Trash (recoverable there) and leave the library. Suggested keepers stay untouched."
+          body="Marked files go to the system Trash (recoverable there) and leave the library. Suggested keepers stay untouched."
           confirmLabel="Move to Trash"
           danger
           onConfirm={trashDiscards}

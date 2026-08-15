@@ -104,7 +104,7 @@ class DeleteIn(BaseModel):
 
 @router.post("/files/delete")
 def delete_files(body: DeleteIn):
-    """Move originals to the macOS Trash (recoverable — never a permanent
+    """Move originals to the system Trash (recoverable — never a permanent
     unlink) and drop them from the index. Files whose drive is offline are
     skipped untouched so a retry with the drive mounted still works."""
     trashed = 0

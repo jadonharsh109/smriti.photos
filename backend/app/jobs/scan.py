@@ -41,7 +41,7 @@ def _walk(root_abs: str, mount: str) -> list[tuple[str, str, int, int, str]]:
                 st = os.stat(abs_path)
             except OSError:
                 continue
-            rel = os.path.relpath(abs_path, mount)
+            rel = os.path.relpath(abs_path, mount).replace(os.sep, "/")  # POSIX-style everywhere
             out.append((abs_path, rel, st.st_size, st.st_mtime_ns, mtype))
     return out
 
