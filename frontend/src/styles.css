@@ -1020,6 +1020,65 @@ code {
   touch-action: none;
 }
 .lightbox.with-info .lb-media { max-width: calc(100vw - 490px); }
+/* offline-drive states inside the viewer */
+.lb-unavailable {
+  position: relative;
+  max-width: min(560px, 80vw);
+  border-radius: 24px;
+  overflow: hidden;
+  border: 1px solid var(--stroke-2);
+  box-shadow: var(--shadow-2), inset 0 1px 0 var(--specular);
+  animation: lbZoom 0.32s var(--ease) backwards;
+}
+.lb-unavail-poster {
+  display: block;
+  width: 100%;
+  max-height: 46vh;
+  object-fit: cover;
+  filter: blur(6px) brightness(0.5) saturate(0.8);
+}
+.lb-unavail-body {
+  position: relative;
+  background: var(--glass-heavy);
+  backdrop-filter: var(--blur-heavy);
+  -webkit-backdrop-filter: var(--blur-heavy);
+  padding: 22px 28px 26px;
+  text-align: center;
+}
+.lb-unavail-icon { display: block; font-size: 30px; margin-bottom: 8px; }
+.lb-unavail-body strong { font-size: 16px; letter-spacing: -0.2px; }
+.lb-unavail-body p { color: var(--fg-dim); margin-top: 6px; font-size: 13.5px; line-height: 1.6; }
+
+.lb-offline-chip {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--glass-heavy);
+  backdrop-filter: var(--blur-heavy);
+  -webkit-backdrop-filter: var(--blur-heavy);
+  border: 1px solid rgba(255, 178, 94, 0.35);
+  box-shadow: var(--shadow-1), inset 0 1px 0 var(--specular);
+  font-size: 12.5px;
+  font-weight: 600;
+  animation: slideUp 0.35s var(--spring) both;
+  pointer-events: none;
+  z-index: 2;
+}
+.lb-offline-chip .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--saffron);
+  box-shadow: 0 0 10px rgba(255, 178, 94, 0.7);
+}
+
 .lb-btn {
   position: absolute;
   top: 50%;

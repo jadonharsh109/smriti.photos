@@ -43,11 +43,15 @@ export default function Lightbox({ item, onClose, onPrev, onNext }: Props) {
   const [showInfo, setShowInfo] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const qc = useQueryClient();
+  // always loaded (cheap, cached): also tells us whether the drive is online
   const { data: detail } = useQuery({
     queryKey: ["file", item.id],
     queryFn: () => api.get<Detail>(`/api/files/${item.id}`),
-    enabled: showInfo,
   });
+  const offline = detail?.volume != null && !detail.volume.is_online;
+  const driveLabel = detail?.volume?.label ?? "its drive";
+  const [mediaError, setMediaError] = useState(false);
+  useEffect(() => setMediaError(false), [item.id, offline]);
 
   // ---- double-click zoom & pan (photos only) ----
   const [zoom, setZoom] = useState(1);
@@ -151,8 +155,29 @@ export default function Lightbox({ item, onClose, onPrev, onNext }: Props) {
     <Portal>
     <div className={`lightbox${showInfo ? " with-info" : ""}`} onClick={onClose}>
       <div className="lb-stage" onClick={(e) => e.stopPropagation()}>
-        {item.media_type === "video" ? (
-          <video key={item.id} className="lb-media" src={`/api/media/${item.id}`} poster={`/api/thumb/${item.id}`} controls autoPlay />
+        {item.media_type === "video" && (offline || mediaError) ? (
+          <div className="lb-unavailable">
+            <img src={`/api/thumb/${item.id}`} alt="" className="lb-unavail-poster" />
+            <div className="lb-unavail-body">
+              <span className="lb-unavail-icon">🗄</span>
+              <strong>{offline ? "Drive not connected" : "Video unavailable"}</strong>
+              <p>
+                {offline
+                  ? `This video lives on “${driveLabel}”, which isn't connected. Plug it in and it will play right here.`
+                  : "The original file couldn't be read — it may have been moved or renamed outside Smriti."}
+              </p>
+            </div>
+          </div>
+        ) : item.media_type === "video" ? (
+          <video
+            key={item.id}
+            className="lb-media"
+            src={`/api/media/${item.id}`}
+            poster={`/api/thumb/${item.id}`}
+            controls
+            autoPlay
+            onError={() => setMediaError(true)}
+          />
         ) : (
           <img
             key={item.id}
@@ -176,6 +201,12 @@ export default function Lightbox({ item, onClose, onPrev, onNext }: Props) {
             onPointerCancel={onPanEnd}
           />
         )}
+        {item.media_type === "photo" && offline && (
+          <div className="lb-offline-chip">
+            <span className="dot" />
+            Original on “{driveLabel}” (offline) — showing cached preview
+          </div>
+        )}
       </div>
 
       <div className="lb-top" onClick={(e) => e.stopPropagation()}>
@@ -189,11 +220,17 @@ export default function Lightbox({ item, onClose, onPrev, onNext }: Props) {
         <button className="icon-btn" title="Move to Trash" onClick={() => setConfirmingDelete(true)}>
           <IconTrash />
         </button>
-        <a href={`/api/media/${item.id}`} download>
-          <button className="icon-btn" title="Download original">
+        {offline ? (
+          <button className="icon-btn" disabled title={`Original is on “${driveLabel}” — connect the drive to download`}>
             <IconDownload />
           </button>
-        </a>
+        ) : (
+          <a href={`/api/media/${item.id}`} download>
+            <button className="icon-btn" title="Download original">
+              <IconDownload />
+            </button>
+          </a>
+        )}
         <button className="icon-btn" title="Close (Esc)" onClick={onClose}>
           <IconClose />
         </button>

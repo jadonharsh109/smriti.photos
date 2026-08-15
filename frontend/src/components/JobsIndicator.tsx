@@ -43,6 +43,7 @@ export default function JobsIndicator() {
       qc.invalidateQueries({ queryKey: ["volumes"] });
       qc.invalidateQueries({ queryKey: ["roots"] });
       qc.invalidateQueries({ queryKey: ["stats"] });
+      qc.invalidateQueries({ queryKey: ["file"] }); // open lightbox reacts to plug/unplug
       const fresh: VolToast[] = [
         ...d.attached.map((a) => ({ id: ++toastSeq, kind: "in" as const, label: a.label })),
         ...d.removed.map((r) => ({ id: ++toastSeq, kind: "out" as const, label: r.label })),
