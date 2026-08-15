@@ -1,15 +1,30 @@
 import os
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = Path(os.environ.get("PHOTOS_DATA_DIR", PROJECT_ROOT / "data"))
+_PKG_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = _PKG_DIR.parents[1]
+# running from a source checkout vs. installed into site-packages (brew/pip)
+_IS_REPO = (PROJECT_ROOT / "pyproject.toml").exists() and (PROJECT_ROOT / "frontend").exists()
+
+
+def _default_data_dir() -> Path:
+    for env in ("SMRITI_DATA_DIR", "PHOTOS_DATA_DIR"):
+        if os.environ.get(env):
+            return Path(os.environ[env]).expanduser()
+    if _IS_REPO:
+        return PROJECT_ROOT / "data"
+    return Path.home() / ".smriti"
+
+
+DATA_DIR = _default_data_dir()
 DB_PATH = DATA_DIR / "library.db"
 THUMBS_DIR = DATA_DIR / "thumbs"
 PREVIEWS_DIR = DATA_DIR / "previews"
 FACE_CROPS_DIR = DATA_DIR / "facecrops"
 MODELS_DIR = DATA_DIR / "models"
 EXPORTS_DIR = DATA_DIR / "exports"
-FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
+# installed wheels bundle the built frontend inside the package as webui/
+FRONTEND_DIST = (PROJECT_ROOT / "frontend" / "dist") if _IS_REPO else (_PKG_DIR / "webui")
 
 THUMB_MAX_DIM = 512          # grid thumbs (2x DPR for ~250px rows)
 PREVIEW_MAX_DIM = 1600       # lightbox previews, generated lazily

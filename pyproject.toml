@@ -1,7 +1,8 @@
 [project]
-name = "photos-organizer"
+name = "smriti-photos"
 version = "0.1.0"
-description = "Local Google-Photos-style photo/video organizer (FastAPI + React, fully offline)"
+description = "स्मृति Smriti — fully-offline, Google-Photos-style library for your local photos"
+readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
@@ -17,6 +18,33 @@ dependencies = [
     "reverse-geocoder>=1.5.1",
     "send2trash>=2.1.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/jadonharsh109/smriti.photos"
+
+[project.scripts]
+smriti = "smriti_server.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# the backend package installs as `smriti_server` (imports inside are relative)
+[tool.hatch.build.targets.wheel]
+packages = ["backend/app"]
+
+[tool.hatch.build.targets.wheel.sources]
+"backend/app" = "smriti_server"
+
+# ship the built frontend inside the wheel — installed runs need no Node
+[tool.hatch.build.targets.wheel.force-include]
+"frontend/dist" = "smriti_server/webui"
+
+[tool.hatch.build.targets.sdist]
+include = ["backend", "frontend/dist", "scripts", "README.md", "pyproject.toml"]
+exclude = ["**/__pycache__"]
+# frontend/dist is gitignored; artifacts overrides VCS-ignore so it ships in the sdist
+artifacts = ["frontend/dist"]
 
 [tool.uv]
 package = false

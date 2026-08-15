@@ -21,7 +21,20 @@ FastAPI backend + React frontend with a macOS-style liquid-glass UI, served at
 - **Drive-aware** — volumes tracked by disk UUID; unplugging mid-scan interrupts safely and
   nothing is ever marked missing while a drive is offline.
 
-## Requirements
+## Install (Homebrew)
+
+```bash
+brew install jadonharsh109/tap/smriti
+smriti                      # serves your library and opens http://localhost:8000
+smriti models               # one-time face-model download (~280 MB) — enables People
+brew services start smriti  # optional: keep it running in the background (auto-scan works)
+```
+
+Installed this way, the library index lives in `~/.smriti` (override with `SMRITI_DATA_DIR`).
+
+## Running from source
+
+### Requirements
 
 - macOS with `ffmpeg` installed (`brew install ffmpeg`)
 - [`uv`](https://docs.astral.sh/uv/) and Node 20+
