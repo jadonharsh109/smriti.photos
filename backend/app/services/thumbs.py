@@ -7,6 +7,14 @@ import tempfile
 
 from .. import config
 
+# the server process must decode HEIC too (workers register this themselves)
+try:
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+except Exception:
+    pass
+
 
 def preview_path(file_id: int):
     return config.shard_path(config.PREVIEWS_DIR, file_id)
@@ -96,33 +104,45 @@ def _evict_lru() -> None:
 
 
 def ensure_face_crop(face_row, abs_path: str | None) -> str | None:
-    """Square-ish crop around a face bbox, cached by face id."""
+    """Square-ish crop around a face bbox, cached by face id. Prefers the
+    original file (sharpest), then the preview; never falls back to the
+    whole photo — callers degrade explicitly."""
     dest = config.shard_path(config.FACE_CROPS_DIR, face_row["id"])
     if dest.exists():
         return str(dest)
-    src = preview_path(face_row["file_id"])
-    src = str(src) if src.exists() else abs_path
-    if src is None:
-        return None
     from PIL import Image, ImageOps
 
-    try:
-        img = Image.open(src)
-        img.load()
-    except Exception:
+    img = None
+    if abs_path and os.path.exists(abs_path):
+        img = _decode_full(abs_path)  # handles HEIC + sips fallback
+        if img is not None:
+            img = ImageOps.exif_transpose(img)
+    if img is None:
+        pv = preview_path(face_row["file_id"])
+        if pv.exists():
+            try:
+                img = Image.open(pv)
+                img.load()
+            except Exception:
+                img = None
+    if img is None:
         return None
-    if os.path.abspath(src) == os.path.abspath(abs_path or ""):
-        img = ImageOps.exif_transpose(img)
     W, H = img.size
-    x, y, w, h = face_row["x"] * W, face_row["y"] * H, face_row["w"] * W, face_row["h"] * H
-    cx, cy, half = x + w / 2, y + h / 2, max(w, h) * 0.75
+    try:
+        x, y, w, h = (float(face_row["x"]) * W, float(face_row["y"]) * H,
+                      float(face_row["w"]) * W, float(face_row["h"]) * H)
+    except (TypeError, ValueError):
+        return None
+    cx, cy, half = x + w / 2, y + h / 2, max(w, h) * 0.85
     box = (max(0, int(cx - half)), max(0, int(cy - half)),
            min(W, int(cx + half)), min(H, int(cy + half)))
+    if box[2] - box[0] < 8 or box[3] - box[1] < 8:
+        return None
     crop = img.crop(box)
     if crop.mode not in ("RGB", "L"):
         crop = crop.convert("RGB")
     crop.thumbnail((256, 256))
     tmp = str(dest) + ".tmp"
-    crop.save(tmp, "WEBP", quality=80)
+    crop.save(tmp, "WEBP", quality=82)
     os.replace(tmp, dest)
     return str(dest)

@@ -142,6 +142,11 @@ async def run_recluster(job_id: int) -> None:
     X = np.stack([_emb(r["embedding"]) for r in rows])
     labels = await asyncio.to_thread(_cluster, X)
 
+    # HDBSCAN over-splits the same person; repair before mapping to persons
+    named_by_idx = {i: r["person_id"] for i, r in enumerate(rows) if r["person_id"] and r["person_name"]}
+    labels = _merge_split_clusters(X, labels, named_by_idx)
+    labels = _adopt_noise(X, labels)
+
     manual = {r["id"]: r["person_id"] for r in rows if r["assign_src"] == "manual" and r["person_id"]}
 
     # Majority-overlap remap: keep an existing NAMED person when a new cluster
@@ -188,6 +193,86 @@ async def run_recluster(job_id: int) -> None:
     manager.finish(job_id, "done", f"{len(clusters)} people from {n} faces")
 
 
+def _merge_split_clusters(X: np.ndarray, labels: np.ndarray, named_by_idx: dict[int, int]) -> np.ndarray:
+    """Union clusters whose centroids are more similar than FACE_MERGE_SIM —
+    the same human fragmented by HDBSCAN. Two clusters dominated by
+    *different* named people are never auto-merged."""
+    uniq = sorted({int(lbl) for lbl in labels if lbl >= 0})
+    if len(uniq) < 2:
+        return labels
+    cents: dict[int, np.ndarray] = {}
+    dominant: dict[int, int] = {}  # cluster -> named person id
+    for lbl in uniq:
+        idx = np.where(labels == lbl)[0]
+        c = X[idx].mean(axis=0)
+        n = np.linalg.norm(c)
+        cents[lbl] = c / n if n else c
+        votes: dict[int, int] = {}
+        for i in idx:
+            pid = named_by_idx.get(int(i))
+            if pid:
+                votes[pid] = votes.get(pid, 0) + 1
+        if votes:
+            pid, v = max(votes.items(), key=lambda kv: kv[1])
+            if v > len(idx) / 3:
+                dominant[lbl] = pid
+
+    parent = {lbl: lbl for lbl in uniq}
+
+    def find(a: int) -> int:
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    root_named: dict[int, set[int]] = {lbl: ({dominant[lbl]} if lbl in dominant else set()) for lbl in uniq}
+    pairs = []
+    for i, a in enumerate(uniq):
+        for b in uniq[i + 1:]:
+            sim = float(cents[a] @ cents[b])
+            if sim >= config.FACE_MERGE_SIM:
+                pairs.append((sim, a, b))
+    merged = 0
+    for _, a, b in sorted(pairs, reverse=True):
+        ra, rb = find(a), find(b)
+        if ra == rb:
+            continue
+        na, nb = root_named[ra], root_named[rb]
+        if na and nb and na != nb:
+            continue  # different named people — leave for a manual merge
+        parent[rb] = ra
+        root_named[ra] = na | nb
+        merged += 1
+    if not merged:
+        return labels
+    out = labels.copy()
+    for i, lbl in enumerate(labels):
+        if lbl >= 0:
+            out[i] = find(int(lbl))
+    return out
+
+
+def _adopt_noise(X: np.ndarray, labels: np.ndarray) -> np.ndarray:
+    """Faces HDBSCAN marked as noise still join a person when clearly similar
+    to its centroid — the same bar as incremental assignment."""
+    uniq = sorted({int(lbl) for lbl in labels if lbl >= 0})
+    noise = np.where(labels < 0)[0]
+    if not uniq or len(noise) == 0:
+        return labels
+    cents = []
+    for lbl in uniq:
+        c = X[np.where(labels == lbl)[0]].mean(axis=0)
+        n = np.linalg.norm(c)
+        cents.append(c / n if n else c)
+    sims = X[noise] @ np.stack(cents).T
+    best = sims.argmax(axis=1)
+    out = labels.copy()
+    for k, i in enumerate(noise):
+        if sims[k, best[k]] >= config.FACE_MATCH_THRESHOLD:
+            out[i] = uniq[int(best[k])]
+    return out
+
+
 def _cluster(X: np.ndarray) -> np.ndarray:
     from sklearn.cluster import HDBSCAN
 
@@ -199,7 +284,12 @@ def _cluster(X: np.ndarray) -> np.ndarray:
 
 
 def recompute_centroid(person_id: int) -> None:
-    rows = db.query("SELECT id, embedding, det_score FROM faces WHERE person_id=?", (person_id,))
+    rows = db.query(
+        "SELECT fa.id, fa.embedding, fa.det_score, fa.w, fa.h, "
+        "(SELECT COUNT(*) FROM faces f2 WHERE f2.file_id=fa.file_id) AS nfaces "
+        "FROM faces fa WHERE fa.person_id=?",
+        (person_id,),
+    )
     if not rows:
         db.execute("UPDATE persons SET centroid=NULL WHERE id=?", (person_id,))
         return
@@ -208,6 +298,14 @@ def recompute_centroid(person_id: int) -> None:
     norm = np.linalg.norm(c)
     if norm > 0:
         c = c / norm
-    best = max(rows, key=lambda r: r["det_score"] or 0)
+
+    # cover: a big, confident face — strongly preferring solo photos over
+    # someone in the background of a group shot
+    def cover_score(r) -> float:
+        area = max(float(r["w"] or 0) * float(r["h"] or 0), 1e-6)
+        solo_bonus = 1.5 if r["nfaces"] == 1 else 1.0
+        return (r["det_score"] or 0) * (area ** 0.5) * solo_bonus
+
+    best = max(rows, key=cover_score)
     db.execute("UPDATE persons SET centroid=?, cover_face_id=? WHERE id=?",
                (c.astype(np.float32).tobytes(), best["id"], person_id))

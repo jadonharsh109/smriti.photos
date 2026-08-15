@@ -44,6 +44,8 @@ FACE_MODEL_DIR = MODELS_DIR / "buffalo_l"
 FACE_DET_SIZE = 640
 FACE_DET_SCORE_MIN = 0.55
 FACE_MATCH_THRESHOLD = 0.45  # cosine sim for incremental person assignment
+FACE_MERGE_SIM = 0.55        # merge clusters this similar (same person split by HDBSCAN);
+                             # calibrated: distinct-person centroids sit < 0.3, splits > 0.6
 FACE_MIN_CLUSTER_SIZE = 4
 FACE_MAX_WORKERS = 2
 
