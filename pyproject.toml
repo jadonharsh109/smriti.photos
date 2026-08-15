@@ -1,6 +1,6 @@
 [project]
 name = "smriti-photos"
-version = "0.1.1"
+version = "0.1.2"
 description = "स्मृति Smriti — fully-offline, Google-Photos-style library for your local photos"
 readme = "README.md"
 requires-python = ">=3.12"
