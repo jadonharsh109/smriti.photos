@@ -49,12 +49,17 @@ export default function MapPage() {
   const [detailTopo, setDetailTopo] = useState<unknown>(null);
   const [statesTopo, setStatesTopo] = useState<unknown>(null);
   const detailLoaded = useRef(false);
-  // wheel zoom batched to one state update per frame; hover layers pause while active
-  const [wheeling, setWheeling] = useState(false);
-  const wheelingRef = useRef(false);
+  // gesture zoom: while the wheel is active the already-rendered scene is
+  // scaled with ONE GPU transform (no re-projection); geometry re-renders
+  // once when the gesture settles
+  const [gzoom, setGzoom] = useState(1);
+  const gzoomRef = useRef(1);
   const wheelAccum = useRef(0);
   const wheelRaf = useRef<number | null>(null);
   const wheelIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // drag rotation batched to one view update per frame
+  const dragAccum = useRef<{ dx: number; dy: number } | null>(null);
+  const dragRaf = useRef<number | null>(null);
   const animRef = useRef<number | null>(null);
   const dragRef = useRef<{ x: number; y: number; lambda: number; phi: number; moved: number } | null>(null);
   // flick-to-spin: track drag velocity, coast with friction on release
@@ -157,49 +162,55 @@ export default function MapPage() {
         .clipAngle(90),
     [view, W, H, R]
   );
-  const path = useMemo(() => geoPath(projection), [projection]);
+  // fewer digits = far smaller `d` strings to build, parse and diff
+  const path = useMemo(() => geoPath(projection).digits(1), [projection]);
 
-  // idle auto-rotation: a lazy drift (pauses on interaction / selection / coasting)
+  // idle auto-rotation: a lazy drift at half frame-rate; stops for good the
+  // moment the user interacts (the ▶ control re-enables it) — a permanently
+  // spinning globe re-projects the world forever and burns CPU for nothing
   useEffect(() => {
     if (!spinning || dragging || selected || coasting) return;
     let raf: number;
     let last = performance.now();
     const tick = (t: number) => {
-      const dt = Math.min(t - last, 64);
-      last = t;
-      setView((v) => ({ ...v, lambda: v.lambda + dt * 0.0012 }));
       raf = requestAnimationFrame(tick);
+      const dt = t - last;
+      if (dt < 30) return; // ~30fps is plenty for ambience at a lazy drift
+      last = t;
+      setView((v) => ({ ...v, lambda: v.lambda + Math.min(dt, 80) * 0.0012 }));
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [spinning, dragging, selected, coasting]);
 
-  // wheel zoom: non-passive native listener, batched to ONE view update per
-  // frame (trackpads fire dozens of events per frame — rendering each was the lag)
+  // wheel zoom: transform-only while the gesture lasts, one geometry commit
+  // 150ms after it ends
   useEffect(() => {
     const el = svgRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       cancelFly();
+      setSpinning(false);
       wheelAccum.current += e.deltaY;
       if (wheelRaf.current == null) {
         wheelRaf.current = requestAnimationFrame(() => {
           const dy = wheelAccum.current;
           wheelAccum.current = 0;
           wheelRaf.current = null;
-          setView((v) => ({ ...v, scale: clamp(v.scale * Math.exp(-dy * 0.0013), 1, MAX_ZOOM) }));
+          const live = clamp(viewRef.current.scale * gzoomRef.current * Math.exp(-dy * 0.0013), 1, MAX_ZOOM);
+          gzoomRef.current = live / viewRef.current.scale;
+          setGzoom(gzoomRef.current);
         });
-      }
-      if (!wheelingRef.current) {
-        wheelingRef.current = true;
-        setWheeling(true);
       }
       if (wheelIdleTimer.current) clearTimeout(wheelIdleTimer.current);
       wheelIdleTimer.current = setTimeout(() => {
-        wheelingRef.current = false;
-        setWheeling(false);
-      }, 180);
+        // commit: re-project once at the final scale, reset the transform
+        const g = gzoomRef.current;
+        gzoomRef.current = 1;
+        setView((v) => ({ ...v, scale: clamp(v.scale * g, 1, MAX_ZOOM) }));
+        setGzoom(1);
+      }, 150);
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => {
@@ -299,6 +310,7 @@ export default function MapPage() {
   // drag to rotate (with flick momentum)
   const onPointerDown = (e: React.PointerEvent) => {
     cancelFly();
+    setSpinning(false); // user has taken the wheel — no more ambient burn
     dragRef.current = { x: e.clientX, y: e.clientY, lambda: viewRef.current.lambda, phi: viewRef.current.phi, moved: 0 };
     velRef.current = { x: e.clientX, y: e.clientY, t: performance.now(), vl: 0, vp: 0 };
     setDragging(true);
@@ -310,8 +322,7 @@ export default function MapPage() {
     const dy = e.clientY - d.y;
     d.moved = Math.max(d.moved, Math.abs(dx) + Math.abs(dy));
     const k = 0.28 / viewRef.current.scale;
-    setView((v) => ({ ...v, lambda: d.lambda + dx * k, phi: clamp(d.phi - dy * k, -85, 85) }));
-    // smoothed release velocity in degrees/ms
+    // velocity math per event (cheap); the expensive setView once per frame
     const vel = velRef.current;
     const now = performance.now();
     const dt = Math.max(1, now - vel.t);
@@ -320,6 +331,15 @@ export default function MapPage() {
     vel.x = e.clientX;
     vel.y = e.clientY;
     vel.t = now;
+    dragAccum.current = { dx, dy };
+    if (dragRaf.current == null) {
+      dragRaf.current = requestAnimationFrame(() => {
+        dragRaf.current = null;
+        const a = dragAccum.current;
+        if (!a || !dragRef.current) return;
+        setView((v) => ({ ...v, lambda: d.lambda + a.dx * k, phi: clamp(d.phi - a.dy * k, -85, 85) }));
+      });
+    }
   };
   const endDrag = () => {
     const wasDragging = dragRef.current != null;
@@ -335,12 +355,57 @@ export default function MapPage() {
   const wasDrag = () => (dragRef.current?.moved ?? 0) > 5;
 
   const center: [number, number] = [-view.lambda, -view.phi];
-  // angular radius of the viewport on the sphere (+margin); features whose
-  // bounding circle falls outside are skipped entirely
-  const visAngle = Math.min(Math.PI, (Math.hypot(W, H) / 2) / (R * view.scale) + 0.3);
-  const interacting = dragging || coasting || wheeling;
+  // angular radius of the viewport on the sphere (+margin covering gesture
+  // zoom-outs); features whose bounding circle falls outside are skipped
+  const visAngle = Math.min(Math.PI, (Math.hypot(W, H) / 2) / (R * view.scale) + 0.45);
+  const showHover = !dragging && !coasting;
   const maxN = Math.max(1, ...(points ?? []).map((p) => p.n));
   const globeR = R * view.scale;
+
+  // memoized geometry layers: re-projected only when the committed view
+  // changes — pin hovers, gesture zoom and popup state reuse them untouched
+  const worldLayer = useMemo(
+    () => (
+      <>
+        <path d={path({ type: "Sphere" }) ?? undefined} fill="url(#ocean)" stroke="rgba(124,196,255,0.3)" strokeWidth={1} />
+        <path d={path(graticule) ?? undefined} fill="none" stroke="rgba(255,255,255,0.045)" strokeWidth={0.6} />
+        {countries.features.map((f, i) => {
+          const m = countryMeta[i];
+          if (visAngle < Math.PI / 2 && geoDistance(m.c, center) - m.r > visAngle) return null;
+          return <path key={i} d={path(f) ?? undefined} fill="#2f3865" stroke="#4a5896" strokeWidth={0.55} />;
+        })}
+      </>
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [path, countries, countryMeta, visAngle]
+  );
+
+  const statesLayer = useMemo(() => {
+    if (!states || view.scale < DETAIL_ZOOM) return null;
+    return (
+      <g>
+        <path
+          d={path(states.borders) ?? undefined}
+          fill="none"
+          stroke="rgba(211, 231, 255, 0.22)"
+          strokeWidth={0.6}
+          strokeDasharray="3 2"
+          pointerEvents="none"
+        />
+        {showHover &&
+          states.feats.features.map((f, i) => {
+            const m = states.meta[i];
+            if (visAngle < Math.PI / 2 && geoDistance(m.c, center) - m.r > visAngle) return null;
+            return (
+              <path key={i} className="state-poly" d={path(f) ?? undefined}>
+                <title>{`${f.properties?.name ?? "?"}, ${f.properties?.admin ?? ""}`}</title>
+              </path>
+            );
+          })}
+      </g>
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, states, visAngle, showHover, view.scale]);
 
   return (
     <div className="page">
@@ -387,40 +452,20 @@ export default function MapPage() {
               </radialGradient>
             </defs>
 
+            {/* gesture group: scaled as one GPU transform while the wheel is
+                active, so zoom costs zero re-projection until it settles */}
+            <g
+              transform={
+                gzoom !== 1
+                  ? `translate(${W / 2} ${H / 2}) scale(${gzoom}) translate(${-(W / 2)} ${-(H / 2)})`
+                  : undefined
+              }
+              style={{ willChange: gzoom !== 1 ? "transform" : undefined }}
+            >
             {/* atmosphere glow */}
             <circle cx={W / 2} cy={H / 2} r={globeR * 1.14} fill="url(#atmo)" pointerEvents="none" />
-            {/* sphere */}
-            <path d={path({ type: "Sphere" }) ?? undefined} fill="url(#ocean)" stroke="rgba(124,196,255,0.3)" strokeWidth={1} />
-            <path d={path(graticule) ?? undefined} fill="none" stroke="rgba(255,255,255,0.045)" strokeWidth={0.6} />
-            {countries.features.map((f, i) => {
-              const m = countryMeta[i];
-              if (visAngle < Math.PI / 2 && geoDistance(m.c, center) - m.r > visAngle) return null;
-              return <path key={i} d={path(f) ?? undefined} fill="#2f3865" stroke="#4a5896" strokeWidth={0.55} />;
-            })}
-            {/* state boundaries + hover names, once zoomed into detail */}
-            {states && view.scale >= DETAIL_ZOOM && (
-              <g>
-                <path
-                  d={path(states.borders) ?? undefined}
-                  fill="none"
-                  stroke="rgba(211, 231, 255, 0.22)"
-                  strokeWidth={0.6}
-                  strokeDasharray="3 2"
-                  pointerEvents="none"
-                />
-                {/* hover targets are invisible — skip them during interaction */}
-                {!interacting &&
-                  states.feats.features.map((f, i) => {
-                    const m = states.meta[i];
-                    if (visAngle < Math.PI / 2 && geoDistance(m.c, center) - m.r > visAngle) return null;
-                    return (
-                      <path key={i} className="state-poly" d={path(f) ?? undefined}>
-                        <title>{`${f.properties?.name ?? "?"}, ${f.properties?.admin ?? ""}`}</title>
-                      </path>
-                    );
-                  })}
-              </g>
-            )}
+            {worldLayer}
+            {statesLayer}
             {/* light sheen on top of land for the 3D feel */}
             <path d={path({ type: "Sphere" }) ?? undefined} fill="url(#sheen)" pointerEvents="none" />
 
@@ -450,12 +495,13 @@ export default function MapPage() {
                 </g>
               );
             })}
+            </g>
           </svg>
 
           {/* floating controls */}
           <div className="globe-ctl">
-            <button className="icon-btn" title="Zoom in" onClick={() => { cancelFly(); setView((v) => ({ ...v, scale: clamp(v.scale * 1.45, 1, MAX_ZOOM) })); }}>＋</button>
-            <button className="icon-btn" title="Zoom out" onClick={() => { cancelFly(); setView((v) => ({ ...v, scale: clamp(v.scale / 1.45, 1, MAX_ZOOM) })); }}>－</button>
+            <button className="icon-btn" title="Zoom in" onClick={() => { cancelFly(); setSpinning(false); setView((v) => ({ ...v, scale: clamp(v.scale * 1.45, 1, MAX_ZOOM) })); }}>＋</button>
+            <button className="icon-btn" title="Zoom out" onClick={() => { cancelFly(); setSpinning(false); setView((v) => ({ ...v, scale: clamp(v.scale / 1.45, 1, MAX_ZOOM) })); }}>－</button>
             <button className="icon-btn" title="Reset view" onClick={resetView}>⟲</button>
             <button
               className={`icon-btn${spinning && !selected ? " on" : ""}`}
