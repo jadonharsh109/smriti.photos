@@ -7,7 +7,6 @@ from concurrent.futures import ProcessPoolExecutor
 import numpy as np
 
 from .. import config, db
-from ..services import cover as cover_svc
 from ..services import thumbs
 from ..services import volumes as vol_svc
 from ..workers import face_worker
@@ -45,7 +44,6 @@ async def run_face_scan(job_id: int) -> None:
         return
 
     centroids = _load_centroids()
-    touched_persons: set[int] = set()
     pool = ProcessPoolExecutor(
         max_workers=config.FACE_MAX_WORKERS, initializer=face_worker.pool_init,
         initargs=(str(config.FACE_MODEL_DIR), config.FACE_DET_SIZE, config.FACE_DET_SCORE_MIN),
@@ -77,10 +75,9 @@ async def run_face_scan(job_id: int) -> None:
                 if not res.get("ok"):
                     errors += 1
                     continue
-                f_found, f_assigned, f_touched = _store_faces(res["file_id"], res["faces"], centroids)
+                f_found, f_assigned = _store_faces(res["file_id"], res["faces"], centroids)
                 found += f_found
                 assigned += f_assigned
-                touched_persons |= f_touched
             if _t.monotonic() - last_pub > 0.5:
                 manager.update(job_id, done=done, errors=errors,
                                message=f"{found} faces, {assigned} auto-assigned")
@@ -94,12 +91,6 @@ async def run_face_scan(job_id: int) -> None:
     if manager.is_cancelled(job_id):
         manager.finish(job_id, "cancelled")
     else:
-        # newly assigned faces may beat the current covers
-        for pid in touched_persons:
-            try:
-                await asyncio.to_thread(cover_svc.select_cover, pid)
-            except Exception:
-                pass
         msg = f"{found} faces in {done} photos, {assigned} auto-assigned"
         if not _load_centroids():
             msg += " — run 'Group into people' to cluster"
@@ -115,9 +106,8 @@ def _load_centroids():
     return ids, mat
 
 
-def _store_faces(file_id: int, faces: list[dict], centroids) -> tuple[int, int, set[int]]:
+def _store_faces(file_id: int, faces: list[dict], centroids) -> tuple[int, int]:
     assigned = 0
-    touched: set[int] = set()
     with db.transaction() as conn:
         conn.execute("DELETE FROM faces WHERE file_id=?", (file_id,))
         for f in faces:
@@ -129,16 +119,13 @@ def _store_faces(file_id: int, faces: list[dict], centroids) -> tuple[int, int, 
                 if sims[best] >= config.FACE_MATCH_THRESHOLD:
                     person_id, src = ids[best], "incremental"
                     assigned += 1
-                    touched.add(person_id)
             conn.execute(
-                "INSERT INTO faces (file_id, x, y, w, h, det_score, embedding, person_id, assign_src, "
-                "landmarks, sharpness, brightness, contrast) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (file_id, f["x"], f["y"], f["w"], f["h"], f["score"], f["embedding"], person_id, src,
-                 f.get("landmarks"), f.get("sharpness"), f.get("brightness"), f.get("contrast")),
+                "INSERT INTO faces (file_id, x, y, w, h, det_score, embedding, person_id, assign_src) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                (file_id, f["x"], f["y"], f["w"], f["h"], f["score"], f["embedding"], person_id, src),
             )
         conn.execute("UPDATE files SET face_scanned=1 WHERE id=?", (file_id,))
-    return len(faces), assigned, touched
+    return len(faces), assigned
 
 
 async def run_recluster(job_id: int) -> None:
@@ -201,7 +188,7 @@ async def run_recluster(job_id: int) -> None:
             "(SELECT DISTINCT person_id FROM faces WHERE person_id IS NOT NULL)",
         )
     for p in db.query("SELECT id FROM persons"):
-        await asyncio.to_thread(recompute_centroid, p["id"])
+        recompute_centroid(p["id"])
     manager.update(job_id, done=n)
     manager.finish(job_id, "done", f"{len(clusters)} people from {n} faces")
 
@@ -297,35 +284,28 @@ def _cluster(X: np.ndarray) -> np.ndarray:
 
 
 def recompute_centroid(person_id: int) -> None:
-    rows = db.query("SELECT fa.embedding FROM faces fa WHERE fa.person_id=?", (person_id,))
+    rows = db.query(
+        "SELECT fa.id, fa.embedding, fa.det_score, fa.w, fa.h, "
+        "(SELECT COUNT(*) FROM faces f2 WHERE f2.file_id=fa.file_id) AS nfaces "
+        "FROM faces fa WHERE fa.person_id=?",
+        (person_id,),
+    )
     if not rows:
-        db.execute("UPDATE persons SET centroid=NULL, cover_face_id=NULL WHERE id=?", (person_id,))
+        db.execute("UPDATE persons SET centroid=NULL WHERE id=?", (person_id,))
         return
     mat = np.stack([_emb(r["embedding"]) for r in rows])
     c = mat.mean(axis=0)
     norm = np.linalg.norm(c)
     if norm > 0:
         c = c / norm
-    db.execute("UPDATE persons SET centroid=? WHERE id=?",
-               (c.astype(np.float32).tobytes(), person_id))
-    # cover selection reads the fresh centroid for its typicality signal
-    cover_svc.select_cover(person_id)
 
+    # cover: a big, confident face — strongly preferring solo photos over
+    # someone in the background of a group shot
+    def cover_score(r) -> float:
+        area = max(float(r["w"] or 0) * float(r["h"] or 0), 1e-6)
+        solo_bonus = 1.5 if r["nfaces"] == 1 else 1.0
+        return (r["det_score"] or 0) * (area ** 0.5) * solo_bonus
 
-async def run_recompute_covers(job_id: int) -> None:
-    """Re-pick every person's cover with the quality scorer — useful after an
-    upgrade or when previews became available for a previously offline drive."""
-    ids = [r["id"] for r in db.query("SELECT id FROM persons")]
-    manager.update(job_id, total=len(ids), message="choosing cover photos…")
-    done = errors = 0
-    for pid in ids:
-        if manager.is_cancelled(job_id):
-            manager.finish(job_id, "cancelled")
-            return
-        try:
-            await asyncio.to_thread(cover_svc.select_cover, pid)
-        except Exception:
-            errors += 1
-        done += 1
-        manager.update(job_id, done=done, errors=errors)
-    manager.finish(job_id, "done", f"covers refreshed for {done} people")
+    best = max(rows, key=cover_score)
+    db.execute("UPDATE persons SET centroid=?, cover_face_id=? WHERE id=?",
+               (c.astype(np.float32).tobytes(), best["id"], person_id))

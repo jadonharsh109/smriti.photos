@@ -23,10 +23,6 @@ PREVIEWS_DIR = DATA_DIR / "previews"
 FACE_CROPS_DIR = DATA_DIR / "facecrops"
 MODELS_DIR = DATA_DIR / "models"
 EXPORTS_DIR = DATA_DIR / "exports"
-LOCKED_DIR = DATA_DIR / "locked"
-LOCKED_BLOBS_DIR = LOCKED_DIR / "blobs"
-LOCKED_THUMBS_DIR = LOCKED_DIR / "thumbs"
-LOCKED_PREVIEWS_DIR = LOCKED_DIR / "previews"
 # installed wheels bundle the built frontend inside the package as webui/
 FRONTEND_DIST = (PROJECT_ROOT / "frontend" / "dist") if _IS_REPO else (_PKG_DIR / "webui")
 
@@ -43,8 +39,6 @@ EVENT_GAP_HOURS = 6.0
 EVENT_MIN_ITEMS = 3
 
 NEAR_DUP_MAX_HAMMING = 8
-
-VAULT_CHUNK = 4 * 1024 * 1024   # AES-GCM chunk size for locked-folder blobs
 
 FACE_MODEL_DIR = MODELS_DIR / "buffalo_l"
 FACE_DET_SIZE = 640
@@ -63,8 +57,7 @@ FFPROBE = "ffprobe"
 
 
 def ensure_dirs() -> None:
-    for d in (DATA_DIR, THUMBS_DIR, PREVIEWS_DIR, FACE_CROPS_DIR, MODELS_DIR, EXPORTS_DIR,
-              LOCKED_DIR, LOCKED_BLOBS_DIR, LOCKED_THUMBS_DIR, LOCKED_PREVIEWS_DIR):
+    for d in (DATA_DIR, THUMBS_DIR, PREVIEWS_DIR, FACE_CROPS_DIR, MODELS_DIR, EXPORTS_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
 

@@ -1,73 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api, cardDelay, type Person } from "../api/client";
 import { ArtPeople } from "../components/Illustrations";
-
-function PersonCard({ person, index }: { person: Person; index: number }) {
-  const qc = useQueryClient();
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState("");
-
-  const rename = useMutation({
-    mutationFn: (newName: string) => api.patch(`/api/people/${person.id}`, { name: newName }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["people"] }),
-  });
-
-  const commit = () => {
-    setEditing(false);
-    if (name.trim() !== (person.name ?? "")) rename.mutate(name);
-  };
-
-  return (
-    <Link
-      to={`/people/${person.id}`}
-      className="card"
-      style={cardDelay(index)}
-      onClick={(e) => editing && e.preventDefault()}
-      draggable={false}
-    >
-      <div className="face-wrap">
-        {person.cover_face_id ? (
-          <img className="face-cover" src={`/api/faces/${person.cover_face_id}/thumb`} alt="" />
-        ) : (
-          <div className="face-cover" />
-        )}
-      </div>
-      <div className="meta" style={{ textAlign: "center" }}>
-        {editing ? (
-          <input
-            type="text"
-            className="name-input"
-            autoFocus
-            value={name}
-            placeholder="Name"
-            onChange={(e) => setName(e.target.value)}
-            onBlur={commit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") commit();
-              if (e.key === "Escape") setEditing(false);
-            }}
-          />
-        ) : (
-          <div
-            className="name editable"
-            title="Click to rename"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setName(person.name ?? "");
-              setEditing(true);
-            }}
-          >
-            {person.name ?? "Add a name"}
-          </div>
-        )}
-        <div className="sub">{person.photo_count} photos</div>
-      </div>
-    </Link>
-  );
-}
 
 export default function PeoplePage() {
   const qc = useQueryClient();
@@ -126,7 +60,19 @@ export default function PeoplePage() {
       ) : (
         <div className="card-grid">
           {people!.map((p, i) => (
-            <PersonCard key={p.id} person={p} index={i} />
+            <Link key={p.id} to={`/people/${p.id}`} className="card" style={cardDelay(i)}>
+              <div className="face-wrap">
+                {p.cover_face_id ? (
+                  <img className="face-cover" src={`/api/faces/${p.cover_face_id}/thumb`} alt="" />
+                ) : (
+                  <div className="face-cover" />
+                )}
+              </div>
+              <div className="meta" style={{ textAlign: "center" }}>
+                <div className="name">{p.name ?? "Add a name"}</div>
+                <div className="sub">{p.photo_count} photos</div>
+              </div>
+            </Link>
           ))}
         </div>
       )}

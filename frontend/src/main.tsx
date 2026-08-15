@@ -9,7 +9,6 @@ import DupesPage from "./pages/DupesPage";
 import EventPage from "./pages/EventPage";
 import EventsPage from "./pages/EventsPage";
 import LandingPage from "./pages/LandingPage";
-import LockedPage from "./pages/LockedPage";
 import MapPage from "./pages/MapPage";
 import PeoplePage from "./pages/PeoplePage";
 import PersonPage from "./pages/PersonPage";
@@ -40,7 +39,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="albums/:id" element={<AlbumPage />} />
             <Route path="events" element={<EventsPage />} />
             <Route path="events/:id" element={<EventPage />} />
-            <Route path="locked" element={<LockedPage />} />
             <Route path="dupes" element={<DupesPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>

@@ -103,65 +103,11 @@ def _evict_lru() -> None:
             break
 
 
-def _face_crop_box(face_row, W: int, H: int) -> tuple[int, int, int, int] | None:
-    """Balanced square crop for a face, Google Photos style: sized from the
-    face with margin around the head, eyes on the upper-third line, centered
-    on the face midline via landmarks. Shifts (never truncates) the square at
-    frame edges so the crop stays square; falls back to a bbox-centered crop
-    for faces without stored landmarks."""
-    import numpy as np
-
-    try:
-        x, y, w, h = (float(face_row["x"]) * W, float(face_row["y"]) * H,
-                      float(face_row["w"]) * W, float(face_row["h"]) * H)
-    except (TypeError, ValueError):
-        return None
-    if w < 4 or h < 4:
-        return None
-
-    eye_mid = midline_x = None
-    try:
-        blob = face_row["landmarks"]
-    except (IndexError, KeyError):
-        blob = None
-    if blob:
-        lm = np.frombuffer(blob, dtype=np.float32)
-        if lm.size == 10 and np.isfinite(lm).all():
-            pts = lm.reshape(5, 2) * np.array([W, H], dtype=np.float32)
-            eye_mid = (pts[0] + pts[1]) / 2
-            mouth_mid = (pts[3] + pts[4]) / 2
-            em = float(np.linalg.norm(mouth_mid - eye_mid))
-            if em > 2:
-                # eye-mouth distance is ~36% of head height: 4.6x of it leaves
-                # comfortable air above the hair and below the chin
-                side = max(4.6 * em, 1.55 * max(w, h))
-                midline_x = float(eye_mid[0] + mouth_mid[0]) / 2
-            else:
-                eye_mid = None
-
-    if eye_mid is not None and midline_x is not None:
-        side = min(side, W, H)
-        left = midline_x - side / 2
-        top = float(eye_mid[1]) - 0.40 * side  # eye line at 40% from the top
-    else:
-        side = min(1.7 * max(w, h), W, H)
-        left = x + w / 2 - side / 2
-        top = y + h / 2 - side / 2
-
-    left = int(round(max(0.0, min(left, W - side))))
-    top = int(round(max(0.0, min(top, H - side))))
-    side = int(round(side))
-    if side < 8:
-        return None
-    return (left, top, left + side, top + side)
-
-
 def ensure_face_crop(face_row, abs_path: str | None) -> str | None:
-    """Square landmark-balanced crop around a face, cached by face id. Prefers
-    the original file (sharpest), then the preview; never falls back to the
+    """Square-ish crop around a face bbox, cached by face id. Prefers the
+    original file (sharpest), then the preview; never falls back to the
     whole photo — callers degrade explicitly."""
-    # v2: landmark-based framing — a new cache name so old bbox crops regenerate
-    dest = config.shard_path(config.FACE_CROPS_DIR, face_row["id"], suffix=".v2.webp")
+    dest = config.shard_path(config.FACE_CROPS_DIR, face_row["id"])
     if dest.exists():
         return str(dest)
     from PIL import Image, ImageOps
@@ -181,14 +127,22 @@ def ensure_face_crop(face_row, abs_path: str | None) -> str | None:
                 img = None
     if img is None:
         return None
-    box = _face_crop_box(face_row, *img.size)
-    if box is None:
+    W, H = img.size
+    try:
+        x, y, w, h = (float(face_row["x"]) * W, float(face_row["y"]) * H,
+                      float(face_row["w"]) * W, float(face_row["h"]) * H)
+    except (TypeError, ValueError):
+        return None
+    cx, cy, half = x + w / 2, y + h / 2, max(w, h) * 0.85
+    box = (max(0, int(cx - half)), max(0, int(cy - half)),
+           min(W, int(cx + half)), min(H, int(cy + half)))
+    if box[2] - box[0] < 8 or box[3] - box[1] < 8:
         return None
     crop = img.crop(box)
     if crop.mode not in ("RGB", "L"):
         crop = crop.convert("RGB")
-    crop.thumbnail((512, 512))
+    crop.thumbnail((256, 256))
     tmp = str(dest) + ".tmp"
-    crop.save(tmp, "WEBP", quality=85)
+    crop.save(tmp, "WEBP", quality=82)
     os.replace(tmp, dest)
     return str(dest)

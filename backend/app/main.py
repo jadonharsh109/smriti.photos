@@ -5,23 +5,13 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config, db
-from .api import albums, dupes, events, jobs, locked, media, people, places, roots, system, timeline, volumes
-
-
-def _covers_need_upgrade() -> bool:
-    """True when people exist whose faces predate the quality scorer — their
-    covers were picked by the old det-score heuristic and deserve a re-pick."""
-    return db.query_one(
-        "SELECT 1 FROM faces fa JOIN files f ON f.id=fa.file_id "
-        "WHERE fa.person_id IS NOT NULL AND fa.quality IS NULL AND f.status='active' LIMIT 1"
-    ) is not None
+from .api import albums, dupes, events, jobs, media, people, places, roots, system, timeline, volumes
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import asyncio
 
-    from .jobs import faces as faces_job
     from .jobs import pipeline
     from .jobs.runner import manager
 
@@ -30,9 +20,6 @@ async def lifespan(app: FastAPI):
     manager.set_loop(asyncio.get_running_loop())
     loop = asyncio.get_running_loop()
     tasks = [loop.create_task(pipeline.auto_scan_loop()), loop.create_task(pipeline.volume_watch_loop())]
-    if _covers_need_upgrade() and not manager.any_running():
-        job_id = manager.create("covers")
-        manager.start(job_id, faces_job.run_recompute_covers(job_id))
     yield
     for t in tasks:
         t.cancel()
@@ -41,18 +28,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Photos Organizer", lifespan=lifespan)
 
-for r in (system, volumes, roots, jobs, timeline, media, people, places, albums, events, dupes, locked):
+for r in (system, volumes, roots, jobs, timeline, media, people, places, albums, events, dupes):
     app.include_router(r.router, prefix="/api")
-
-
-@app.middleware("http")
-async def _no_store_locked(request, call_next):
-    """Locked Folder responses must never be cached — relocking has to leave
-    nothing behind in the browser's HTTP cache."""
-    response = await call_next(request)
-    if request.url.path.startswith("/api/locked"):
-        response.headers["Cache-Control"] = "no-store"
-    return response
 
 # Production: serve the built frontend (dev uses the Vite server + /api proxy)
 if (config.FRONTEND_DIST / "index.html").exists():
