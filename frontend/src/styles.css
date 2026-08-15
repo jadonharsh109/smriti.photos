@@ -419,6 +419,18 @@ code {
   animation: spin 0.8s linear infinite;
 }
 
+/* drive attach/remove toasts in the rail */
+.vol-toast .vdot {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 50%;
+}
+.vol-toast.in .vdot { background: var(--ok); box-shadow: 0 0 10px rgba(111, 227, 165, 0.7); }
+.vol-toast.out .vdot { background: var(--danger); box-shadow: 0 0 10px rgba(255, 138, 128, 0.6); }
+.vol-toast.in { border-color: rgba(111, 227, 165, 0.3); }
+.vol-toast.out { border-color: rgba(255, 138, 128, 0.3); }
+
 /* main stage */
 .stage {
   flex: 1;

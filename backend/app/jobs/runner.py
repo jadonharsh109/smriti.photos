@@ -87,6 +87,12 @@ class JobManager:
             return
         self.loop.call_soon_threadsafe(self._fanout, dict(row))
 
+    def publish_event(self, event_type: str, payload: dict) -> None:
+        """Push a non-job event (e.g. drive attach/remove) to SSE subscribers."""
+        if self.loop is None or self.loop.is_closed():
+            return
+        self.loop.call_soon_threadsafe(self._fanout, {"__type": event_type, **payload})
+
     def _fanout(self, event: dict) -> None:
         for q in list(self.subscribers):
             try:

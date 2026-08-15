@@ -86,6 +86,33 @@ async def auto_scan_once() -> bool:
     return changed
 
 
+async def volume_watch_loop() -> None:
+    """Notice drives being attached/removed within seconds: sync the volumes
+    table, push a 'volumes' SSE event so the UI updates live, and kick an
+    immediate auto-scan check when something was attached."""
+    prev_sig: tuple | None = None
+    prev_online: dict[str, str] = {}  # mount_path -> label
+    while True:
+        try:
+            mounts = await asyncio.to_thread(vol_svc.list_mounts)  # cheap: no per-disk queries
+            sig = tuple(sorted(m["mount_path"] for m in mounts))
+            if prev_sig is None:
+                prev_sig = sig
+                prev_online = {m["mount_path"]: m["label"] for m in mounts}
+            elif sig != prev_sig:
+                vols = await asyncio.to_thread(vol_svc.refresh_volumes)
+                now = {v["mount_path"]: v["label"] for v in vols}
+                attached = [{"mount_path": p, "label": lb} for p, lb in now.items() if p not in prev_online]
+                removed = [{"mount_path": p, "label": lb} for p, lb in prev_online.items() if p not in now]
+                prev_sig, prev_online = sig, now
+                manager.publish_event("volumes", {"attached": attached, "removed": removed})
+                if attached and _setting("auto_scan", "1") == "1" and not manager.any_running():
+                    await auto_scan_once()
+        except Exception:
+            pass  # the watcher must never die
+        await asyncio.sleep(3)
+
+
 async def auto_scan_loop() -> None:
     """Background watcher: checks the library on a user-set interval."""
     last_run = 0.0

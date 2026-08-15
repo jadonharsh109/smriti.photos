@@ -18,9 +18,11 @@ async def lifespan(app: FastAPI):
     config.ensure_dirs()
     db.connect()
     manager.set_loop(asyncio.get_running_loop())
-    watcher = asyncio.get_running_loop().create_task(pipeline.auto_scan_loop())
+    loop = asyncio.get_running_loop()
+    tasks = [loop.create_task(pipeline.auto_scan_loop()), loop.create_task(pipeline.volume_watch_loop())]
     yield
-    watcher.cancel()
+    for t in tasks:
+        t.cancel()
     db.close()
 
 

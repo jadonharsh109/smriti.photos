@@ -27,7 +27,8 @@ async def jobs_stream(request: Request):
                     break
                 try:
                     event = await asyncio.wait_for(q.get(), timeout=15)
-                    yield {"event": "job", "data": json.dumps(event)}
+                    etype = event.pop("__type", "job")
+                    yield {"event": etype, "data": json.dumps(event)}
                 except asyncio.TimeoutError:
                     yield {"event": "ping", "data": "{}"}
         finally:
