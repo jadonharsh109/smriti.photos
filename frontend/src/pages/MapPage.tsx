@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { geoDistance, geoGraticule10, geoOrthographic, geoPath } from "d3-geo";
+import { geoBounds, geoCentroid, geoDistance, geoGraticule10, geoOrthographic, geoPath } from "d3-geo";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { feature, mesh } from "topojson-client";
@@ -45,11 +45,16 @@ export default function MapPage() {
   const [spinning, setSpinning] = useState(true);
   const [dragging, setDragging] = useState(false);
   const [selected, setSelected] = useState<Point | null>(null);
-  // adaptive detail: start with the light 110m topology, lazy-load 50m
-  // coastlines + state boundaries on zoom
-  const [topo, setTopo] = useState<unknown>(world110);
+  // adaptive detail: light 110m topology at overview, 50m + states when zoomed
+  const [detailTopo, setDetailTopo] = useState<unknown>(null);
   const [statesTopo, setStatesTopo] = useState<unknown>(null);
   const detailLoaded = useRef(false);
+  // wheel zoom batched to one state update per frame; hover layers pause while active
+  const [wheeling, setWheeling] = useState(false);
+  const wheelingRef = useRef(false);
+  const wheelAccum = useRef(0);
+  const wheelRaf = useRef<number | null>(null);
+  const wheelIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const animRef = useRef<number | null>(null);
   const dragRef = useRef<{ x: number; y: number; lambda: number; phi: number; moved: number } | null>(null);
   // flick-to-spin: track drag velocity, coast with friction on release
@@ -92,7 +97,7 @@ export default function MapPage() {
         import("../data/states-50m.json"),
       ]).then(
         ([c, s]) => {
-          setTopo((c as { default?: unknown }).default ?? c);
+          setDetailTopo((c as { default?: unknown }).default ?? c);
           setStatesTopo((s as { default?: unknown }).default ?? s);
         },
         () => {
@@ -102,20 +107,43 @@ export default function MapPage() {
     }
   }, [view.scale]);
 
-  const countries = useMemo(() => {
-    const t = topo as Parameters<typeof feature>[0];
-    const objects = t.objects as unknown as { countries: Parameters<typeof feature>[1] };
-    return feature(t, objects.countries) as unknown as FeatureCollection;
-  }, [topo]);
+  const toCountries = (t: unknown) => {
+    const topo = t as Parameters<typeof feature>[0];
+    const objects = topo.objects as unknown as { countries: Parameters<typeof feature>[1] };
+    return feature(topo, objects.countries) as unknown as FeatureCollection;
+  };
+  const countriesBase = useMemo(() => toCountries(world110), []);
+  const countriesDetail = useMemo(() => (detailTopo ? toCountries(detailTopo) : null), [detailTopo]);
+  // LOD: heavy 50m geometry only when actually zoomed in
+  const countries =
+    view.scale >= DETAIL_ZOOM && countriesDetail ? countriesDetail : countriesBase;
+  // per-feature centroid + angular radius, for skipping off-screen countries
+  const countryMeta = useMemo(
+    () =>
+      countries.features.map((f) => {
+        const c = geoCentroid(f);
+        const b = geoBounds(f);
+        const r = Math.max(geoDistance(c, b[0]), geoDistance(c, b[1]));
+        return { c, r: r > 1.2 ? Math.PI : r }; // dateline-spanning giants: never cull
+      }),
+    [countries]
+  );
   const states = useMemo(() => {
     if (!statesTopo) return null;
     const t = statesTopo as Parameters<typeof feature>[0];
     const obj = (t.objects as unknown as { states: Parameters<typeof feature>[1] }).states;
+    const feats = feature(t, obj) as unknown as FeatureCollection<Geometry, GeoJsonProperties>;
     return {
       // interior borders as ONE path (cheap to render every frame)
       borders: mesh(t, obj as Parameters<typeof mesh>[1], (a, b) => a !== b) as Geometry,
       // polygons only carry hover titles
-      feats: feature(t, obj) as unknown as FeatureCollection<Geometry, GeoJsonProperties>,
+      feats,
+      meta: feats.features.map((f) => {
+        const c = geoCentroid(f);
+        const b = geoBounds(f);
+        const r = Math.max(geoDistance(c, b[0]), geoDistance(c, b[1]));
+        return { c, r: r > 1.2 ? Math.PI : r };
+      }),
     };
   }, [statesTopo]);
   const graticule = useMemo(() => geoGraticule10(), []);
@@ -146,17 +174,40 @@ export default function MapPage() {
     return () => cancelAnimationFrame(raf);
   }, [spinning, dragging, selected, coasting]);
 
-  // wheel zoom needs a non-passive native listener
+  // wheel zoom: non-passive native listener, batched to ONE view update per
+  // frame (trackpads fire dozens of events per frame — rendering each was the lag)
   useEffect(() => {
     const el = svgRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       cancelFly();
-      setView((v) => ({ ...v, scale: clamp(v.scale * Math.exp(-e.deltaY * 0.0013), 1, MAX_ZOOM) }));
+      wheelAccum.current += e.deltaY;
+      if (wheelRaf.current == null) {
+        wheelRaf.current = requestAnimationFrame(() => {
+          const dy = wheelAccum.current;
+          wheelAccum.current = 0;
+          wheelRaf.current = null;
+          setView((v) => ({ ...v, scale: clamp(v.scale * Math.exp(-dy * 0.0013), 1, MAX_ZOOM) }));
+        });
+      }
+      if (!wheelingRef.current) {
+        wheelingRef.current = true;
+        setWheeling(true);
+      }
+      if (wheelIdleTimer.current) clearTimeout(wheelIdleTimer.current);
+      wheelIdleTimer.current = setTimeout(() => {
+        wheelingRef.current = false;
+        setWheeling(false);
+      }, 180);
     };
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      if (wheelRaf.current != null) cancelAnimationFrame(wheelRaf.current);
+      if (wheelIdleTimer.current) clearTimeout(wheelIdleTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const cancelCoast = () => {
@@ -176,8 +227,9 @@ export default function MapPage() {
   };
 
   const startCoast = (vl0: number, vp0: number) => {
-    let vl = clamp(vl0, -0.45, 0.45); // even the hardest flick stays graceful
-    let vp = clamp(vp0, -0.25, 0.25);
+    // half the hand's velocity, tightly capped: a hard flick ≈ a quarter turn
+    let vl = clamp(vl0 * 0.5, -0.14, 0.14);
+    let vp = clamp(vp0 * 0.5, -0.08, 0.08);
     let last = performance.now();
     setCoasting(true);
     const tick = (t: number) => {
@@ -283,6 +335,10 @@ export default function MapPage() {
   const wasDrag = () => (dragRef.current?.moved ?? 0) > 5;
 
   const center: [number, number] = [-view.lambda, -view.phi];
+  // angular radius of the viewport on the sphere (+margin); features whose
+  // bounding circle falls outside are skipped entirely
+  const visAngle = Math.min(Math.PI, (Math.hypot(W, H) / 2) / (R * view.scale) + 0.3);
+  const interacting = dragging || coasting || wheeling;
   const maxN = Math.max(1, ...(points ?? []).map((p) => p.n));
   const globeR = R * view.scale;
 
@@ -336,9 +392,11 @@ export default function MapPage() {
             {/* sphere */}
             <path d={path({ type: "Sphere" }) ?? undefined} fill="url(#ocean)" stroke="rgba(124,196,255,0.3)" strokeWidth={1} />
             <path d={path(graticule) ?? undefined} fill="none" stroke="rgba(255,255,255,0.045)" strokeWidth={0.6} />
-            {countries.features.map((f, i) => (
-              <path key={i} d={path(f) ?? undefined} fill="#2f3865" stroke="#4a5896" strokeWidth={0.55} />
-            ))}
+            {countries.features.map((f, i) => {
+              const m = countryMeta[i];
+              if (visAngle < Math.PI / 2 && geoDistance(m.c, center) - m.r > visAngle) return null;
+              return <path key={i} d={path(f) ?? undefined} fill="#2f3865" stroke="#4a5896" strokeWidth={0.55} />;
+            })}
             {/* state boundaries + hover names, once zoomed into detail */}
             {states && view.scale >= DETAIL_ZOOM && (
               <g>
@@ -350,11 +408,17 @@ export default function MapPage() {
                   strokeDasharray="3 2"
                   pointerEvents="none"
                 />
-                {states.feats.features.map((f, i) => (
-                  <path key={i} className="state-poly" d={path(f) ?? undefined}>
-                    <title>{`${f.properties?.name ?? "?"}, ${f.properties?.admin ?? ""}`}</title>
-                  </path>
-                ))}
+                {/* hover targets are invisible — skip them during interaction */}
+                {!interacting &&
+                  states.feats.features.map((f, i) => {
+                    const m = states.meta[i];
+                    if (visAngle < Math.PI / 2 && geoDistance(m.c, center) - m.r > visAngle) return null;
+                    return (
+                      <path key={i} className="state-poly" d={path(f) ?? undefined}>
+                        <title>{`${f.properties?.name ?? "?"}, ${f.properties?.admin ?? ""}`}</title>
+                      </path>
+                    );
+                  })}
               </g>
             )}
             {/* light sheen on top of land for the 3D feel */}
