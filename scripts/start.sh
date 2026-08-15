@@ -1,5 +1,5 @@
 #!/bin/bash
-# Production-ish: build the frontend once, then serve everything from FastAPI at :8000
+# Production-ish: build the frontend once, then serve everything from FastAPI at :6969
 set -e
 cd "$(dirname "$0")/.."
 
@@ -7,4 +7,4 @@ if [ ! -f frontend/dist/index.html ] || [ "$1" == "--build" ]; then
   (cd frontend && npm run build)
 fi
 
-exec uv run uvicorn app.main:app --app-dir backend --port 8000
+exec uv run uvicorn app.main:app --app-dir backend --port 6969

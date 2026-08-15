@@ -1,11 +1,155 @@
-"""`smriti` — command-line entry point for the installed app."""
+"""`smriti` — command-line entry point for the installed app.
+
+Commands:
+  smriti           serve in the foreground (opens the browser)
+  smriti start     serve in the background (pidfile + logfile in the data dir)
+  smriti stop      stop the background server
+  smriti status    is it running?
+  smriti logs      show the log (-f to follow)
+  smriti models    one-time face-model download (~280 MB)
+"""
 import argparse
 import os
 import shutil
+import signal
+import subprocess
 import sys
 import threading
 import time
+import urllib.request
 import webbrowser
+from pathlib import Path
+
+DEFAULT_PORT = 6969
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _health_ok(host: str, port: int) -> bool:
+    try:
+        with urllib.request.urlopen(f"http://{host}:{port}/api/health", timeout=2) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+def _read_pid(pidfile: Path) -> int | None:
+    try:
+        pid = int(pidfile.read_text().strip())
+        return pid if _alive(pid) else None
+    except (OSError, ValueError):
+        return None
+
+
+def _start_daemon(config, args) -> None:
+    pidfile = config.DATA_DIR / "smriti.pid"
+    logfile = config.DATA_DIR / "smriti.log"
+    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    url = f"http://{args.host}:{args.port}"
+
+    pid = _read_pid(pidfile)
+    if pid is not None:
+        print(f"already running (pid {pid}) — {url}")
+        return
+    if _health_ok(args.host, args.port):
+        print(f"something else is already serving {url} — stop it first or pick another --port")
+        return
+
+    pkg = __package__  # "smriti_server" installed, "app" from a checkout
+    code = (
+        f"import sys; sys.argv=['smriti','--no-browser','--host','{args.host}','--port','{args.port}']; "
+        f"from {pkg}.cli import main; main()"
+    )
+    env = os.environ.copy()
+    env.setdefault("PYTHONPATH", str(Path(__file__).resolve().parents[1]))
+    kwargs: dict = {}
+    if sys.platform == "win32":
+        kwargs["creationflags"] = 0x00000008 | 0x00000200  # DETACHED | NEW_PROCESS_GROUP
+    else:
+        kwargs["start_new_session"] = True
+    with open(logfile, "ab") as lf:
+        lf.write(f"\n--- smriti start · {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n".encode())
+        proc = subprocess.Popen([sys.executable, "-c", code], stdout=lf, stderr=lf, env=env, **kwargs)
+    pidfile.write_text(str(proc.pid))
+
+    for _ in range(30):  # up to ~15s for models/db to come up
+        if _health_ok(args.host, args.port):
+            print(f"स्मृति Smriti running in the background — {url}  (pid {proc.pid})")
+            print(f"  logs: smriti logs -f   ·   stop: smriti stop")
+            if not args.no_browser:
+                webbrowser.open(url)
+            return
+        if not _alive(proc.pid):
+            break
+        time.sleep(0.5)
+    print("failed to start — recent log:")
+    _print_log_tail(logfile, 15)
+    pidfile.unlink(missing_ok=True)
+    sys.exit(1)
+
+
+def _stop(config) -> None:
+    pidfile = config.DATA_DIR / "smriti.pid"
+    pid = _read_pid(pidfile)
+    if pid is None:
+        pidfile.unlink(missing_ok=True)
+        print("not running")
+        return
+    os.kill(pid, signal.SIGTERM)
+    for _ in range(20):
+        if not _alive(pid):
+            break
+        time.sleep(0.5)
+    if _alive(pid):
+        os.kill(pid, signal.SIGKILL if hasattr(signal, "SIGKILL") else signal.SIGTERM)
+    pidfile.unlink(missing_ok=True)
+    print(f"stopped (pid {pid})")
+
+
+def _status(config, args) -> None:
+    pid = _read_pid(config.DATA_DIR / "smriti.pid")
+    healthy = _health_ok(args.host, args.port)
+    url = f"http://{args.host}:{args.port}"
+    if pid is not None and healthy:
+        print(f"● running — {url}  (pid {pid}, data: {config.DATA_DIR})")
+    elif healthy:
+        print(f"● serving {url}, but not started by `smriti start` (foreground or brew services?)")
+    elif pid is not None:
+        print(f"◐ process alive (pid {pid}) but {url} not answering — check: smriti logs")
+    else:
+        print(f"○ stopped  (start: smriti start · data: {config.DATA_DIR})")
+
+
+def _print_log_tail(logfile: Path, n: int) -> None:
+    try:
+        lines = logfile.read_text(errors="replace").splitlines()[-n:]
+        print("\n".join(lines))
+    except OSError:
+        print(f"no log yet at {logfile}")
+
+
+def _logs(config, args) -> None:
+    logfile = config.DATA_DIR / "smriti.log"
+    _print_log_tail(logfile, args.lines)
+    if not args.follow:
+        return
+    try:
+        with open(logfile, "r", errors="replace") as f:
+            f.seek(0, os.SEEK_END)
+            while True:
+                chunk = f.readline()
+                if chunk:
+                    print(chunk, end="")
+                else:
+                    time.sleep(0.5)
+    except KeyboardInterrupt:
+        pass
 
 
 def main() -> None:
@@ -13,12 +157,28 @@ def main() -> None:
         prog="smriti",
         description="स्मृति Smriti — a fully-offline library for your local photos",
     )
-    p.add_argument("--port", type=int, default=8000, help="port to serve on (default 8000)")
+    p.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"port to serve on (default {DEFAULT_PORT})")
     p.add_argument("--host", default="127.0.0.1", help="bind address (default 127.0.0.1)")
     p.add_argument("--data-dir", help="where the library index lives (default ~/.smriti)")
     p.add_argument("--no-browser", action="store_true", help="don't open the browser on start")
     sub = p.add_subparsers(dest="cmd")
-    sub.add_parser("models", help="download the on-device face-recognition models (~280 MB, one-time)")
+
+    def add_common(sp: argparse.ArgumentParser) -> None:
+        # accepted after the subcommand too; SUPPRESS keeps them from
+        # clobbering values given before it
+        sp.add_argument("--port", type=int, default=argparse.SUPPRESS)
+        sp.add_argument("--host", default=argparse.SUPPRESS)
+        sp.add_argument("--data-dir", default=argparse.SUPPRESS)
+        sp.add_argument("--no-browser", action="store_true", default=argparse.SUPPRESS)
+
+    add_common(sub.add_parser("start", help="run the server in the background"))
+    add_common(sub.add_parser("stop", help="stop the background server"))
+    add_common(sub.add_parser("status", help="show whether the server is running"))
+    lp = sub.add_parser("logs", help="show the server log")
+    lp.add_argument("-f", "--follow", action="store_true", help="keep following new log lines")
+    lp.add_argument("-n", "--lines", type=int, default=50, help="how many lines to show (default 50)")
+    add_common(lp)
+    add_common(sub.add_parser("models", help="download the on-device face-recognition models (~280 MB, one-time)"))
     args = p.parse_args()
 
     if args.data_dir:
@@ -31,7 +191,20 @@ def main() -> None:
 
         fetch_models.download()
         return
+    if args.cmd == "start":
+        _start_daemon(config, args)
+        return
+    if args.cmd == "stop":
+        _stop(config)
+        return
+    if args.cmd == "status":
+        _status(config, args)
+        return
+    if args.cmd == "logs":
+        _logs(config, args)
+        return
 
+    # foreground serve
     import uvicorn
 
     from . import main as app_main

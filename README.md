@@ -3,7 +3,7 @@
 **Smriti** (Sanskrit: *that which is remembered*) is a Google-Photos-style library for the
 photos/videos on your Mac or external SSD — **fully local, zero external APIs at runtime**.
 FastAPI backend + React frontend with a macOS-style liquid-glass UI, served at
-`http://localhost:8000`. Bilingual (English/हिन्दी) landing page at `/welcome`.
+`http://localhost:6969`. Bilingual (English/हिन्दी) landing page at `/welcome`.
 
 - **Private by architecture**: everything is computed on your machine. The app builds a SQLite
   index + thumbnail cache in `data/`; albums, people and places are virtual views.
@@ -25,9 +25,13 @@ FastAPI backend + React frontend with a macOS-style liquid-glass UI, served at
 
 ```bash
 brew install jadonharsh109/tap/smriti
-smriti                      # serves your library and opens http://localhost:8000
+smriti                      # serve in the foreground — opens http://localhost:6969
+smriti start                # …or run in the background (auto-scan keeps working)
+smriti status               # is it running?
+smriti logs -f              # follow the server log
+smriti stop                 # stop the background server
 smriti models               # one-time face-model download (~280 MB) — enables People
-brew services start smriti  # optional: keep it running in the background (auto-scan works)
+brew services start smriti  # alternative: launchd keeps it running at login
 ```
 
 Installed this way, the library index lives in `~/.smriti` (override with `SMRITI_DATA_DIR`).
@@ -63,9 +67,9 @@ uv run python scripts/fetch_models.py    # face models, ~280 MB — the only dow
 ## Run
 
 ```bash
-./scripts/start.sh        # builds the frontend once, serves everything at http://localhost:8000
+./scripts/start.sh        # builds the frontend once, serves everything at http://localhost:6969
 # or, for development with hot reload:
-./scripts/dev.sh          # backend :8000 + Vite dev server :5173
+./scripts/dev.sh          # backend :6969 + Vite dev server :5173
 ```
 
 Then open the app → **Library setup** → **+ Add folder** → pick your photos folder → **Scan**.
