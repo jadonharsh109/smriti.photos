@@ -123,7 +123,7 @@ def face_scan():
     if manager.any_running("faces"):
         raise HTTPException(409, "face scan already running")
     if not (config.FACE_MODEL_DIR / "det_10g.onnx").exists():
-        raise HTTPException(400, "face models not downloaded — run: uv run python scripts/fetch_models.py")
+        raise HTTPException(400, "face models not downloaded — use “Download face models” in Library setup")
     job_id = manager.create("faces")
     manager.start(job_id, faces_job.run_face_scan(job_id))
     return {"job_id": job_id}

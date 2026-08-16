@@ -37,7 +37,12 @@ const STAGES: { kind: string; label: string }[] = [
   { kind: "faces", label: "Faces" },
   { kind: "recluster", label: "People" },
 ];
-const STAGE_LABEL = Object.fromEntries(STAGES.map((s) => [s.kind, s.label]));
+// `models` is not a pipeline stage (it never runs as part of a scan), but it
+// still needs a friendly name in the activity log and status line
+const STAGE_LABEL: Record<string, string> = {
+  ...Object.fromEntries(STAGES.map((s) => [s.kind, s.label])),
+  models: "Face models",
+};
 
 const fmtLine = (time: string, j: Job) =>
   `${time}  ${STAGE_LABEL[j.kind] ?? j.kind} · ${j.status}` +
@@ -219,10 +224,15 @@ export default function SettingsPage() {
           )}
         </div>
         {!stats?.face_model_ready && (
-          <p className="muted small" style={{ marginTop: 10 }}>
-            Faces &amp; People will be skipped until the models are downloaded — run{" "}
-            <code>uv run python scripts/fetch_models.py</code> once (≈280 MB, the only download the app ever needs).
-          </p>
+          <div style={{ marginTop: 10 }}>
+            <p className="muted small" style={{ marginBottom: 8 }}>
+              Faces &amp; People stay off until the on-device recognition models are downloaded —
+              ≈280 MB, once, and the only download the app ever needs.
+            </p>
+            <button className="primary" onClick={() => runJob.mutate("/api/models/download")} disabled={!!running}>
+              Download face models
+            </button>
+          </div>
         )}
       </div>
 

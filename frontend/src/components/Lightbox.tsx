@@ -155,7 +155,10 @@ export default function Lightbox({ item, onClose, onPrev, onNext, qs = "" }: Pro
   const m = detail?.metadata;
   return (
     <Portal>
-    <div className={`lightbox${showInfo ? " with-info" : ""}`} onClick={onClose}>
+    <div
+      className={`lightbox${showInfo ? " with-info" : ""}${item.media_type === "video" ? " is-video" : ""}`}
+      onClick={onClose}
+    >
       <div className="lb-stage" onClick={(e) => e.stopPropagation()}>
         {item.media_type === "video" && (offline || mediaError) ? (
           <div className="lb-unavailable">
@@ -227,7 +230,7 @@ export default function Lightbox({ item, onClose, onPrev, onNext, qs = "" }: Pro
             <IconDownload />
           </button>
         ) : (
-          <a href={`/api/media/${item.id}${qs}`} download>
+          <a href={`/api/media/${item.id}${qs ? `${qs}&dl=1` : "?dl=1"}`} download>
             <button className="icon-btn" title="Download original">
               <IconDownload />
             </button>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Main shell binary: nothing needed.
+       Not allow-jit: WKWebView's JIT lives in Apple-signed WebContent XPC
+       processes with their own entitlements, not in ours.
+       The interpreter gets its own set — see entitlements.python.plist. -->
+</dict>
+</plist>

@@ -12,6 +12,7 @@ import argparse
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import threading
@@ -21,6 +22,33 @@ import webbrowser
 from pathlib import Path
 
 DEFAULT_PORT = 6969
+
+
+def _desktop() -> bool:
+    """True when launched by the desktop shell, which owns the window and the
+    process lifecycle (so: no browser, no daemon, no pidfile)."""
+    return os.environ.get("SMRITI_DESKTOP") == "1"
+
+
+def _start_parent_watchdog() -> None:
+    """Exit if the desktop shell dies. On POSIX the shell's process group does
+    not survive its own SIGKILL, so without this the server and its worker
+    pools would leak. On Windows the job object already handles it."""
+    parent = os.environ.get("SMRITI_PARENT_PID")
+    if not parent or sys.platform == "win32":
+        return
+    try:
+        parent_pid = int(parent)
+    except ValueError:
+        return
+
+    def watch() -> None:
+        while True:
+            time.sleep(2)
+            if os.getppid() != parent_pid:  # reparented to launchd => shell is gone
+                os._exit(0)
+
+    threading.Thread(target=watch, daemon=True).start()
 
 
 def _alive(pid: int) -> bool:
@@ -48,6 +76,11 @@ def _read_pid(pidfile: Path) -> int | None:
 
 
 def _start_daemon(config, args) -> None:
+    if _desktop():
+        # the daemon detaches its session/process group on purpose, which is
+        # exactly what would escape the shell's cleanup and orphan the server
+        print("`smriti start` is not available inside the desktop app — it already runs the server.")
+        sys.exit(1)
     pidfile = config.DATA_DIR / "smriti.pid"
     logfile = config.DATA_DIR / "smriti.log"
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -218,9 +251,25 @@ def main() -> None:
     if not (config.FACE_MODEL_DIR / "det_10g.onnx").exists():
         print("ℹ People is off until the face models are downloaded — run `smriti models` once (~280 MB)")
 
+    if _desktop():
+        _start_parent_watchdog()
+
+    # --port 0: bind an ephemeral port ourselves and hand the bound socket to
+    # uvicorn, so nothing can steal the port between picking it and listening.
+    if args.port == 0:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((args.host, 0))
+        port = sock.getsockname()[1]
+        # the desktop shell parses this line to learn where to point the webview
+        print(f"SMRITI_READY host={args.host} port={port} pid={os.getpid()} data={config.DATA_DIR}",
+              flush=True)
+        uvicorn.Server(uvicorn.Config(app_main.app, log_level="info")).run(sockets=[sock])
+        return
+
     url = f"http://{args.host}:{args.port}"
     print(f"स्मृति Smriti — your library at {url}  (data: {config.DATA_DIR})")
-    if not args.no_browser:
+    if not args.no_browser and not _desktop():
         threading.Thread(
             target=lambda: (time.sleep(1.2), webbrowser.open(url)), daemon=True
         ).start()

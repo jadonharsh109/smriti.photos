@@ -7,3 +7,9 @@ __pycache__/
 *.pyc
 *.tsbuildinfo
 .DS_Store
+
+# desktop build artifacts
+desktop/src-tauri/target/
+desktop/src-tauri/payload/
+desktop/src-tauri/gen/
+desktop/.cache/

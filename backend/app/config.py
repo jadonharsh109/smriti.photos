@@ -1,4 +1,6 @@
 import os
+import shutil
+import sys
 from pathlib import Path
 
 _PKG_DIR = Path(__file__).resolve().parent
@@ -52,8 +54,20 @@ FACE_MAX_WORKERS = 2
 PHOTO_EXTS = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".avif"}
 VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".mts", ".m2ts", ".3gp", ".wmv"}
 
-FFMPEG = "ffmpeg"
-FFPROBE = "ffprobe"
+def _tool(name: str) -> str:
+    """Absolute path to a bundled/system tool. The desktop app ships its own
+    ffmpeg and points SMRITI_FFMPEG/SMRITI_FFPROBE at it — a GUI-launched app
+    inherits the launchd/Explorer PATH, which has no Homebrew in it. Falling
+    back to which() keeps the CLI/Homebrew install behaving exactly as before."""
+    env = os.environ.get(f"SMRITI_{name.upper()}")
+    if env:
+        return env
+    exe = ".exe" if sys.platform == "win32" else ""
+    return shutil.which(name) or f"{name}{exe}"
+
+
+FFMPEG = _tool("ffmpeg")
+FFPROBE = _tool("ffprobe")
 
 
 def ensure_dirs() -> None:

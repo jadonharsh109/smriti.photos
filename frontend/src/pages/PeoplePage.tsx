@@ -23,6 +23,10 @@ export default function PeoplePage() {
     mutationFn: () => api.post("/api/faces/recluster"),
     onSettled: () => qc.invalidateQueries(),
   });
+  const getModels = useMutation({
+    mutationFn: () => api.post("/api/models/download"),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["stats"] }),
+  });
 
   return (
     <div className="page">
@@ -36,9 +40,9 @@ export default function PeoplePage() {
         </div>
         <div className="actions">
           {stats?.face_model_ready === false ? (
-            <span className="chip">
-              Face models missing — run <code>uv run python scripts/fetch_models.py</code>
-            </span>
+            <button className="primary" onClick={() => getModels.mutate()} disabled={getModels.isPending}>
+              Download face models (≈280 MB)
+            </button>
           ) : (
             <>
               <button onClick={() => scan.mutate()} disabled={scan.isPending}>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- The embedded interpreter dlopens ~240 nested .so/.dylib files: PIL bundles
+       17, pillow-heif 3 (incl. a 10 MB libx265), scipy ships libgfortran and
+       libquadmath, sklearn its own libomp, onnxruntime a 29 MB core dylib.
+       We do sign them all, so library validation would pass in principle — but
+       one missed file is an opaque "code signature invalid" crash, and every
+       ProcessPoolExecutor worker re-execs the interpreter and re-runs the whole
+       gauntlet. For a local-only offline app that trade is clearly worth it. -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+
+  <!-- Deliberately absent:
+       allow-dyld-environment-variables — PYTHON* are not DYLD_* vars, and we
+         set neither PYTHONPATH nor PYTHONHOME (the wheel lives in the runtime's
+         own site-packages, found by normal prefix computation).
+       allow-unsigned-executable-memory / allow-jit — neither CPython nor
+         onnxruntime's CPU EP allocates W+X pages. Add only if a crash log
+         actually demands it. -->
+</dict>
+</plist>

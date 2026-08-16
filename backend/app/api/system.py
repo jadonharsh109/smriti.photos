@@ -52,6 +52,22 @@ def autoscan_now():
     return {"ok": True}
 
 
+@router.post("/models/download")
+def download_models():
+    """Fetch the face-recognition models (~280 MB). The desktop app has no CLI,
+    so this endpoint is the only way to enable People there."""
+    from ..jobs import models as models_job
+    from ..jobs.runner import manager
+
+    if manager.any_running("models"):
+        raise HTTPException(409, "model download already running")
+    if all((config.FACE_MODEL_DIR / n).exists() for n in models_job.NEEDED):
+        return {"ok": True, "already_present": True}
+    job_id = manager.create("models")
+    manager.start(job_id, models_job.run_model_download(job_id))
+    return {"job_id": job_id}
+
+
 @router.get("/health")
 def health():
     return {"ok": True}

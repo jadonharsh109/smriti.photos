@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Splash/error screen only. `remote` is deliberately empty — the SPA is served from the local Python server and needs no IPC, so the injected Tauri API is inert on that origin.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-focus",
+    "core:window:allow-unminimize",
+    "opener:default"
+  ]
+}

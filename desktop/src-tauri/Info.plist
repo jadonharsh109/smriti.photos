@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Merged into the generated Info.plist by tauri-bundler (macOS only). -->
+
+  <key>CFBundleDisplayName</key>
+  <string>Smriti</string>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.photography</string>
+  <key>NSHumanReadableCopyright</key>
+  <string>Made with love in India. Your memories never leave this machine.</string>
+  <key>NSSupportsAutomaticGraphicsSwitching</key>
+  <true/>
+
+  <!-- The webview loads the local server over plain HTTP on loopback. Without
+       this, ATS can silently refuse the load and the window just stays blank. -->
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+    <key>NSExceptionDomains</key>
+    <dict>
+      <key>127.0.0.1</key>
+      <dict>
+        <key>NSExceptionAllowsInsecureHTTPLoads</key>
+        <true/>
+        <key>NSIncludesSubdomains</key>
+        <false/>
+      </dict>
+    </dict>
+  </dict>
+
+  <!-- TCC consent strings. A MISSING key does not mean "no prompt" — macOS
+       kills the process outright. The scanner can reach every one of these. -->
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>Smriti reads photos and videos from the folders you choose so it can build your local library. Nothing ever leaves your Mac.</string>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>Smriti reads photos and videos from the folders you choose so it can build your local library. Nothing ever leaves your Mac.</string>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>Smriti reads photos and videos from the folders you choose so it can build your local library. Nothing ever leaves your Mac.</string>
+  <key>NSPhotoLibraryUsageDescription</key>
+  <string>Smriti can index the photos in your Pictures folder, including your Photos library, entirely on this Mac.</string>
+  <key>NSRemovableVolumesUsageDescription</key>
+  <string>Smriti indexes photos on external drives, and remembers each drive so your library survives unplugging it.</string>
+  <key>NSNetworkVolumesUsageDescription</key>
+  <string>Smriti can index photos stored on network volumes you have mounted.</string>
+</dict>
+</plist>

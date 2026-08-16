@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Smriti</title>
+<style>
+  /* Deliberately self-contained: this page must render before the Python
+     server exists, so it can share nothing with the app's own stylesheet. */
+  :root {
+    --bg: #070a14;
+    --fg: #f4f6fd;
+    --dim: #a7aec6;
+    --faint: #767d96;
+    --danger: #ff8a80;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background:
+      radial-gradient(1100px 700px at 110% -12%, rgba(110,123,255,0.16), transparent 62%),
+      radial-gradient(900px 640px at -8% 108%, rgba(79,224,198,0.10), transparent 60%),
+      var(--bg);
+    color: var(--fg);
+    font: 14px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: grid;
+    place-items: center;
+    user-select: none;
+    overflow: hidden;
+  }
+  .wrap { display: grid; justify-items: center; gap: 18px; padding: 40px; max-width: 620px; }
+  .mark { width: 74px; height: 74px; animation: rise 0.7s cubic-bezier(.22,.9,.28,1) both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px) scale(.94); } }
+  h1 { font-size: 19px; font-weight: 650; letter-spacing: -0.3px; }
+  .dev { font-family: "Kohinoor Devanagari", "Noto Sans Devanagari", sans-serif; }
+  p { color: var(--dim); text-align: center; }
+  .small { font-size: 12.5px; color: var(--faint); }
+
+  .dots { display: flex; gap: 6px; margin-top: 2px; }
+  .dots i {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #7cc4ff; opacity: 0.35;
+    animation: pulse 1.25s ease-in-out infinite;
+  }
+  .dots i:nth-child(2) { animation-delay: .16s; }
+  .dots i:nth-child(3) { animation-delay: .32s; }
+  @keyframes pulse { 50% { opacity: 1; transform: translateY(-3px); } }
+
+  /* error state */
+  #err { display: none; width: 100%; }
+  body.error #loading { display: none; }
+  body.error #err { display: grid; gap: 14px; justify-items: center; }
+  .title-err { color: var(--danger); }
+  pre {
+    width: 100%; max-height: 240px; overflow: auto; text-align: left;
+    background: rgba(255,255,255,0.055);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 12px; padding: 12px 14px;
+    font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--dim); white-space: pre-wrap; word-break: break-all;
+    user-select: text;
+  }
+  .row { display: flex; gap: 10px; }
+  button {
+    font: inherit; font-size: 13px; color: var(--fg); cursor: pointer;
+    background: rgba(255,255,255,0.085);
+    border: 1px solid rgba(255,255,255,0.16);
+    border-radius: 999px; padding: 8px 16px;
+    transition: background .18s ease;
+  }
+  button:hover { background: rgba(255,255,255,0.14); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+      <defs>
+        <linearGradient id="m" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#FFB25E"/><stop offset=".5" stop-color="#FF7B9C"/><stop offset="1" stop-color="#B96BFF"/>
+        </linearGradient>
+      </defs>
+      <rect x="1.5" y="1.5" width="29" height="29" rx="9.5" fill="url(#m)"/>
+      <path d="M16 6.6c2.6 3.3 2.6 7.4 0 10.2-2.6-2.8-2.6-6.9 0-10.2z" fill="#fff" opacity=".97"/>
+      <path d="M9.2 10.6c3.5.5 6.1 2.9 6.7 6.3-3.5-.3-6.2-2.8-6.7-6.3z" fill="#fff" opacity=".82"/>
+      <path d="M22.8 10.6c-3.5.5-6.1 2.9-6.7 6.3 3.5-.3 6.2-2.8 6.7-6.3z" fill="#fff" opacity=".82"/>
+      <path d="M9 19.2c2 2 4.4 3 7 3s5-1 7-3" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" opacity=".95"/>
+      <circle cx="16" cy="24.9" r="1.15" fill="#fff" opacity=".9"/>
+    </svg>
+
+    <div id="loading" style="display:grid;justify-items:center;gap:12px">
+      <h1>Smriti <span class="dev">स्मृति</span></h1>
+      <p class="small" id="status">Starting your library…</p>
+      <div class="dots"><i></i><i></i><i></i></div>
+    </div>
+
+    <div id="err">
+      <h1 class="title-err">Smriti couldn't start</h1>
+      <p class="small">The library server stopped unexpectedly. The last log lines are below.</p>
+      <pre id="log">—</pre>
+      <div class="row">
+        <button id="copy">Copy diagnostics</button>
+        <button id="reveal">Reveal log file</button>
+        <button id="quit">Quit</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // The Rust side drives this page: it flips to the error state and injects
+  // the child's stderr tail. Kept dependency-free on purpose.
+  const q = new URLSearchParams(location.search);
+  const setStatus = (t) => { document.getElementById('status').textContent = t; };
+
+  window.__smriti = {
+    status: setStatus,
+    fail(text) {
+      document.body.classList.add('error');
+      document.getElementById('log').textContent = text || 'No output was captured.';
+    },
+  };
+
+  if (q.get('state') === 'error') window.__smriti.fail(q.get('log') || '');
+
+  const invoke = (cmd) => window.__TAURI__?.core?.invoke?.(cmd);
+  document.getElementById('copy').onclick = () =>
+    navigator.clipboard.writeText(document.getElementById('log').textContent);
+  document.getElementById('reveal').onclick = () => invoke('reveal_log');
+  document.getElementById('quit').onclick = () => invoke('quit_app');
+</script>
+</body>
+</html>

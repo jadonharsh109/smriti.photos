@@ -302,6 +302,21 @@ code {
   gap: 14px;
 }
 
+/* ---- macOS desktop app: overlay titlebar ----
+   The shell sets data-smriti-desktop on <html>, so this never applies in a
+   browser. With an Overlay titlebar the window content runs edge to edge and
+   the traffic lights float over the top-left — right where the rail's lotus
+   would be. Drop the panels below them so the lights sit on the wallpaper.
+   Dragging needs no help: the transparent titlebar is still a real NSWindow
+   titlebar, so that strip stays draggable natively. */
+[data-smriti-desktop] .shell {
+  padding-top: 32px;
+}
+/* the landing page is its own full-bleed scroller — only its nav needs to clear */
+[data-smriti-desktop] .lp-nav {
+  padding-top: 22px;
+}
+
 .rail {
   width: 232px;
   flex: none;
@@ -1004,6 +1019,16 @@ code {
   align-items: center;
   justify-content: center;
   animation: fadeIn 0.22s ease both;
+}
+/* WebKit composites a <video> inside a backdrop-filtered ancestor through the
+   filter path, which washes its colours out — and every repaint (showing or
+   hiding the native controls on hover) flips the appearance back and forth.
+   The scrim is already 88% opaque, so blurring what little shows through buys
+   almost nothing: drop the filter for video and nudge the opacity to match. */
+.lightbox.is-video {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: rgba(3, 4, 8, 0.94);
 }
 .lb-stage { display: flex; align-items: center; justify-content: center; transition: margin-right 0.3s var(--ease); }
 .lightbox.with-info .lb-stage { margin-right: 348px; }

@@ -6,6 +6,7 @@ import os
 import subprocess
 from datetime import datetime
 
+from .. import config
 from ..services import exif as exif_svc
 
 _QUALITY = 75
@@ -50,7 +51,7 @@ def _process(file_id: int, abs_path: str, thumb_path: str) -> dict:
     meta: dict = {}
 
     probe = subprocess.run(
-        ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", abs_path],
+        [config.FFPROBE, "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", abs_path],
         capture_output=True, timeout=60,
     )
     info = json.loads(probe.stdout or b"{}")
@@ -117,7 +118,7 @@ def _poster(abs_path: str, thumb_path: str, duration: float | None) -> None:
             if duration is not None and float(ss) >= duration:
                 continue
             r = subprocess.run(
-                ["ffmpeg", "-y", "-v", "quiet", "-ss", ss, "-i", abs_path, "-frames:v", "1",
+                [config.FFMPEG, "-y", "-v", "quiet", "-ss", ss, "-i", abs_path, "-frames:v", "1",
                  "-vf", f"scale='min({_MAX_DIM},iw)':-2", tmp],
                 capture_output=True, timeout=120,
             )

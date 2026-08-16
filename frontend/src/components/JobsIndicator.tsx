@@ -9,6 +9,7 @@ const LABELS: Record<string, string> = {
   geocode: "Locating",
   neardup: "Finding duplicates",
   events: "Building events",
+  models: "Downloading face models",
 };
 
 interface VolToast {

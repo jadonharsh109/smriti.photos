@@ -1,0 +1,413 @@
+name: release
+
+# Tag a version and everything ships:
+#   git tag v0.1.6 && git push origin v0.1.6
+#
+# Produces, from ONE build of the wheel so the app and the pip package are
+# provably the same code:
+#   - smriti_photos-X.Y.Z-py3-none-any.whl  + .tar.gz   (pip / Homebrew formula)
+#   - Smriti-X.Y.Z-aarch64.zip                          (Homebrew cask)
+#   - Smriti-X.Y.Z-aarch64.dmg                          (direct download)
+#   - SHA256SUMS
+#
+# Signing is optional: with Apple secrets present the app is Developer ID
+# signed and notarized; without them it falls back to ad-hoc signing (which is
+# mandatory on Apple Silicon regardless) and the release is marked accordingly.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (e.g. v0.1.6). Uploads nothing; artifacts only."
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------- metadata
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+      dry_run: ${{ github.event_name == 'workflow_dispatch' }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        name: Verify the tag matches pyproject.toml
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          python3 desktop/scripts/sync_version.py --expect "$TAG"
+          echo "tag=$TAG"              >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}"      >> "$GITHUB_OUTPUT"
+
+  # ------------------------------------------------------------------- wheel
+  # Built once, on Linux, and consumed by the macOS job — so the .app and the
+  # published wheel contain byte-identical code.
+  wheel:
+    needs: meta
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Build the frontend
+        working-directory: frontend
+        run: npm ci && npm run build
+
+      - name: Build wheel + sdist
+        run: uv build --out-dir dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist/*
+          retention-days: 7
+
+  # ------------------------------------------------------------------- macOS
+  macos:
+    needs: [meta, wheel]
+    runs-on: macos-14 # Apple Silicon; onnxruntime ships no macOS x86_64 wheel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: astral-sh/setup-uv@v5
+      - uses: dtolnay/rust-toolchain@stable # needs >= 1.85 for edition2024 deps
+        with: { targets: aarch64-apple-darwin }
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - uses: actions/download-artifact@v4
+        with: { name: python-dist, path: dist }
+
+      # Both downloads are pinned by sha256 in sources.json, so the cache key
+      # is exactly that file: change a pin, get a fresh download.
+      - name: Cache pinned build inputs (CPython, ffmpeg)
+        uses: actions/cache@v4
+        with:
+          path: desktop/.cache
+          key: inputs-${{ runner.os }}-${{ hashFiles('desktop/sources.json') }}
+
+      - name: Sync version into Cargo.toml
+        run: python3 desktop/scripts/sync_version.py
+
+      - name: Assemble the embedded Python runtime
+        run: |
+          python3 desktop/scripts/build_runtime.py \
+            --triple aarch64-apple-darwin \
+            --wheel dist/smriti_photos-${{ needs.meta.outputs.version }}-py3-none-any.whl
+
+      - name: Fetch bundled ffmpeg
+        run: python3 desktop/scripts/fetch_ffmpeg.py --triple aarch64-apple-darwin
+
+      # Faces are the highest-risk path in the bundle (spawned interpreter +
+      # two ~190MB ONNX sessions per worker) and it fails *silently* at runtime,
+      # so it is worth caching 182 MB to actually exercise it on every release.
+      - name: Cache face models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: ~/.smriti-ci/models
+          key: face-models-buffalo_l-v1
+
+      - name: Download face models
+        if: steps.models.outputs.cache-hit != 'true'
+        env:
+          SMRITI_DATA_DIR: ~/.smriti-ci
+        run: |
+          desktop/src-tauri/payload/runtime/bin/python3.12 \
+            -c "from smriti_server.fetch_models import download; download()"
+
+      # The single highest-value gate: runs INSIDE the bundled interpreter and
+      # exercises ProcessPoolExecutor spawn, onnxruntime session creation, the
+      # offline geocoder, the migrations glob and the bundled ffmpeg.
+      # Catches a broken runtime before it can ship.
+      - name: Verify the runtime
+        env:
+          SMRITI_DATA_DIR: ~/.smriti-ci
+          SMRITI_FFMPEG: ${{ github.workspace }}/desktop/src-tauri/payload/bin/ffmpeg
+          SMRITI_FFPROBE: ${{ github.workspace }}/desktop/src-tauri/payload/bin/ffprobe
+        run: |
+          desktop/src-tauri/payload/runtime/bin/python3.12 \
+            desktop/scripts/verify_runtime.py
+
+      # TAURI_SIGNING_* is the in-app updater's key, unrelated to Apple signing.
+      # Without it the build still succeeds but emits no .sig, and the release
+      # job then refuses to publish a manifest — so updates silently stop.
+      - name: Build the app bundle
+        working-directory: desktop/src-tauri
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx --yes @tauri-apps/cli@2 build --bundles app --target aarch64-apple-darwin
+
+      # Secrets can't be used in `if:` reliably, so hoist the decision here.
+      - id: signing
+        name: Detect signing credentials
+        env:
+          CERT: ${{ secrets.APPLE_CERTIFICATE }}
+        run: |
+          if [ -n "$CERT" ]; then echo "mode=developer-id" >> "$GITHUB_OUTPUT"
+          else echo "mode=adhoc" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Import Developer ID certificate
+        if: steps.signing.outputs.mode == 'developer-id'
+        env:
+          CERT: ${{ secrets.APPLE_CERTIFICATE }}
+          CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          echo "$CERT" | base64 --decode > /tmp/cert.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security import /tmp/cert.p12 -k build.keychain -P "$CERT_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          rm -f /tmp/cert.p12
+          xcrun notarytool store-credentials SMRITI_NOTARY \
+            --apple-id "${{ secrets.APPLE_ID }}" \
+            --team-id "${{ secrets.APPLE_TEAM_ID }}" \
+            --password "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}"
+
+      - name: Sign and package
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: ./desktop/scripts/macos_sign.sh --${{ steps.signing.outputs.mode }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifacts
+          path: |
+            desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/Smriti-*
+            desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Smriti.app.tar.gz
+            desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Smriti.app.tar.gz.sig
+          retention-days: 7
+
+      - name: Record whether this build is notarized
+        run: echo "${{ steps.signing.outputs.mode }}" > signing-mode.txt
+      - uses: actions/upload-artifact@v4
+        with: { name: signing-mode, path: signing-mode.txt }
+
+  # ----------------------------------------------------------------- Windows
+  # Same scripts, different target triple. Non-blocking: a Windows failure must
+  # not hold back the macOS release, and the release job picks up whatever
+  # artifacts exist.
+  windows:
+    needs: [meta, wheel]
+    runs-on: windows-latest
+    continue-on-error: true
+    defaults:
+      run:
+        shell: bash # git-bash, so the same commands work on both runners
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: astral-sh/setup-uv@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: x86_64-pc-windows-msvc }
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - uses: actions/download-artifact@v4
+        with: { name: python-dist, path: dist }
+
+      - name: Cache pinned build inputs (CPython, ffmpeg)
+        uses: actions/cache@v4
+        with:
+          path: desktop/.cache
+          key: inputs-${{ runner.os }}-${{ hashFiles('desktop/sources.json') }}
+
+      - name: Sync version into Cargo.toml
+        run: python desktop/scripts/sync_version.py
+
+      - name: Assemble the embedded Python runtime
+        run: |
+          python desktop/scripts/build_runtime.py \
+            --triple x86_64-pc-windows-msvc \
+            --wheel dist/smriti_photos-${{ needs.meta.outputs.version }}-py3-none-any.whl
+
+      - name: Fetch bundled ffmpeg
+        run: python desktop/scripts/fetch_ffmpeg.py --triple x86_64-pc-windows-msvc
+
+      - name: Verify the runtime
+        env:
+          SMRITI_DATA_DIR: ${{ runner.temp }}/smriti-ci
+          SMRITI_FFMPEG: ${{ github.workspace }}/desktop/src-tauri/payload/bin/ffmpeg.exe
+          SMRITI_FFPROBE: ${{ github.workspace }}/desktop/src-tauri/payload/bin/ffprobe.exe
+        run: desktop/src-tauri/payload/runtime/python.exe desktop/scripts/verify_runtime.py
+
+      - name: Build the NSIS installer
+        working-directory: desktop/src-tauri
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx --yes @tauri-apps/cli@2 build --bundles nsis --target x86_64-pc-windows-msvc
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: |
+            desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+            desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe.sig
+          retention-days: 7
+
+  # ----------------------------------------------------------------- release
+  release:
+    needs: [meta, wheel, macos, windows]
+    if: always() && needs.meta.outputs.dry_run == 'false' && needs.macos.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: staged }
+
+      # The updater payload (Smriti.app.tar.gz) and its .sig are published as
+      # release assets too — latest.json points straight at them.
+      - name: Build the updater manifest
+        run: |
+          python3 desktop/scripts/make_latest_json.py \
+            --version "${{ needs.meta.outputs.version }}" \
+            --tag "${{ needs.meta.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --artifacts staged \
+            --out latest.json
+          cat latest.json
+
+      - name: Collect artifacts and checksum them
+        id: collect
+        run: |
+          mkdir -p out
+          cp latest.json out/
+          find staged -type f \( -name '*.whl' -o -name 'smriti_photos-*.tar.gz' \
+                              -o -name 'Smriti-*.zip' -o -name 'Smriti-*.dmg' \
+                              -o -name '*-setup.exe' \
+                              -o -name 'Smriti.app.tar.gz' -o -name '*.sig' \) \
+            -exec cp {} out/ \;
+          cd out && sha256sum * > SHA256SUMS && cat SHA256SUMS
+          echo "mode=$(cat ../staged/signing-mode/signing-mode.txt)" >> "$GITHUB_OUTPUT"
+          # the Windows job is continue-on-error, so record whether it landed
+          ls *-setup.exe >/dev/null 2>&1 \
+            && echo "windows=true"  >> "$GITHUB_OUTPUT" \
+            || echo "windows=false" >> "$GITHUB_OUTPUT"
+
+      - name: Compose release notes
+        run: |
+          {
+            echo "## Install"
+            echo
+            echo '```bash'
+            echo '# desktop app'
+            echo 'brew install --cask jadonharsh109/tap/smriti'
+            echo
+            echo '# command line / headless server'
+            echo 'brew install --formula jadonharsh109/tap/smriti'
+            echo '```'
+            echo
+            echo "Or download **Smriti-${{ needs.meta.outputs.version }}-aarch64.dmg** and drag it to Applications."
+            echo
+            echo "Requires Apple Silicon and macOS 14 (Sonoma) or newer."
+            echo
+            if [ "${{ steps.collect.outputs.windows }}" = "true" ]; then
+              echo "### Windows"
+              echo
+              echo "Download the **\`-setup.exe\`** below. Installs per-user, no admin needed."
+              echo "Windows will show a SmartScreen warning until the installer builds"
+              echo "reputation — choose **More info → Run anyway**."
+            else
+              echo "> The Windows build did not complete for this release."
+            fi
+            if [ "${{ steps.collect.outputs.mode }}" != "developer-id" ]; then
+              echo
+              echo "> **This build is not notarized.** Installing via the Homebrew cask"
+              echo "> handles it for you. If you download the DMG directly, macOS will"
+              echo "> block the first launch — open **System Settings → Privacy &"
+              echo "> Security**, scroll down, and choose **Open Anyway**."
+            fi
+            echo
+            echo "### Checksums"
+            echo '```'
+            cat out/SHA256SUMS
+            echo '```'
+          } > notes.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.meta.outputs.tag }}
+          name: Smriti ${{ needs.meta.outputs.tag }}
+          body_path: notes.md
+          files: out/*
+          fail_on_unmatched_files: true
+
+  # --------------------------------------------------------------- brew tap
+  # Skipped automatically when TAP_TOKEN is absent, so the release still
+  # succeeds and the cask can be updated by hand.
+  tap:
+    needs: [meta, release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: gate
+        env:
+          TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then echo "go=true" >> "$GITHUB_OUTPUT"
+          else echo "go=false" >> "$GITHUB_OUTPUT"
+               echo "::notice::TAP_TOKEN not set — update Casks/smriti.rb and Formula/smriti.rb by hand"; fi
+
+      # Both the cask (desktop app) and the formula (CLI/server) are bumped, so
+      # `brew upgrade` moves BOTH kinds of user to the new version. Updating
+      # only the cask would silently strand everyone on the CLI.
+      - name: Update the tap (cask + formula)
+        if: steps.gate.outputs.go == 'true'
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          BASE: https://github.com/${{ github.repository }}/releases/download
+        run: |
+          set -euo pipefail
+          ZIP_URL="$BASE/$TAG/Smriti-$VERSION-aarch64.zip"
+          SDIST_URL="$BASE/$TAG/smriti_photos-$VERSION.tar.gz"
+
+          # hash what was actually published, not what we built locally
+          ZIP_SHA=$(curl -fsSL "$ZIP_URL"   | sha256sum | cut -d' ' -f1)
+          SDIST_SHA=$(curl -fsSL "$SDIST_URL" | sha256sum | cut -d' ' -f1)
+          echo "zip   $ZIP_SHA"
+          echo "sdist $SDIST_SHA"
+
+          git clone --depth 1 \
+            "https://x-access-token:${{ secrets.TAP_TOKEN }}@github.com/jadonharsh109/homebrew-tap.git" tap
+
+          # --- cask: regenerated wholesale from the repo copy ---
+          mkdir -p tap/Casks
+          sed -e "s|^  version \".*\"|  version \"$VERSION\"|" \
+              -e "s|^  sha256 \".*\"|  sha256 \"$ZIP_SHA\"|" \
+              desktop/packaging/smriti.rb > tap/Casks/smriti.rb
+
+          # --- formula: patch url + sha256 in place, leaving its install logic alone ---
+          sed -i \
+            -e "s|^  url \".*\"|  url \"$SDIST_URL\"|" \
+            -e "s|^  sha256 \".*\"|  sha256 \"$SDIST_SHA\"|" \
+            tap/Formula/smriti.rb
+
+          cd tap
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/smriti.rb Formula/smriti.rb
+          git diff --staged --quiet || git commit -m "smriti $VERSION (formula + cask)"
+          git push

@@ -1,0 +1,39 @@
+{
+  "_comment": "Pinned build inputs. Never use 'latest' URLs here — a reproducible build is the whole point, and these hashes are what CI caches on.",
+
+  "python": {
+    "release": "20260814",
+    "version": "3.12.14",
+    "url_template": "https://github.com/astral-sh/python-build-standalone/releases/download/{release}/cpython-{version}+{release}-{triple}-install_only_stripped.tar.gz",
+    "targets": {
+      "aarch64-apple-darwin": {
+        "sha256": "dd5b76ab11451a4a4367c17c61d944dded56b425396b07f102922a7ebef7d55f"
+      },
+      "x86_64-pc-windows-msvc": {
+        "sha256": "89f18f6932917163b74339ebcec2645c8e47ae7f1c5f2ac37f2b4f4cf3beb647"
+      }
+    }
+  },
+
+  "ffmpeg": {
+    "_comment": "LGPL builds only. We invoke ffmpeg as a separate process so GPL wouldn't infect the app, but distributing a GPL binary still creates source-availability obligations. LGPL + THIRD_PARTY_LICENSES.txt keeps it simple.",
+    "targets": {
+      "aarch64-apple-darwin": {
+        "_source": "https://ffmpeg.martin-riedl.de/ — static macOS arm64, pinned build 1785863997_9.0",
+        "_license": "GPLv3 (--enable-gpl --enable-version3), NOT nonfree, so redistributable. See THIRD_PARTY_LICENSES.md for the source offer. TODO: replace with a minimal --disable-everything LGPL build — it fixes both the licence obligation and ~120 MB of the download size.",
+        "_rejected": "github.com/eugeneware/ffmpeg-static b6.1.1 is --enable-nonfree, which is NOT redistributable at all. fetch_ffmpeg.py checks for this.",
+        "ffmpeg_url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1785863997_9.0/ffmpeg.zip",
+        "ffprobe_url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1785863997_9.0/ffprobe.zip",
+        "ffmpeg_sha256": "5267ef149ee0d208057a1b316aac079b661b0476574dee5da7d225769773c603",
+        "ffprobe_sha256": "7778fbb533fb60d3336cbd9a9e51eced71658f020b570c7203590c1c41d42f50"
+      },
+      "x86_64-pc-windows-msvc": {
+        "_source": "https://github.com/BtbN/FFmpeg-Builds — win64-lgpl-shared. ffmpeg.exe/ffprobe.exe are ~0.5MB stubs sharing one set of av*.dll, roughly half the size of two static binaries.",
+        "_license": "LGPL (no --enable-gpl). fetch_ffmpeg.py verifies this from the binary's own configure flags at build time.",
+        "_pinned": "Dated autobuild tag, never 'latest' — that tag is rolling and would make builds unreproducible.",
+        "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-16-13-00/ffmpeg-n8.1.2-44-g7c533d0f86-win64-lgpl-shared-8.1.zip",
+        "sha256": "294dc74823eab6a6f36b2bc4560c90384c9ba971bd4d2e87eb4ecae5e4604e1e"
+      }
+    }
+  }
+}

@@ -59,7 +59,7 @@ def preview(file_id: int, lt: str | None = None):
 
 
 @router.get("/media/{file_id}")
-def media(file_id: int, request: Request, lt: str | None = None):
+def media(file_id: int, request: Request, lt: str | None = None, dl: int = 0):
     _guard_locked(file_id, lt)
     row = _file_or_404(file_id)
     abs_path = vol_svc.abs_path_for_file(row)
@@ -67,7 +67,10 @@ def media(file_id: int, request: Request, lt: str | None = None):
         raise HTTPException(404, "original not available (drive offline?)")
     ext = os.path.splitext(abs_path)[1].lower()
     if row["media_type"] == "video":
-        return _range_response(abs_path, request, VIDEO_TYPES.get(ext, "application/octet-stream"))
+        # dl=1: the lightbox's download button. Without an explicit attachment
+        # disposition a video just navigates and plays instead of saving.
+        return _range_response(abs_path, request, VIDEO_TYPES.get(ext, "application/octet-stream"),
+                               filename=row["filename"] if dl else None)
     mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "gif": "image/gif",
             "webp": "image/webp", "heic": "image/heic", "heif": "image/heif",
             "tif": "image/tiff", "tiff": "image/tiff", "bmp": "image/bmp",
@@ -75,12 +78,13 @@ def media(file_id: int, request: Request, lt: str | None = None):
     return FileResponse(abs_path, media_type=mime, filename=row["filename"])
 
 
-def _range_response(path: str, request: Request, content_type: str):
+def _range_response(path: str, request: Request, content_type: str, filename: str | None = None):
     file_size = os.path.getsize(path)
+    disposition = {"Content-Disposition": f'attachment; filename="{filename}"'} if filename else {}
     range_header = request.headers.get("range")
     if not range_header:
         return FileResponse(path, media_type=content_type,
-                            headers={"Accept-Ranges": "bytes"})
+                            headers={"Accept-Ranges": "bytes", **disposition})
     m = re.match(r"bytes=(\d*)-(\d*)", range_header)
     if not m:
         raise HTTPException(416, "bad range")
@@ -104,7 +108,8 @@ def _range_response(path: str, request: Request, content_type: str):
     return StreamingResponse(
         iterfile(), status_code=206, media_type=content_type,
         headers={"Content-Range": f"bytes {start}-{end}/{file_size}",
-                 "Accept-Ranges": "bytes", "Content-Length": str(end - start + 1)},
+                 "Accept-Ranges": "bytes", "Content-Length": str(end - start + 1),
+                 **disposition},
     )
 
 
