@@ -805,14 +805,34 @@ code {
   -webkit-backdrop-filter: var(--blur-heavy);
   border: 1px solid var(--stroke-2);
   border-radius: 999px;
-  padding: 10px 12px 10px 22px;
+  padding: 10px 12px 10px 20px;
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
   z-index: 30;
   box-shadow: var(--shadow-2), inset 0 1px 0 var(--specular);
   animation: slideUp 0.36s var(--spring) both;
+  /* max-content: a fixed-position box is shrink-to-fit, and with wrapping
+     enabled it will happily pick a width narrower than its own content —
+     which pushed "Clear" onto a second row. Ask for the single-line width,
+     then cap it at the viewport so a narrow window still wraps whole buttons
+     rather than breaking their labels. */
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  flex-wrap: wrap;
+  justify-content: center;
+  row-gap: 8px;
 }
+/* Labels stay on one line. Without these, flex shrinks each button and the
+   text breaks mid-label ("Export" / "as ZIP"), which is what made the bar
+   look like several rows of buttons. */
+.selbar button {
+  flex: none;
+  white-space: nowrap;
+  font-size: 13px;
+  padding: 7px 13px;
+}
+.selbar > strong { flex: none; white-space: nowrap; margin-right: 2px; }
 .selbar .album-picks { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; max-width: 460px; }
 
 /* ============================================================
