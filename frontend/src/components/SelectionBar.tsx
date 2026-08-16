@@ -1,10 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../api/client";
+import { api, fmtBytes } from "../api/client";
 import { getLockedToken, lockedApi, setLockedToken } from "../lockedStore";
 import { ConfirmDialog, TextDialog } from "./Dialogs";
-import { IconLock } from "./Icons";
+import { IconDownload, IconLock } from "./Icons";
 import Portal from "./Portal";
 
 interface Album {
@@ -99,6 +99,8 @@ export default function SelectionBar({ selected, onClear, onSelectAll, extraActi
   const [naming, setNaming] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [hiding, setHiding] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [note, setNote] = useState<{ text: string; err: boolean } | null>(null);
   const qc = useQueryClient();
   const { data: albums } = useQuery({
     queryKey: ["albums"],
@@ -128,6 +130,40 @@ export default function SelectionBar({ selected, onClear, onSelectAll, extraActi
     onClear();
   };
 
+  /** Copy the selected originals into a zip and save it.
+   *
+   * Two steps on purpose: the server validates the selection and returns a
+   * token, then a plain <a download> GET streams the archive straight to disk.
+   * Fetching it as a blob instead would hold the entire export — potentially
+   * many GB of originals — in browser memory. */
+  const exportZip = async () => {
+    setExporting(true);
+    setNote(null);
+    try {
+      const r = await api.post<{ token: string; count: number; bytes: number; skipped_offline: number }>(
+        "/api/files/export",
+        { file_ids: [...selected] }
+      );
+      const a = document.createElement("a");
+      a.href = `/api/files/export/${r.token}`;
+      a.download = "";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setNote({
+        text:
+          `✓ ${r.count} ${r.count === 1 ? "file" : "files"} · ${fmtBytes(r.bytes)}` +
+          (r.skipped_offline ? ` · ${r.skipped_offline} offline` : ""),
+        err: false,
+      });
+      setTimeout(() => setNote(null), 6000);
+    } catch (e) {
+      setNote({ text: String((e as Error).message), err: true });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <>
       <Portal>
@@ -148,6 +184,16 @@ export default function SelectionBar({ selected, onClear, onSelectAll, extraActi
           </div>
         )}
         {extraActions}
+        <button
+          onClick={exportZip}
+          disabled={exporting}
+          title="Copy the original files into a .zip and save it — your library is not changed"
+        >
+          <span style={{ display: "inline-flex", verticalAlign: "-3px", marginRight: 6 }}>
+            <IconDownload size={15} />
+          </span>
+          {exporting ? "Preparing…" : "Export as ZIP"}
+        </button>
         <button onClick={() => setHiding(true)} title="Hide in the passcode-protected Locked section">
           <span style={{ display: "inline-flex", verticalAlign: "-3px", marginRight: 6 }}><IconLock size={15} /></span>
           Hide in Locked
@@ -158,6 +204,7 @@ export default function SelectionBar({ selected, onClear, onSelectAll, extraActi
         <button className="ghost" onClick={onClear}>
           Clear
         </button>
+        {note && <span className={`sel-note${note.err ? " err" : ""}`}>{note.text}</span>}
       </div>
       </Portal>
       {confirmingDelete && (

@@ -1,13 +1,15 @@
 import os
 import re
+import secrets
+import time
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from send2trash import send2trash
 
 from .. import db
-from ..services import lock, thumbs
+from ..services import lock, thumbs, zipstream
 from ..services import volumes as vol_svc
 
 router = APIRouter()
@@ -146,6 +148,87 @@ def delete_files(body: DeleteIn):
                 pass
         trashed += 1
     return {"trashed": trashed, "skipped_offline": skipped_offline, "errors": errors}
+
+
+class ExportIn(BaseModel):
+    file_ids: list[int]
+
+
+# Prepared exports, held only long enough for the browser to start the GET.
+# Two steps because the download has to be a plain <a download> GET: a fetch()
+# would buffer the whole archive in memory, and a selection can be many GB.
+_EXPORTS: dict[str, tuple[list[int], float]] = {}
+_EXPORT_TTL = 600.0
+
+
+def _sweep_exports() -> None:
+    now = time.monotonic()
+    for tok in [t for t, (_, exp) in _EXPORTS.items() if exp < now]:
+        _EXPORTS.pop(tok, None)
+
+
+@router.post("/files/export")
+def prepare_export(body: ExportIn, x_locked_token: str | None = Header(default=None)):
+    """Validate a selection and hand back a token to download it as a zip."""
+    _sweep_exports()
+    if not body.file_ids:
+        raise HTTPException(400, "nothing selected")
+
+    ids, total, offline = [], 0, 0
+    for fid in body.file_ids[:20000]:
+        row = db.query_one("SELECT * FROM files WHERE id=?", (fid,))
+        if not row:
+            continue
+        # locked originals stay locked, even in bulk
+        if lock.is_locked_file(fid) and not lock.check_token(x_locked_token):
+            raise HTTPException(401, "selection contains locked items — unlock first")
+        abs_path = vol_svc.abs_path_for_file(row)
+        if abs_path is None or not os.path.exists(abs_path):
+            offline += 1
+            continue
+        ids.append(fid)
+        total += row["size_bytes"] or 0
+
+    if not ids:
+        raise HTTPException(
+            404, "none of the selected files are available (drive not connected?)")
+
+    token = secrets.token_urlsafe(16)
+    _EXPORTS[token] = (ids, time.monotonic() + _EXPORT_TTL)
+    return {"token": token, "count": len(ids), "bytes": total, "skipped_offline": offline}
+
+
+@router.get("/files/export/{token}")
+def download_export(token: str):
+    """Stream the prepared selection as a zip. Single use."""
+    _sweep_exports()
+    entry = _EXPORTS.pop(token, None)
+    if entry is None:
+        raise HTTPException(404, "export link expired — start the export again")
+    ids, _ = entry
+
+    entries: list[tuple[str, str]] = []
+    for fid in ids:
+        row = db.query_one("SELECT * FROM files WHERE id=?", (fid,))
+        if not row:
+            continue
+        abs_path = vol_svc.abs_path_for_file(row)
+        if abs_path and os.path.exists(abs_path):
+            entries.append((abs_path, zipstream.safe_name(row["filename"])))
+    entries = zipstream.unique_names(entries)
+
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    name = f"smriti-export-{stamp}.zip"
+    return StreamingResponse(
+        zipstream.stream_zip(entries),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            # length is unknown while streaming; keep proxies from buffering
+            "Cache-Control": "no-store",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/files/{file_id}")
