@@ -24,6 +24,21 @@ from pathlib import Path
 DEFAULT_PORT = 6969
 
 
+def _force_utf8_output() -> None:
+    """Windows stdout defaults to cp1252, which cannot encode the ⚠/ℹ glyphs
+    or the Devanagari in our banner. Printing them raises UnicodeEncodeError
+    and kills the process before uvicorn ever binds — so the server appears to
+    hang rather than start. errors='replace' keeps output alive even on a
+    console whose codepage still cannot render the glyph."""
+    if sys.platform != "win32":
+        return
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
 def _desktop() -> bool:
     """True when launched by the desktop shell, which owns the window and the
     process lifecycle (so: no browser, no daemon, no pidfile)."""
@@ -186,6 +201,7 @@ def _logs(config, args) -> None:
 
 
 def main() -> None:
+    _force_utf8_output()  # must precede every print on Windows
     p = argparse.ArgumentParser(
         prog="smriti",
         description="स्मृति Smriti — a fully-offline library for your local photos",
