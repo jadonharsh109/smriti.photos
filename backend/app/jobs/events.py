@@ -57,12 +57,15 @@ def _title_for(conn, file_ids, start_ts, end_ts) -> str:
     from datetime import datetime
 
     d1, d2 = datetime.fromtimestamp(start_ts), datetime.fromtimestamp(end_ts)
+    # Interpolate .day rather than using strftime's %-d: that no-leading-zero
+    # form is a glibc/BSD extension and raises "ValueError: Invalid format
+    # string" on Windows, which failed the whole events rebuild there.
     if d1.date() == d2.date():
-        dates = d1.strftime("%b %-d, %Y")
+        dates = f"{d1:%b} {d1.day}, {d1.year}"
     elif d1.year == d2.year and d1.month == d2.month:
-        dates = f"{d1.strftime('%b %-d')}–{d2.strftime('%-d, %Y')}"
+        dates = f"{d1:%b} {d1.day}–{d2.day}, {d2.year}"
     else:
-        dates = f"{d1.strftime('%b %-d, %Y')} – {d2.strftime('%b %-d, %Y')}"
+        dates = f"{d1:%b} {d1.day}, {d1.year} – {d2:%b} {d2.day}, {d2.year}"
     sample = file_ids[:400]
     place = conn.execute(
         f"SELECT city, country, COUNT(*) c FROM file_places WHERE file_id IN ({','.join('?' * len(sample))}) "
