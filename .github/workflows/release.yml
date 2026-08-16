@@ -208,6 +208,13 @@ jobs:
     needs: [meta, wheel]
     runs-on: windows-latest
     continue-on-error: true
+    env:
+      # Windows Python defaults to cp1252 for stdio, which cannot encode the
+      # ✓/✗ and em-dashes these build scripts print — the first such line
+      # raises UnicodeEncodeError and fails the step. Same root cause as the
+      # startup crash fixed in cli.py, but for the build tooling.
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
     defaults:
       run:
         shell: bash # git-bash, so the same commands work on both runners
