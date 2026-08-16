@@ -30,11 +30,19 @@ def list_people(include_hidden: bool = False):
     where = "" if include_hidden else "WHERE p.is_hidden=0"
     rows = db.query(
         f"SELECT p.id, p.name, p.is_hidden, "
-        # cover: prefer the stored one, but never a face from a locked photo
-        "(SELECT fa.id FROM faces fa JOIN files fv ON fv.id=fa.file_id "
-        " WHERE fa.person_id=p.id AND fv.status='active' "
-        " AND fv.id NOT IN (SELECT file_id FROM locked_items) "
-        " ORDER BY (fa.id = p.cover_face_id) DESC, fa.det_score DESC LIMIT 1) AS cover_face_id, "
+        # Cover: prefer the stored one, but never a face from a locked photo.
+        # Two subqueries rather than ORDER BY (fa.id = p.cover_face_id): SQLite
+        # before 3.46 cannot resolve an outer column reference inside a
+        # subquery's ORDER BY and raises "no such column", which 500s this
+        # endpoint on e.g. the python.org 3.12 build (SQLite 3.45).
+        "COALESCE("
+        " (SELECT fa.id FROM faces fa JOIN files fv ON fv.id=fa.file_id "
+        "  WHERE fa.id = p.cover_face_id AND fa.person_id = p.id AND fv.status='active' "
+        "  AND fv.id NOT IN (SELECT file_id FROM locked_items)), "
+        " (SELECT fa.id FROM faces fa JOIN files fv ON fv.id=fa.file_id "
+        "  WHERE fa.person_id = p.id AND fv.status='active' "
+        "  AND fv.id NOT IN (SELECT file_id FROM locked_items) "
+        "  ORDER BY fa.det_score DESC LIMIT 1)) AS cover_face_id, "
         "(SELECT COUNT(DISTINCT fa.file_id) FROM faces fa JOIN files f ON f.id=fa.file_id "
         " WHERE fa.person_id=p.id AND f.status='active' "
         " AND f.id NOT IN (SELECT file_id FROM locked_items)) AS photo_count "

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, type Person } from "../api/client";
 import AddAllToAlbum from "../components/AddAllToAlbum";
+import { IconPencil } from "../components/Icons";
 import TimelineGrid from "../components/TimelineGrid";
 
 export default function PersonPage() {
@@ -82,7 +83,21 @@ export default function PersonPage() {
             </div>
           ) : (
             <div>
-              <h1>{person.name ?? "Unnamed person"}</h1>
+              {/* the name IS the rename control — clicking it is the obvious
+                  gesture, and the pencil makes that discoverable */}
+              <button
+                className={`name-edit${person.name ? "" : " unnamed"}`}
+                title={person.name ? "Rename this person" : "Give this person a name"}
+                onClick={() => {
+                  setName(person.name ?? "");
+                  setRenaming(true);
+                }}
+              >
+                <h1>{person.name ?? "Unnamed person"}</h1>
+                <span className="pencil">
+                  <IconPencil size={17} />
+                </span>
+              </button>
               {person.photo_count != null && <p className="sub">{person.photo_count} photos</p>}
             </div>
           )}
@@ -98,7 +113,6 @@ export default function PersonPage() {
               </button>
             </div>
             <AddAllToAlbum filters={filters} />
-            <button onClick={() => { setName(person.name ?? ""); setRenaming(true); }}>Rename</button>
             <button onClick={() => setMerging((m) => !m)}>Merge into…</button>
             <button className="danger" onClick={() => hide.mutate()}>
               Hide

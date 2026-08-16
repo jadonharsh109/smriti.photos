@@ -26,10 +26,16 @@ def list_albums():
     return [dict(r) for r in db.query(
         "SELECT a.*, (SELECT COUNT(*) FROM album_items ai "
         " WHERE ai.album_id=a.id AND ai.file_id NOT IN (SELECT file_id FROM locked_items)) AS count, "
-        # cover: the stored one unless locked, else the first visible item
-        "(SELECT ai.file_id FROM album_items ai WHERE ai.album_id=a.id "
-        " AND ai.file_id NOT IN (SELECT file_id FROM locked_items) "
-        " ORDER BY (ai.file_id = a.cover_file_id) DESC, ai.position LIMIT 1) AS cover "
+        # Cover: the stored one unless locked, else the first visible item.
+        # Split in two so no outer column is referenced from a subquery's
+        # ORDER BY — SQLite < 3.46 rejects that (see api/people.py).
+        "COALESCE("
+        " (SELECT ai.file_id FROM album_items ai WHERE ai.album_id=a.id "
+        "  AND ai.file_id = a.cover_file_id "
+        "  AND ai.file_id NOT IN (SELECT file_id FROM locked_items)), "
+        " (SELECT ai.file_id FROM album_items ai WHERE ai.album_id=a.id "
+        "  AND ai.file_id NOT IN (SELECT file_id FROM locked_items) "
+        "  ORDER BY ai.position LIMIT 1)) AS cover "
         "FROM albums a ORDER BY a.created_at DESC",
     )]
 
