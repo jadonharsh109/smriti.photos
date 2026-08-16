@@ -32,6 +32,55 @@ fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+/// The user's Downloads folder, falling back to home then the temp dir.
+fn downloads_dir() -> std::path::PathBuf {
+    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+        .map(std::path::PathBuf::from);
+    match home {
+        Some(h) if h.join("Downloads").is_dir() => h.join("Downloads"),
+        Some(h) => h,
+        None => std::env::temp_dir(),
+    }
+}
+
+/// Minimal percent-decoding — filenames arrive URL-encoded in the download URL.
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// "export.zip" -> "export (2).zip" when the name is taken, the way a browser
+/// does — silently overwriting a previous export would be data loss.
+fn unique_in_dir(dir: &std::path::Path, name: &str) -> String {
+    if !dir.join(name).exists() {
+        return name.to_string();
+    }
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((s, e)) if !s.is_empty() => (s, format!(".{e}")),
+        _ => (name, String::new()),
+    };
+    for n in 2..1000 {
+        let candidate = format!("{stem} ({n}){ext}");
+        if !dir.join(&candidate).exists() {
+            return candidate;
+        }
+    }
+    name.to_string()
+}
+
 /// Escape a string for safe interpolation into a JS single-quoted literal.
 fn js_string(s: &str) -> String {
     let escaped = s
@@ -103,7 +152,23 @@ fn main() {
                 // same CSS file also ships to plain browsers.
                 .initialization_script(
                     "try{document.documentElement.setAttribute('data-smriti-desktop','1')}catch(e){}",
-                );
+                )
+                // WKWebView ignores <a download> unless the host handles it, so
+                // without this the ZIP export and the lightbox's "download
+                // original" button silently do nothing inside the app.
+                .on_download(|_webview, event| {
+                    if let tauri::webview::DownloadEvent::Requested { url, destination } = event {
+                        let name = url
+                            .path_segments()
+                            .and_then(|s| s.last())
+                            .filter(|s| !s.is_empty())
+                            .map(|s| percent_decode(s))
+                            .unwrap_or_else(|| "download".into());
+                        *destination = downloads_dir().join(unique_in_dir(&downloads_dir(), &name));
+                        println!("smriti: saving download to {}", destination.display());
+                    }
+                    true // allow both Requested and Finished
+                });
 
             // Overlay = transparent titlebar + hidden title + full-size content,
             // so the window chrome disappears into the app's own background.
