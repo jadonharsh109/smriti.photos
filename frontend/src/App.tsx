@@ -4,6 +4,7 @@ import { api } from "./api/client";
 import {
   IconAlbum,
   IconCopy,
+  IconDoc,
   IconGlobe,
   IconLock,
   IconPeople,
@@ -30,6 +31,7 @@ const NAV: { sec: string; items: { to: string; label: string; Icon: typeof IconP
       { to: "/places", label: "Places", Icon: IconPin },
       { to: "/map", label: "Map", Icon: IconGlobe },
       { to: "/events", label: "Events", Icon: IconSparkle },
+      { to: "/documents", label: "Documents", Icon: IconDoc },
       { to: "/locked", label: "Locked", Icon: IconLock },
     ],
   },

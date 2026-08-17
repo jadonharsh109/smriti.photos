@@ -2,13 +2,30 @@
 event) is the same query with different filters."""
 
 
+# kind='photo' rows are tombstones from a user correction ("not a document"),
+# so they must read as ordinary photos — hence != 'photo', not merely EXISTS.
+_NOT_PHOTO = "f.id IN (SELECT file_id FROM file_kinds WHERE kind != 'photo')"
+
+
 def build(person_id=None, country=None, city=None, album_id=None, event_id=None, day=None, solo=False,
-          media_type=None):
+          media_type=None, kind=None):
     joins = ["JOIN metadata m ON m.file_id = f.id"]
     # locked-section files are invisible to every grid
     where = ["f.status = 'active'", "m.taken_at IS NOT NULL",
              "f.id NOT IN (SELECT file_id FROM locked_items)"]
     params: list = []
+
+    # Screenshots and scans are hidden from views the app generates, and kept
+    # in views the user curated: putting a receipt in an album was deliberate,
+    # and a face is a face whatever surface it was photographed on.
+    curated = album_id is not None or person_id is not None or country is not None
+    if kind == "any":
+        where.append(_NOT_PHOTO)
+    elif kind:
+        where.append("f.id IN (SELECT file_id FROM file_kinds WHERE kind = ?)")
+        params.append(kind)
+    elif not curated:
+        where.append(f"NOT ({_NOT_PHOTO})")
     if media_type in ("photo", "video"):
         where.append("f.media_type = ?")
         params.append(media_type)

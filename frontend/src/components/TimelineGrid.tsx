@@ -14,12 +14,15 @@ const HEADER_H = 44;
 interface Props {
   filters: Filters;
   emptyText?: string;
+  /** Extra buttons for the selection bar, e.g. "Not a document". A render
+   *  prop because the action needs the live selection, which lives here. */
+  selectionActions?: (selected: Set<number>, clear: () => void) => React.ReactNode;
 }
 
 /** The Google-Photos-style date-grouped grid. Scales to 100k+ items:
  * the tiny buckets payload builds the full scroll skeleton immediately;
  * items are fetched per visible day section (section-level virtualization). */
-export default function TimelineGrid({ filters, emptyText = "Nothing here yet" }: Props) {
+export default function TimelineGrid({ filters, emptyText = "Nothing here yet", selectionActions }: Props) {
   const qc = useQueryClient();
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(1000);
@@ -188,7 +191,12 @@ export default function TimelineGrid({ filters, emptyText = "Nothing here yet" }
           />
         );
       })()}
-      <SelectionBar selected={selected} onClear={() => setSelected(new Set())} onSelectAll={selectAll} />
+      <SelectionBar
+        selected={selected}
+        onClear={() => setSelected(new Set())}
+        onSelectAll={selectAll}
+        extraActions={selectionActions?.(selected, () => setSelected(new Set()))}
+      />
       {lightbox && (
         <Lightbox
           item={lightbox.item}

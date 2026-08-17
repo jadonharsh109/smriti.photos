@@ -5,6 +5,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import App from "./App";
 import AlbumPage from "./pages/AlbumPage";
 import AlbumsPage from "./pages/AlbumsPage";
+import DocumentsPage from "./pages/DocumentsPage";
 import DupesPage from "./pages/DupesPage";
 import EventPage from "./pages/EventPage";
 import EventsPage from "./pages/EventsPage";
@@ -40,7 +41,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="albums/:id" element={<AlbumPage />} />
             <Route path="events" element={<EventsPage />} />
             <Route path="events/:id" element={<EventPage />} />
-            <Route path="locked" element={<LockedPage />} />
+            <Route path="documents" element={<DocumentsPage />} />
+          <Route path="locked" element={<LockedPage />} />
             <Route path="dupes" element={<DupesPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>

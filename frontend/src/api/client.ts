@@ -21,6 +21,9 @@ export interface Filters {
   /** with person_id: only photos where that person is the sole person */
   solo?: boolean;
   media_type?: "photo" | "video";
+  /** "any" = every screenshot/scan; or a specific kind. Omitted from the
+   *  timeline, where documents are hidden by default. */
+  kind?: "any" | "screenshot" | "document";
 }
 
 export interface Person {
@@ -105,6 +108,7 @@ export function filterQS(f: Filters, extra: Record<string, string | number> = {}
   if (f.event_id != null) p.set("event_id", String(f.event_id));
   if (f.solo) p.set("solo", "1");
   if (f.media_type) p.set("media_type", f.media_type);
+  if (f.kind) p.set("kind", f.kind);
   for (const [k, v] of Object.entries(extra)) p.set(k, String(v));
   const s = p.toString();
   return s ? `?${s}` : "";
