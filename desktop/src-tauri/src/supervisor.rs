@@ -82,12 +82,27 @@ impl Server {
             cmd.env("SMRITI_FFPROBE", fp);
         }
 
+        // CREATE_NO_WINDOW must be set on command-group's builder, NOT on the
+        // Command: group_spawn() calls .creation_flags(self.creation_flags |
+        // CREATE_SUSPENDED) internally, which *overwrites* anything set on the
+        // Command. Losing it means Windows allocates a console for the child —
+        // a stray terminal next to the app, and closing it kills the server.
         #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-        }
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+        // kill_on_drop(true) is what actually sets JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        // on the job — it defaults to false, in which case the server and its
+        // worker pool would survive the app being force-killed. That flag is the
+        // whole reason Windows needs no equivalent of the POSIX parent watchdog.
+        #[cfg(windows)]
+        let mut child = cmd
+            .group()
+            .creation_flags(CREATE_NO_WINDOW)
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|e| format!("failed to launch {}: {e}", layout.python.display()))?;
+
+        #[cfg(not(windows))]
         let mut child = cmd
             .group_spawn()
             .map_err(|e| format!("failed to launch {}: {e}", layout.python.display()))?;

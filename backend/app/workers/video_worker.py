@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 from datetime import datetime
 
 from .. import config
@@ -12,6 +13,11 @@ from ..services import exif as exif_svc
 _QUALITY = 75
 _MAX_DIM = 512
 _CHUNK = 1024 * 1024
+
+# Windows spawns a console window per child process by default. Indexing a
+# library means one ffprobe (and often one ffmpeg) per video, so without this
+# a scan machine-guns black terminals across the screen for its whole duration.
+_NO_WINDOW = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
 
 
 def pool_init(thumb_max_dim: int, thumb_quality: int) -> None:
@@ -52,7 +58,7 @@ def _process(file_id: int, abs_path: str, thumb_path: str) -> dict:
 
     probe = subprocess.run(
         [config.FFPROBE, "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", abs_path],
-        capture_output=True, timeout=60,
+        capture_output=True, timeout=60, **_NO_WINDOW,
     )
     info = json.loads(probe.stdout or b"{}")
     fmt = info.get("format", {})
@@ -120,7 +126,7 @@ def _poster(abs_path: str, thumb_path: str, duration: float | None) -> None:
             r = subprocess.run(
                 [config.FFMPEG, "-y", "-v", "quiet", "-ss", ss, "-i", abs_path, "-frames:v", "1",
                  "-vf", f"scale='min({_MAX_DIM},iw)':-2", tmp],
-                capture_output=True, timeout=120,
+                capture_output=True, timeout=120, **_NO_WINDOW,
             )
             if r.returncode == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0:
                 from PIL import Image
