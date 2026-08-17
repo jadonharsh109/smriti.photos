@@ -92,6 +92,53 @@ fn js_string(s: &str) -> String {
     format!("'{escaped}'")
 }
 
+/// Defines `window.__smritiUpdate(pct, label)` — an idempotent progress overlay
+/// injected into whatever page is loaded. Self-contained because it lands on
+/// the served SPA, which shares no styles with the shell. pct < 0 removes it.
+#[cfg(desktop)]
+const UPDATE_OVERLAY_JS: &str = r#"
+(function(){
+  if (window.__smritiUpdate) return;
+  var box, bar, txt;
+  function build(){
+    box = document.createElement('div');
+    box.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:flex;'
+      + 'align-items:center;justify-content:center;background:rgba(3,4,8,.86);'
+      + '-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);'
+      + 'font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#f4f6fd';
+    var card = document.createElement('div');
+    card.style.cssText = 'display:grid;gap:14px;justify-items:center;padding:30px 38px;'
+      + 'min-width:330px;border-radius:22px;background:rgba(255,255,255,.055);'
+      + 'border:1px solid rgba(255,255,255,.14)';
+    var h = document.createElement('div');
+    h.textContent = 'Updating Smriti';
+    h.style.cssText = 'font-size:16px;font-weight:650';
+    txt = document.createElement('div');
+    txt.style.cssText = 'font-size:12.5px;color:#a7aec6;font-variant-numeric:tabular-nums';
+    var track = document.createElement('div');
+    track.style.cssText = 'width:100%;height:6px;border-radius:99px;overflow:hidden;'
+      + 'background:rgba(255,255,255,.10)';
+    bar = document.createElement('i');
+    bar.style.cssText = 'display:block;height:100%;width:0%;border-radius:99px;'
+      + 'background:linear-gradient(90deg,#7cc4ff,#6e7bff 55%,#b96bff);'
+      + 'transition:width .25s ease';
+    track.appendChild(bar);
+    var foot = document.createElement('div');
+    foot.textContent = 'Keep the app open — it will restart itself.';
+    foot.style.cssText = 'font-size:11.5px;color:#767d96';
+    card.append(h, txt, track, foot);
+    box.appendChild(card);
+    document.body.appendChild(box);
+  }
+  window.__smritiUpdate = function(pct, label){
+    if (pct < 0) { if (box) box.remove(); box = null; return; }
+    if (!box || !box.isConnected) build();
+    if (label) txt.textContent = label;
+    bar.style.width = Math.max(2, pct) + '%';
+  };
+})()
+"#;
+
 /// Ask GitHub whether a newer release exists and, if the user agrees, install
 /// it. Runs well after startup so it never competes with the server launch for
 /// bandwidth or attention, and every failure is silent — a machine that is
@@ -147,14 +194,67 @@ async fn check_for_update(app: tauri::AppHandle) {
         return;
     }
 
-    if let Err(e) = update.download_and_install(|_, _| {}, || {}).await {
+    // A ~170 MB download with no feedback looks like the app ignored the click.
+    // Drive an in-page overlay from the updater's own progress callbacks.
+    let win = app.get_webview_window("main");
+    if let Some(w) = &win {
+        let _ = w.eval(UPDATE_OVERLAY_JS);
+        let _ = w.eval("window.__smritiUpdate(0,'Starting download…')");
+    }
+
+    let got = std::sync::Arc::new(std::sync::Mutex::new(0u64));
+    let last_paint = std::sync::Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
+
+    let (w_chunk, w_done) = (win.clone(), win.clone());
+    let (got_c, last_c) = (got.clone(), last_paint.clone());
+
+    let result = update
+        .download_and_install(
+            move |chunk: usize, total: Option<u64>| {
+                let mut done = got_c.lock().unwrap();
+                *done += chunk as u64;
+                // repaint at most ~8x/sec: one eval per chunk would flood the
+                // webview and make the download slower than the progress bar
+                let mut last = last_c.lock().unwrap();
+                if last.elapsed() < std::time::Duration::from_millis(120) {
+                    return;
+                }
+                *last = std::time::Instant::now();
+                let (d, t) = (*done, total.unwrap_or(0));
+                let pct = if t > 0 { (d * 100 / t).min(100) } else { 0 };
+                let label = if t > 0 {
+                    format!("Downloading… {} of {} MB", d / 1_048_576, t / 1_048_576)
+                } else {
+                    format!("Downloading… {} MB", d / 1_048_576)
+                };
+                if let Some(w) = &w_chunk {
+                    let _ = w.eval(format!("window.__smritiUpdate({pct},{})", js_string(&label)));
+                }
+            },
+            move || {
+                if let Some(w) = &w_done {
+                    let _ = w.eval("window.__smritiUpdate(100,'Installing…')");
+                }
+            },
+        )
+        .await;
+
+    if let Err(e) = result {
         eprintln!("smriti: update failed: {e}");
+        if let Some(w) = &win {
+            let _ = w.eval("window.__smritiUpdate(-1,'')"); // tear the overlay down
+        }
         app.dialog()
             .message(format!("The update could not be installed.\n\n{e}"))
             .title("Update failed")
             .blocking_show();
         return;
     }
+
+    if let Some(w) = &win {
+        let _ = w.eval("window.__smritiUpdate(100,'Restarting…')");
+    }
+    std::thread::sleep(std::time::Duration::from_millis(400)); // let that paint
 
     // The new bundle is on disk but the old one is still running; without this
     // the user sees no change and assumes the update did nothing.
