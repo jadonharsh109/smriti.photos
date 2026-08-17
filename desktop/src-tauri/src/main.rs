@@ -202,12 +202,17 @@ fn main() {
                 // original" button silently do nothing inside the app.
                 .on_download(|_webview, event| {
                     if let tauri::webview::DownloadEvent::Requested { url, destination } = event {
+                        // Only trust the last segment if it actually looks like
+                        // a filename. It used to be an opaque token, which
+                        // saved every export as an extension-less blob that
+                        // would not open.
                         let name = url
                             .path_segments()
                             .and_then(|s| s.last())
                             .filter(|s| !s.is_empty())
                             .map(|s| percent_decode(s))
-                            .unwrap_or_else(|| "download".into());
+                            .filter(|s| s.contains('.') && !s.starts_with('.'))
+                            .unwrap_or_else(|| "smriti-download".into());
                         *destination = downloads_dir().join(unique_in_dir(&downloads_dir(), &name));
                         println!("smriti: saving download to {}", destination.display());
                     }

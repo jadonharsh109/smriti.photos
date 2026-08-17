@@ -230,7 +230,14 @@ export default function Lightbox({ item, onClose, onPrev, onNext, qs = "" }: Pro
             <IconDownload />
           </button>
         ) : (
-          <a href={`/api/media/${item.id}${qs ? `${qs}&dl=1` : "?dl=1"}`} download>
+          <a
+            // the filename rides in the path: the desktop webview names the
+            // saved file from the URL, not from Content-Disposition
+            href={`/api/media/${item.id}/${encodeURIComponent(detail?.filename ?? `smriti-${item.id}`)}${
+              qs ? `${qs}&dl=1` : "?dl=1"
+            }`}
+            download={detail?.filename}
+          >
             <button className="icon-btn" title="Download original">
               <IconDownload />
             </button>

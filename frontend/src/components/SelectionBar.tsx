@@ -140,13 +140,14 @@ export default function SelectionBar({ selected, onClear, onSelectAll, extraActi
     setExporting(true);
     setNote(null);
     try {
-      const r = await api.post<{ token: string; count: number; bytes: number; skipped_offline: number }>(
-        "/api/files/export",
-        { file_ids: [...selected] }
-      );
+      const r = await api.post<{
+        token: string; filename: string; count: number; bytes: number; skipped_offline: number;
+      }>("/api/files/export", { file_ids: [...selected] });
       const a = document.createElement("a");
-      a.href = `/api/files/export/${r.token}`;
-      a.download = "";
+      // filename goes in the path, not just the download attribute: the
+      // desktop webview names the saved file from the URL's last segment
+      a.href = `/api/files/export/${r.token}/${encodeURIComponent(r.filename)}`;
+      a.download = r.filename;
       document.body.appendChild(a);
       a.click();
       a.remove();

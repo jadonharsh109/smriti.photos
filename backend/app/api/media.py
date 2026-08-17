@@ -60,8 +60,13 @@ def preview(file_id: int, lt: str | None = None):
     return FileResponse(p, media_type="image/webp", headers=IMMUTABLE)
 
 
+# The trailing filename is cosmetic but load-bearing for downloads: the desktop
+# webview names the saved file from the URL's last path segment, so
+# /api/media/123 would save as an extension-less "123". Ignored server-side.
+@router.get("/media/{file_id}/{filename}")
 @router.get("/media/{file_id}")
-def media(file_id: int, request: Request, lt: str | None = None, dl: int = 0):
+def media(file_id: int, request: Request, lt: str | None = None, dl: int = 0,
+          filename: str | None = None):
     _guard_locked(file_id, lt)
     row = _file_or_404(file_id)
     abs_path = vol_svc.abs_path_for_file(row)
@@ -195,11 +200,18 @@ def prepare_export(body: ExportIn, x_locked_token: str | None = Header(default=N
 
     token = secrets.token_urlsafe(16)
     _EXPORTS[token] = (ids, time.monotonic() + _EXPORT_TTL)
-    return {"token": token, "count": len(ids), "bytes": total, "skipped_offline": offline}
+    filename = f"smriti-export-{time.strftime('%Y%m%d-%H%M%S')}.zip"
+    return {"token": token, "filename": filename,
+            "count": len(ids), "bytes": total, "skipped_offline": offline}
 
 
+# The filename is part of the PATH, not just Content-Disposition, because
+# WKWebView's download handler only sees the URL — it names the saved file
+# after the last path segment. With the token last, every export saved as a
+# random extension-less blob that would not open.
+@router.get("/files/export/{token}/{filename}")
 @router.get("/files/export/{token}")
-def download_export(token: str):
+def download_export(token: str, filename: str = "smriti-export.zip"):
     """Stream the prepared selection as a zip. Single use."""
     _sweep_exports()
     entry = _EXPORTS.pop(token, None)
@@ -217,8 +229,10 @@ def download_export(token: str):
             entries.append((abs_path, zipstream.safe_name(row["filename"])))
     entries = zipstream.unique_names(entries)
 
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    name = f"smriti-export-{stamp}.zip"
+    # the path segment is client-supplied; never echo it back unsanitised
+    name = zipstream.safe_name(filename)
+    if not name.lower().endswith(".zip"):
+        name += ".zip"
     return StreamingResponse(
         zipstream.stream_zip(entries),
         media_type="application/zip",
