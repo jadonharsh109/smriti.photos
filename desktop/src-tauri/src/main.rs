@@ -10,6 +10,7 @@ mod supervisor;
 use std::sync::{Arc, Mutex};
 
 use tauri::{Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
 use paths::Layout;
 use supervisor::Server;
@@ -106,21 +107,64 @@ async fn check_for_update(app: tauri::AppHandle) {
             return;
         }
     };
-    match updater.check().await {
-        Ok(Some(update)) => {
-            println!("smriti: update {} available", update.version);
-            if let Err(e) = update.download_and_install(|_, _| {}, || {}).await {
-                eprintln!("smriti: update failed: {e}");
-            }
+    let update = match updater.check().await {
+        Ok(Some(u)) => u,
+        Ok(None) => {
+            println!("smriti: already up to date");
+            return;
         }
-        Ok(None) => {}
-        Err(e) => eprintln!("smriti: update check failed: {e}"),
+        Err(e) => {
+            // Offline is a supported way to run this app — never nag about it.
+            eprintln!("smriti: update check failed: {e}");
+            return;
+        }
+    };
+
+    println!("smriti: update {} available", update.version);
+
+    // Ask first. Silently swapping the app under someone mid-session is not a
+    // reasonable thing to do to a photo library that may be indexing.
+    let current = app.package_info().version.to_string();
+    let notes = update.body.clone().unwrap_or_default();
+    let detail = if notes.trim().is_empty() {
+        format!("You have {current}.")
+    } else {
+        format!("You have {current}.\n\n{}", notes.trim())
+    };
+
+    let answer = app
+        .dialog()
+        .message(detail)
+        .title(format!("Smriti {} is available", update.version))
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Update and Restart".into(),
+            "Later".into(),
+        ))
+        .blocking_show();
+
+    if !answer {
+        println!("smriti: user postponed the update");
+        return;
     }
+
+    if let Err(e) = update.download_and_install(|_, _| {}, || {}).await {
+        eprintln!("smriti: update failed: {e}");
+        app.dialog()
+            .message(format!("The update could not be installed.\n\n{e}"))
+            .title("Update failed")
+            .blocking_show();
+        return;
+    }
+
+    // The new bundle is on disk but the old one is still running; without this
+    // the user sees no change and assumes the update did nothing.
+    app.restart();
 }
 
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         // second launch focuses the existing window instead of starting a
         // second server against the same SQLite file

@@ -1,4 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
 import { NavLink, Link, Outlet, useLocation } from "react-router-dom";
+import { api } from "./api/client";
 import {
   IconAlbum,
   IconCopy,
@@ -40,6 +42,26 @@ const NAV: { sec: string; items: { to: string; label: string; Icon: typeof IconP
   },
 ];
 
+/** Version of the running server, pinned to the foot of the rail.
+ *
+ * Reported by the backend rather than compiled in, so after an in-app update
+ * it shows what is actually serving. Rendered as a sibling *below*
+ * JobsIndicator: when a job starts, its progress card appears above this line
+ * and pushes nothing around, so the two never contend for the same space. */
+function AppVersion() {
+  const { data } = useQuery({
+    queryKey: ["health"],
+    queryFn: () => api.get<{ version: string }>("/api/health"),
+    staleTime: Infinity,
+  });
+  if (!data?.version) return null;
+  return (
+    <div className="rail-version" title="Version of the running library server">
+      v{data.version}
+    </div>
+  );
+}
+
 export default function App() {
   const location = useLocation();
   return (
@@ -55,26 +77,30 @@ export default function App() {
             <span className="word">Smriti</span>
             <span className="dev brand-dev">स्मृति</span>
           </Link>
-          {NAV.map((g) => (
-            <nav key={g.sec}>
-              <div className="nav-sec">{g.sec}</div>
-              {g.items.map((n) => (
-                <NavLink
-                  key={n.to}
-                  to={n.to}
-                  end={n.to === "/"}
-                  className={({ isActive }) => (isActive ? "nav active" : "nav")}
-                >
-                  <span className="nav-icon">
-                    <n.Icon size={19} />
-                  </span>
-                  {n.label}
-                </NavLink>
-              ))}
-            </nav>
-          ))}
-          <span className="spacer" />
+          {/* Only the links scroll. The jobs card and version stay pinned to
+              the foot of the rail, so a short window can never hide progress. */}
+          <div className="rail-nav">
+            {NAV.map((g) => (
+              <nav key={g.sec}>
+                <div className="nav-sec">{g.sec}</div>
+                {g.items.map((n) => (
+                  <NavLink
+                    key={n.to}
+                    to={n.to}
+                    end={n.to === "/"}
+                    className={({ isActive }) => (isActive ? "nav active" : "nav")}
+                  >
+                    <span className="nav-icon">
+                      <n.Icon size={19} />
+                    </span>
+                    {n.label}
+                  </NavLink>
+                ))}
+              </nav>
+            ))}
+          </div>
           <JobsIndicator />
+          <AppVersion />
         </aside>
         {/* key remounts pages on route change so the page-enter animation plays */}
         <main className="stage" id="main-scroll" key={location.pathname}>

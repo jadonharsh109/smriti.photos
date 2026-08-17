@@ -68,9 +68,30 @@ def download_models():
     return {"job_id": job_id}
 
 
+def _app_version() -> str:
+    """Version of the server that is actually running — not a build-time
+    constant baked into the UI, so it stays truthful after an in-app update."""
+    try:
+        from importlib.metadata import version
+
+        return version("smriti-photos")
+    except Exception:
+        pass
+    try:  # source checkout: the package isn't installed
+        import tomllib
+
+        pyproject = config.PROJECT_ROOT / "pyproject.toml"
+        return tomllib.loads(pyproject.read_text())["project"]["version"] + "-dev"
+    except Exception:
+        return "dev"
+
+
+_VERSION = _app_version()
+
+
 @router.get("/health")
 def health():
-    return {"ok": True}
+    return {"ok": True, "version": _VERSION}
 
 
 def _dir_size(path) -> int:
