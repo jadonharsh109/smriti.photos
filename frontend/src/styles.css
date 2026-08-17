@@ -409,8 +409,13 @@ code {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-width: thin;
+  /* Hide the bar, keep the scrolling. The global scrollbar is 11px, which
+     inside a 232px glass rail both looks wrong and steals width from the nav
+     rows — they visibly reflow the moment the window gets short enough to
+     overflow. Wheel and trackpad still work. */
+  scrollbar-width: none;
 }
+.rail-nav::-webkit-scrollbar { width: 0; height: 0; }
 .rail .spacer { flex: 1; min-height: 0; }
 
 /* Running-server version, pinned under the jobs area.
