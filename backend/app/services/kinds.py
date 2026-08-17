@@ -60,6 +60,20 @@ def classify(filename: str, width, height, camera_make) -> tuple[str, float] | N
     if width and height and (int(width), int(height)) in _SCREEN_DIMS:
         return SCREENSHOT, 0.97
 
+    # Android names its screenshots; iOS does not — an iPhone screenshot is
+    # IMG_1234.PNG, indistinguishable by name from a photo. Exact dimensions
+    # cover untouched ones, but anything resized on its way through a chat app
+    # arrives at sizes no list can enumerate (644x1352, 1734x3568, …).
+    #
+    # A phone screen's aspect ratio survives that resizing. Measured on a
+    # 4,874-photo library spanning Apple, Nothing, realme, vivo, motorola and
+    # Canon: 0 camera photos fall in this range, so the shape alone is enough
+    # once EXIF is already absent.
+    if width and height:
+        ratio = int(width) / int(height)
+        if 0.45 <= ratio <= 0.52 and int(height) >= 800:
+            return SCREENSHOT, 0.90
+
     # "scan" alone is weak — "scanner.jpg", "scanlon-wedding.jpg" — so require
     # it to be a whole word-ish token rather than a substring of a longer name.
     for w in _DOCUMENT_WORDS:
