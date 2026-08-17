@@ -1,30 +1,71 @@
 # Smriti · स्मृति — smriti.photos
 
-**Smriti** (Sanskrit: *that which is remembered*) is a Google-Photos-style library for the
-photos/videos on your Mac or external SSD — **fully local, zero external APIs at runtime**.
-FastAPI backend + React frontend with a macOS-style liquid-glass UI, served at
-`http://localhost:6969`. Bilingual (English/हिन्दी) landing page at `/welcome`.
+**Smriti** (Sanskrit: *smṛti*, "that which is remembered") turns the photo folders already
+sitting on your Mac or PC into a proper library — timeline, people, places, trips, duplicates —
+with **everything computed on your own machine**.
 
-- **Private by architecture**: everything is computed on your machine. The app builds a SQLite
-  index + thumbnail cache in `data/`; albums, people and places are virtual views.
-- **Timeline** — date-grouped justified grid with a time-proportional year scrubber, All/Photos/
-  Videos filter, multi-select (per-day and select-all), and a lightbox with double-click zoom.
-- **People** — on-device face detection + recognition (SCRFD + ArcFace via onnxruntime),
-  clustered into people you can name, merge and hide, with a solo-photos filter per person.
-- **Places** — GPS from EXIF / QuickTime metadata, reverse-geocoded **offline** (GeoNames
-  dataset), plus a tile-server-free interactive globe (bundled TopoJSON).
-- **Events** — trips auto-detected from gaps in your timeline, titled with city + dates.
-- **Albums** — virtual albums via multi-select or one-click "add all" from any person/place/event.
-- **Duplicates** — exact (BLAKE2) and near-duplicate (perceptual hash) finder with suggested
-  keepers; cleanup moves files to the **recoverable system Trash**, never a permanent delete.
-- **Videos** — ffprobe metadata, poster frames, in-browser playback via HTTP range requests.
-- **Drive-aware** — volumes tracked by disk UUID; unplugging mid-scan interrupts safely and
-  nothing is ever marked missing while a drive is offline.
+No cloud. No account. Nothing uploaded. It works with the network unplugged, and your original
+files are never moved or modified.
 
-## Install (Homebrew)
+---
+
+## Download
+
+| | |
+|---|---|
+| **macOS** · Apple Silicon, macOS 14+ | [**Smriti.dmg**](https://github.com/jadonharsh109/smriti.photos/releases/latest) — drag to Applications |
+| **Windows** · 10/11, 64-bit | [**Smriti-setup.exe**](https://github.com/jadonharsh109/smriti.photos/releases/latest) — installs per-user, no admin |
+
+Nothing else to install. Python, ffmpeg and every dependency are bundled inside the app.
+
+> **First launch shows a security warning** — the app isn't code-signed yet (that needs a paid
+> developer certificate).
+>
+> - **macOS**: launch, get blocked, then **System Settings → Privacy & Security → scroll down →
+>   "Open Anyway"**, and launch again.
+> - **Windows**: **"More info" → "Run anyway"**.
+>
+> Only needed once. Updates after that are handled in-app.
+
+Point it at a folder and it does the rest. Face grouping needs a one-time ~280 MB model
+download, offered inside the app — it's the only download Smriti ever makes.
+
+---
+
+## What it does
+
+- **Timeline** — date-grouped justified grid, virtualized for six-figure libraries, with a
+  time-proportional year scrubber and a lightbox with double-click zoom.
+- **People** — face detection and recognition running on your CPU (SCRFD + ArcFace via
+  onnxruntime), clustered into people you can name, merge and hide.
+- **Places** — GPS from EXIF / QuickTime, reverse-geocoded **offline** from a bundled GeoNames
+  dataset, on a tile-server-free interactive globe.
+- **Events** — trips detected automatically from gaps in your timeline, titled by city and date.
+- **Albums** — virtual collections over your existing folders, so your directory structure
+  stays exactly as you arranged it.
+- **Duplicates** — exact (BLAKE2) and near-duplicate (perceptual hash) detection with a
+  suggested keeper. Cleanup moves files to the **system Trash** — always recoverable.
+- **Export** — select anything and save the originals as a `.zip`.
+- **Locked** — a passcode-protected section; hidden photos vanish from every other view.
+- **Videos** — ffprobe metadata, poster frames, scrubbing via HTTP range requests.
+- **Drive-aware** — external drives are tracked by disk identity, so unplugging and replugging
+  just works. Nothing is ever marked missing while a drive is offline.
+
+---
+
+## Command line / headless
+
+For a always-on machine, or to reach your library from other devices on the LAN:
 
 ```bash
+# macOS
 brew install jadonharsh109/tap/smriti
+
+# any platform, Python 3.12+ — grab the .whl from the latest release
+pip install ./smriti_photos-*-py3-none-any.whl
+```
+
+```bash
 smriti                      # serve in the foreground — opens http://localhost:6969
 smriti start                # …or run in the background (auto-scan keeps working)
 smriti status               # is it running?
@@ -34,67 +75,76 @@ smriti models               # one-time face-model download (~280 MB) — enables
 brew services start smriti  # alternative: launchd keeps it running at login
 ```
 
-Installed this way, the library index lives in `~/.smriti` (override with `SMRITI_DATA_DIR`).
+`ffmpeg` is optional here and enables video indexing (`brew install ffmpeg` /
+`winget install ffmpeg`). The desktop app bundles its own.
 
-## Install (Windows / Linux)
+> Don't run the desktop app and a headless server at the same time — both would write the same
+> database.
 
-Smriti is cross-platform — deletions go to the Recycle Bin on Windows, drives are tracked by
-volume GUID, and CI runs the full smoke test on Windows. With Python 3.12+:
+---
 
-```powershell
-winget install ffmpeg          # optional, enables video indexing
-pip install <release wheel>    # or: uv tool install <release wheel>
-smriti                         # serves your library and opens the browser
-```
+## Where your data lives
 
-The library index lives in `~/.smriti` on every platform.
+| Path | What |
+|---|---|
+| `library.db` | SQLite index (WAL) |
+| `thumbs/` | grid thumbnails (WebP, precomputed) |
+| `previews/` | 1600px lightbox previews (lazy, LRU-capped ~10 GB) |
+| `models/` | face-recognition ONNX models |
+| `desktop.log` | server log — the first place to look if something misbehaves |
 
-## Running from source
+That folder is `~/.smriti` (or `~/Library/Application Support/Smriti` for a fresh macOS app
+install, and `%LOCALAPPDATA%\Smriti` on Windows). Override with `SMRITI_DATA_DIR`.
 
-### Requirements
+Deleting it fully resets Smriti. **Your photos are untouched** — they are only ever read.
 
-- macOS with `ffmpeg` installed (`brew install ffmpeg`)
-- [`uv`](https://docs.astral.sh/uv/) and Node 20+
+---
 
-## Setup (one-time)
+## Building from source
+
+Requires [`uv`](https://docs.astral.sh/uv/), Node 20+, and `ffmpeg` on PATH.
 
 ```bash
 uv sync                                  # backend deps
 (cd frontend && npm install)             # frontend deps
-uv run python scripts/fetch_models.py    # face models, ~280 MB — the only download the app needs
+uv run python scripts/fetch_models.py    # face models, ~280 MB
+
+./scripts/start.sh        # build the frontend once, serve at http://localhost:6969
+./scripts/dev.sh          # or: backend :6969 + Vite dev server :5173, hot reload
 ```
 
-## Run
+### The desktop app
+
+A Tauri shell wrapping an **embedded, relocatable CPython** — not a frozen binary, so the
+backend runs exactly as it does from source. Needs Rust 1.85+.
 
 ```bash
-./scripts/start.sh        # builds the frontend once, serves everything at http://localhost:6969
-# or, for development with hot reload:
-./scripts/dev.sh          # backend :6969 + Vite dev server :5173
+uv build --wheel -o dist
+python desktop/scripts/build_runtime.py --triple aarch64-apple-darwin --wheel dist/*.whl
+python desktop/scripts/fetch_ffmpeg.py  --triple aarch64-apple-darwin
+
+# prove the bundled runtime works before packaging it
+desktop/src-tauri/payload/runtime/bin/python3.12 desktop/scripts/verify_runtime.py
+
+(cd desktop/src-tauri && npx @tauri-apps/cli@2 build --bundles app --target aarch64-apple-darwin)
+./desktop/scripts/macos_sign.sh --adhoc   # sign + package .zip/.dmg
 ```
 
-Then open the app → **Library setup** → **+ Add folder** → pick your photos folder → **Scan**.
-After the scan finishes, run the processing steps on the same page (Locate photos, Rebuild events,
-Find near-duplicates, Scan faces → Group into people).
+Swap `--triple x86_64-pc-windows-msvc` and `--bundles nsis` for Windows. Every build input is
+pinned by sha256 in `desktop/sources.json`. Tagging `vX.Y.Z` builds and publishes both platforms
+via GitHub Actions.
 
-## Where things live
-
-| Path | What |
-|---|---|
-| `data/library.db` | SQLite index (WAL) |
-| `data/thumbs/` | grid thumbnails (WebP, precomputed) |
-| `data/previews/` | 1600px lightbox previews (lazy, LRU-capped ~10 GB) |
-| `data/models/` | face-recognition ONNX models |
-| `data/exports/` | duplicate discard lists |
-
-Delete the `data/` folder to fully reset the app; your photos are untouched. Set `PHOTOS_DATA_DIR`
-to relocate it.
+---
 
 ## Test library
 
-`test-library/` contains generated sample media (gradient photos with EXIF GPS/dates, duplicates,
-videos, a HEIC, and a public-domain group photo) used during development — safe to delete, or keep
-for experimenting.
+`test-library/` holds generated sample media — gradient photos with EXIF GPS and dates,
+duplicates, videos, a HEIC, and a public-domain group photo — used during development. Safe to
+delete, or keep for experimenting.
 
 ---
+
+Smriti is in early development and I'd genuinely like your bug reports. If something breaks,
+`desktop.log` in the data folder above usually says exactly why — please include it.
 
 Made with ♥ in India · <span>स्मृति</span> — every memory, lovingly kept.

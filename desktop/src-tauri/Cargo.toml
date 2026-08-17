@@ -4,7 +4,7 @@ version = "0.1.9"
 description = "Smriti — a fully-offline library for your local photos"
 authors = ["Harshvardhan Singh Jadon"]
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.85" # dependency tree pulls crates requiring edition2024
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
