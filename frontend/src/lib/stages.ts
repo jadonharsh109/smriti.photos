@@ -18,6 +18,7 @@ const LABEL: Record<string, string> = {
   classify: "Sorting documents",
   remove: "Removing a folder",
   blur: "Checking sharpness",
+  takeout: "Importing from Google",
 };
 
 /** Full sentence: what the library page says while that stage is running.
@@ -34,6 +35,7 @@ const SENTENCE: Record<string, string> = {
   classify: "Sorting out screenshots and scans",
   remove: "Removing a folder from your library",
   blur: "Checking your photos for blur",
+  takeout: "Unpacking your Google Takeout",
 };
 
 /** Stages slow enough that silence reads as a hang. Faces on a 40k-photo
@@ -41,6 +43,7 @@ const SENTENCE: Record<string, string> = {
 const NOTE: Record<string, string> = {
   faces: "This one takes a while on a big library — you can keep browsing.",
   models: "About 280 MB, downloaded once.",
+  takeout: "Your .zip files are only read, never changed. Indexing starts by itself afterwards.",
 };
 
 /** What the counter is counting, so "9,847" reads as something. */
@@ -52,6 +55,7 @@ const UNIT: Record<string, string> = {
   classify: "photos sorted",
   remove: "photos removed",
   blur: "photos checked",
+  takeout: "photos and videos copied",
 };
 
 export const stageLabel = (kind: string) => LABEL[kind] ?? kind;

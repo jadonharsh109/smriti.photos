@@ -47,11 +47,49 @@ after that runs on your machine.
   stays exactly as you arranged it.
 - **Duplicates** — exact (BLAKE2) and near-duplicate (perceptual hash) detection with a
   suggested keeper. Cleanup moves files to the **system Trash** — always recoverable.
+- **Google Takeout import** — point it at the `.zip` parts of a Google Photos
+  export. It puts back the dates and GPS that Google moved out into sidecar
+  files, brings your albums across as Smriti albums, and never re-encodes a
+  photo. See below.
 - **Export** — select anything and save the originals as a `.zip`.
 - **Locked** — a passcode-protected section; hidden photos vanish from every other view.
 - **Videos** — ffprobe metadata, poster frames, scrubbing via HTTP range requests.
 - **Drive-aware** — external drives are tracked by disk identity, so unplugging and replugging
   just works. Nothing is ever marked missing while a drive is offline.
+
+---
+
+## Coming from Google Photos
+
+**Your library → Import Takeout…** takes the `.zip` parts Google gives you and
+turns them into a folder Smriti watches.
+
+Select every part you downloaded at once — this is not optional politeness.
+Google splits an export across numbered zips and routinely files a photo's
+metadata in a *different part* from the photo itself, so the parts are paired
+against each other before anything is unpacked. Smriti tells you up front what
+it found, and says so plainly when the set looks incomplete.
+
+What the import fixes:
+
+- **Dates.** Most photos keep their EXIF, but the ones that do not — Snapchat
+  and WhatsApp images, anything renamed — carry no date a filename can rescue.
+  Those get their capture time from Google's sidecar, written into the file
+  itself, so other apps see it too. A photo that already has its own date is
+  never overwritten.
+- **Places.** GPS from the sidecar, for the photos that lost it.
+- **Albums.** Your Google albums become Smriti albums.
+- **Duplicates.** Takeout stores an album's photos twice, byte for byte. Both
+  paths are recreated, but the second is a hardlink — the mirror is exact and
+  the bytes exist once.
+
+Nothing is re-encoded: the capture date is spliced into the JPEG's metadata
+segment, leaving every byte of image data untouched. Your `.zip` files are only
+ever read. An interrupted import picks up where it left off, and importing the
+remaining parts later fills in the metadata that was missing the first time.
+
+> The import copies photos out of the archives, so it needs roughly as much free
+> space as the export itself. Smriti checks before it starts.
 
 ---
 

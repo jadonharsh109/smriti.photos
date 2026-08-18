@@ -21,18 +21,23 @@ def _default_browse_path() -> str:
 
 
 @router.get("/fs/list")
-def fs_list(path: str = ""):
+def fs_list(path: str = "", include: str | None = None):
+    """Browse folders. `include=zip` additionally lists .zip files, which is
+    what the Takeout importer picks from — a browser cannot hand the server an
+    absolute path, so choosing files has to happen server-side too."""
     # empty path = the platform's natural starting point; on Windows that is
     # the drive list ("This PC"), reachable again via parent == ""
     if not path:
         if sys.platform == "win32":
             drives = [{"name": d, "path": d} for d in os.listdrives()]
-            return {"path": "This PC", "parent": None, "dirs": drives, "media_count": 0}
+            return {"path": "This PC", "parent": None, "dirs": drives,
+                    "media_count": 0, "files": []}
         path = _default_browse_path()
     path = os.path.abspath(os.path.expanduser(path))
     if not os.path.isdir(path):
         raise HTTPException(404, f"not a directory: {path}")
     entries = []
+    files: list[dict] = []
     media_count = 0
     try:
         with os.scandir(path) as it:
@@ -48,12 +53,20 @@ def fs_list(path: str = ""):
                         ext = os.path.splitext(e.name)[1].lower()
                         if ext in config.PHOTO_EXTS or ext in config.VIDEO_EXTS:
                             media_count += 1
+                        elif include == "zip" and ext == ".zip":
+                            try:
+                                size = e.stat(follow_symlinks=False).st_size
+                            except OSError:
+                                size = 0
+                            files.append({"name": e.name, "path": e.path, "size": size})
                 except OSError:
                     continue
     except PermissionError:
         raise HTTPException(403, f"no permission to read {path}")
     entries.sort(key=lambda x: x["name"].lower())
+    files.sort(key=lambda x: x["name"].lower())
     parent: str | None = os.path.dirname(path)
     if parent == path:  # filesystem root: "/" (posix) or "C:\\" (windows)
         parent = "" if sys.platform == "win32" else None  # "" = back to the drive list
-    return {"path": path, "parent": parent, "dirs": entries, "media_count": media_count}
+    return {"path": path, "parent": parent, "dirs": entries,
+            "media_count": media_count, "files": files}

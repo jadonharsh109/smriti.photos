@@ -3,7 +3,13 @@
 Boots the installed `smriti` server against a temp data dir, registers a temp
 folder containing a generated photo, scans it, and asserts the file was
 indexed with a thumbnail. Exercises volume identity, path handling, the scan
-worker pool and the bundled web UI on the host platform."""
+worker pool and the bundled web UI on the host platform.
+
+Then imports a synthetic Google Takeout export, which is where the subtle rules
+live: a photo's metadata routinely arrives in a different zip part than the
+photo, an album member is stored a second time byte-for-byte, and the sidecar
+can be filed against either copy. All three are easy to break and none of them
+fail loudly, so they are asserted here rather than discovered by a user."""
 import json
 import os
 import subprocess
@@ -41,6 +47,104 @@ def wait_for(pred, timeout, what):
             pass
         time.sleep(1)
     raise SystemExit(f"TIMEOUT waiting for {what}")
+
+
+def make_takeout(tmp: str) -> list:
+    """Two zip parts shaped like a real export, minus the six gigabytes.
+
+    part 1: the photos.  part 2: the metadata — deliberately split, because
+    that is what Takeout actually does.
+    """
+    import io
+    import zipfile
+
+    from PIL import Image
+
+    def jpeg(color) -> bytes:
+        buf = io.BytesIO()
+        Image.new("RGB", (64, 48), color).save(buf, "JPEG", quality=80)
+        return buf.getvalue()   # no EXIF at all — the case only a sidecar fixes
+
+    GP = "Takeout/Google Photos"
+    lonely = jpeg((200, 90, 60))
+    shared = jpeg((60, 120, 200))
+
+    def sidecar(title, ts, lat=None, lon=None) -> bytes:
+        doc = {"title": title, "photoTakenTime": {"timestamp": str(ts)}}
+        if lat is not None:
+            doc["geoData"] = {"latitude": lat, "longitude": lon, "altitude": 0.0}
+        return json.dumps(doc).encode()
+
+    part1 = os.path.join(tmp, "takeout-test-1-001.zip")
+    with zipfile.ZipFile(part1, "w") as z:
+        z.writestr(f"{GP}/Photos from 2021/lonely.jpg", lonely)
+        # the same bytes in two places, exactly as an album member is stored
+        z.writestr(f"{GP}/Photos from 2021/shared.jpg", shared)
+        z.writestr(f"{GP}/Goa Trip/shared.jpg", shared)
+        # metadata filed against the ALBUM copy, while the year copy has none:
+        # pairing has to notice they are the same photo
+        z.writestr(f"{GP}/Goa Trip/shared.jpg.supplemental-metadata.json",
+                   sidecar("shared.jpg", 1600000000, 15.2993, 74.1240))
+
+    part2 = os.path.join(tmp, "takeout-test-1-002.zip")
+    with zipfile.ZipFile(part2, "w") as z:
+        # this photo's metadata is in a different part than the photo
+        z.writestr(f"{GP}/Photos from 2021/lonely.jpg.supplemental-metadata.json",
+                   sidecar("lonely.jpg", 1300000000))
+    return [part1, part2]
+
+
+def check_takeout(tmp: str) -> None:
+    dest = os.path.join(tmp, "imported")
+    os.makedirs(dest, exist_ok=True)
+    archives = make_takeout(tmp)
+
+    summary = post("/api/takeout/analyze", {"archives": archives})
+    assert summary["total"] == 3, f"expected 3 media entries, got {summary}"
+    assert summary["duplicate_paths"] == 1, f"album duplicate not detected: {summary}"
+    assert [a["name"] for a in summary["albums"]] == ["Goa Trip"], summary["albums"]
+    print(f"takeout analyze: {summary['photos']} photos, albums {summary['albums']}")
+
+    # Wait on THIS job, not "some takeout job that is done" — a finished job
+    # from an earlier import satisfies that instantly and the assertions then
+    # run against half-extracted files.
+    job_id = post("/api/takeout/import", {"archives": archives, "destination": dest})["job_id"]
+    wait_for(lambda: get(f"/api/jobs/{job_id}")["status"] != "running", 180,
+             "takeout import to finish")
+    job = get(f"/api/jobs/{job_id}")
+    assert job["status"] == "done", f"import did not finish cleanly: {job}"
+    assert job["errors"] == 0, f"import reported errors: {job}"
+    print(f"takeout import: {job['message']}")
+
+    root = os.path.join(dest, "Google Photos")
+    year = os.path.join(root, "Photos from 2021")
+    album = os.path.join(root, "Goa Trip")
+    for path in (os.path.join(year, "lonely.jpg"), os.path.join(year, "shared.jpg"),
+                 os.path.join(album, "shared.jpg")):
+        assert os.path.isfile(path), f"missing after import: {path}"
+    with open(os.path.join(year, "shared.jpg"), "rb") as a, open(os.path.join(album, "shared.jpg"), "rb") as b:
+        assert a.read() == b.read(), "the album copy is not the same photo"
+
+    # the whole point: a photo that arrived with no EXIF now has its date, and
+    # the one whose metadata was filed under the album has its date AND place
+    from PIL import Image
+
+    def taken(path):
+        ex = Image.open(path).getexif()
+        return ex.get_ifd(0x8769).get(0x9003), ex.get_ifd(0x8825)
+
+    lonely_date, _ = taken(os.path.join(year, "lonely.jpg"))
+    shared_date, shared_gps = taken(os.path.join(year, "shared.jpg"))
+    assert lonely_date and lonely_date.startswith("2011:"), f"cross-part metadata lost: {lonely_date}"
+    assert shared_date and shared_date.startswith("2020:"), f"cross-folder metadata lost: {shared_date}"
+    assert shared_gps, "GPS from the album's sidecar never reached the year copy"
+    print(f"repair: lonely={lonely_date} shared={shared_date} gps={bool(shared_gps)}")
+
+    wait_for(lambda: any(a["name"] == "Goa Trip" for a in get("/api/albums")), 240,
+             "the Takeout album to become a Smriti album")
+    goa = next(a for a in get("/api/albums") if a["name"] == "Goa Trip")
+    assert goa["count"] == 1, f"album has the wrong contents: {goa}"
+    print(f"albums: 'Goa Trip' -> {goa['count']} item — PASS")
 
 
 def main() -> None:
@@ -88,6 +192,8 @@ def main() -> None:
         with urllib.request.urlopen(BASE + "/api/thumb/1", timeout=10) as r:
             assert r.status == 200 and len(r.read()) > 100, "thumbnail missing"
         print("indexed 1 photo with thumbnail — PASS")
+
+        check_takeout(tmp)
     finally:
         proc.terminate()
         try:

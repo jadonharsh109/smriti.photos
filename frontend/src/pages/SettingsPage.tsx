@@ -3,17 +3,13 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtBytes, type Job, type Root, type Volume } from "../api/client";
 import { ConfirmDialog } from "../components/Dialogs";
+import FolderPicker from "../components/FolderPicker";
+import TakeoutImport from "../components/TakeoutImport";
 import { ArtFolder } from "../components/Illustrations";
 import Portal from "../components/Portal";
 import { checkForUpdates, isDesktop } from "../lib/desktop";
 import { friendlyError, stageLabel, stageNote, stageSentence, stageUnit } from "../lib/stages";
 
-interface FsList {
-  path: string;
-  parent: string | null;
-  dirs: { name: string; path: string }[];
-  media_count: number;
-}
 interface Removal {
   files: number;
   photos: number;
@@ -56,6 +52,7 @@ const n = (x: number | undefined) => (x ?? 0).toLocaleString();
 export default function SettingsPage() {
   const qc = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [takeoutOpen, setTakeoutOpen] = useState(false);
   const [modelGate, setModelGate] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [confirmingRemove, setConfirmingRemove] = useState<Root | null>(null);
@@ -255,6 +252,21 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {/* Coming from Google Photos is a one-off, but it is the first thing
+          somebody with a Takeout export on disk is looking for — so it sits in
+          the calm part of the page rather than inside Advanced. */}
+      <div className="panel setup-row">
+        <div>
+          <strong>Coming from Google Photos?</strong>
+          <p className="muted small" style={{ marginTop: 3 }}>
+            Import a Google Takeout export. Smriti unpacks it, restores the dates and places
+            Google moved into sidecar files, and brings your albums across.
+          </p>
+        </div>
+        <span className="spacer" />
+        <button onClick={() => setTakeoutOpen(true)}>Import Takeout…</button>
+      </div>
+
       {/* Everything below is machinery: kept in full, closed by default. */}
       <details className="adv">
         <summary>Advanced</summary>
@@ -437,6 +449,8 @@ export default function SettingsPage() {
       )}
 
       {pickerOpen && <FolderPicker onPick={(p) => addRoot.mutate(p)} onClose={() => setPickerOpen(false)} />}
+
+      {takeoutOpen && <TakeoutImport onClose={() => setTakeoutOpen(false)} />}
     </div>
   );
 }
@@ -758,58 +772,5 @@ function FolderList({
         </div>
       ))}
     </div>
-  );
-}
-
-function FolderPicker({ onPick, onClose }: { onPick: (path: string) => void; onClose: () => void }) {
-  // "" = the platform's natural starting point (macOS: /Volumes, Windows: drive list)
-  const [path, setPath] = useState("");
-  const { data } = useQuery({
-    queryKey: ["fs", path],
-    queryFn: () => api.get<FsList>(`/api/fs/list?path=${encodeURIComponent(path)}`),
-  });
-  const atSyntheticRoot = data?.path === "This PC";
-  const subfolders = data?.dirs.length ?? 0;
-  return (
-    <Portal>
-      <div className="modal-back" onClick={onClose}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
-          <header>Choose a photos folder</header>
-          <div className="modal-body">
-            <div className="row" style={{ marginBottom: 8 }}>
-              <button disabled={data?.parent == null} onClick={() => data && data.parent != null && setPath(data.parent)}>
-                ↑ Up
-              </button>
-              <button onClick={() => setPath("~")}>Home</button>
-              <span className="muted small" style={{ wordBreak: "break-all" }}>{data?.path ?? "…"}</span>
-            </div>
-            {/* Scanning recurses, so the direct-only count used to read as "this
-                folder is empty" when someone picked the right parent folder. */}
-            {data && !atSyntheticRoot && (
-              <p className="small muted" style={{ marginBottom: 6 }}>
-                {data.media_count > 0
-                  ? `${data.media_count.toLocaleString()} photos and videos here`
-                  : "Nothing directly in this folder"}
-                {subfolders > 0
-                  ? ` — Smriti will also look inside ${subfolders === 1 ? "the folder" : `all ${subfolders} folders`} within it.`
-                  : "."}
-              </p>
-            )}
-            {(data?.dirs ?? []).map((d) => (
-              <div key={d.path} className="dir-row" onClick={() => setPath(d.path)}>
-                <span>📁</span> {d.name}
-              </div>
-            ))}
-            {data && data.dirs.length === 0 && <p className="muted small">No subfolders.</p>}
-          </div>
-          <footer>
-            <button onClick={onClose}>Cancel</button>
-            <button className="primary" disabled={!data || atSyntheticRoot} onClick={() => data && onPick(data.path)}>
-              Use this folder
-            </button>
-          </footer>
-        </div>
-      </div>
-    </Portal>
   );
 }
