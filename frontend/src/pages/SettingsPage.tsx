@@ -5,6 +5,7 @@ import { api, fmtBytes, type Job, type Root, type Volume } from "../api/client";
 import { ConfirmDialog } from "../components/Dialogs";
 import { ArtFolder } from "../components/Illustrations";
 import Portal from "../components/Portal";
+import { checkForUpdates, isDesktop } from "../lib/desktop";
 import { friendlyError, stageLabel, stageNote, stageSentence, stageUnit } from "../lib/stages";
 
 interface FsList {
@@ -55,6 +56,7 @@ const n = (x: number | undefined) => (x ?? 0).toLocaleString();
 export default function SettingsPage() {
   const qc = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [modelGate, setModelGate] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [confirmingRemove, setConfirmingRemove] = useState<Root | null>(null);
   const [showLogs, setShowLogs] = useState(false);
@@ -70,6 +72,11 @@ export default function SettingsPage() {
     refetchInterval: 2500,
   });
   const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: () => api.get<Stats>("/api/stats") });
+  const { data: version } = useQuery({
+    queryKey: ["health"],
+    queryFn: () => api.get<{ version: string }>("/api/health"),
+    staleTime: Infinity,
+  });
   const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: () => api.get<AppSettings>("/api/settings") });
 
   // live log: seed with recent history once, then append from the SSE stream
@@ -94,6 +101,13 @@ export default function SettingsPage() {
       es.close();
     };
   }, []);
+
+  useEffect(() => {
+    if (modelGate && stats?.face_model_ready) {
+      setModelGate(false);
+      setPickerOpen(true);
+    }
+  }, [modelGate, stats?.face_model_ready]);
 
   useEffect(() => {
     const el = logRef.current;
@@ -160,6 +174,13 @@ export default function SettingsPage() {
   // is genuinely nothing else to show. Once photos exist, a running job — an
   // automatic scan, say — is a banner above the normal page, so opening this
   // page mid-scan never hides the folders or the settings.
+  // Face recognition is required before a library can be built, so the folder
+  // picker is gated behind it. Enforced here rather than in POST /api/roots:
+  // the API is also the headless/CLI path and what scripts/smoke_test.py uses
+  // in CI, neither of which should be forced through a 280 MB download.
+  const needModels = !!stats && !stats.face_model_ready;
+  const chooseFolder = () => (needModels ? setModelGate(true) : setPickerOpen(true));
+
   const firstIndex = !!running && media === 0;
   const view: "invite" | "working" | "attention" | "ready" =
     rootList.length === 0 ? "invite"
@@ -181,7 +202,7 @@ export default function SettingsPage() {
         </div>
       </header>
 
-      {view === "invite" && <Invite onChoose={() => setPickerOpen(true)} error={addRoot.error} />}
+      {view === "invite" && <Invite onChoose={chooseFolder} error={addRoot.error} />}
 
       {view === "working" && (
         <Working job={running!} onStop={() => cancelJob.mutate(running!.id)} />
@@ -191,7 +212,7 @@ export default function SettingsPage() {
         <Attention
           roots={rootList}
           allOffline={allOffline}
-          onChoose={() => setPickerOpen(true)}
+          onChoose={chooseFolder}
           onRefresh={(id) => reprocess.mutate(id)}
           onRemove={(r) => setConfirmingRemove(r)}
         />
@@ -205,7 +226,7 @@ export default function SettingsPage() {
         <Ready
           roots={rootList}
           stats={stats}
-          onChoose={() => setPickerOpen(true)}
+          onChoose={chooseFolder}
           onRefresh={(id) => reprocess.mutate(id)}
           onRemove={(r) => setConfirmingRemove(r)}
           onEnablePeople={() => runJob.mutate("/api/models/download")}
@@ -363,6 +384,20 @@ export default function SettingsPage() {
             </div>
           </div>
         )}
+        <div className="panel setup-row">
+          <div>
+            <strong>Smriti {version?.version ?? ""}</strong>
+            <p className="muted small" style={{ marginTop: 3 }}>
+              {isDesktop()
+                ? "Smriti checks for updates on its own shortly after it starts."
+                : "Updates are handled by however you installed Smriti."}
+            </p>
+          </div>
+          <span className="spacer" />
+          {isDesktop() && (
+            <button onClick={() => checkForUpdates().catch(() => {})}>Check for updates</button>
+          )}
+        </div>
       </details>
 
       {/* A failure is worth surfacing outside Advanced — but as a sentence. */}
@@ -389,6 +424,15 @@ export default function SettingsPage() {
             setShowLogs(true);
           }}
           onClose={() => setConfirmingReset(false)}
+        />
+      )}
+
+      {modelGate && (
+        <ModelGate
+          running={running?.kind === "models" ? running : null}
+          onStart={() => runJob.mutate("/api/models/download")}
+          onClose={() => setModelGate(false)}
+          error={runJob.error}
         />
       )}
 
@@ -535,8 +579,8 @@ function Ready({
           <div>
             <strong>Recognise people in your photos</strong>
             <p className="muted small" style={{ marginTop: 4 }}>
-              Smriti can group every photo of the same person together. It needs a one-time
-              280 MB download, then runs entirely on this machine — your photos never leave it.
+              Smriti groups every photo of the same person together. The models are missing —
+              they are normally downloaded when you add your first folder.
             </p>
           </div>
           <span className="spacer" />
@@ -565,6 +609,60 @@ function Ready({
         )
       )}
     </>
+  );
+}
+
+/** Face recognition has to be in place before a library is built, so this
+ *  stands between "Choose a folder" and the picker. It is a real requirement,
+ *  not a suggestion — but it says how big the download is and shows it moving,
+ *  because 280 MB with no feedback is indistinguishable from a hang. */
+function ModelGate({
+  running,
+  onStart,
+  onClose,
+  error,
+}: {
+  running: Job | null;
+  onStart: () => void;
+  onClose: () => void;
+  error: unknown;
+}) {
+  const pct = running && running.total > 0 ? Math.round((running.done / running.total) * 100) : null;
+  return (
+    <ConfirmDialog
+      title="Smriti needs its recognition models first"
+      confirmLabel={running ? `Downloading… ${pct ?? 0}%` : "Download and continue"}
+      onConfirm={() => {
+        if (!running) onStart();
+      }}
+      onClose={onClose}
+      body={
+        <>
+          <p style={{ marginBottom: 10 }}>
+            Before building your library, Smriti downloads the models it uses to recognise faces —
+            about <strong>280 MB, once</strong>. Everything then runs on this machine; your photos
+            never leave it.
+          </p>
+          {running ? (
+            <>
+              <div className="progress" style={{ marginBottom: 8 }}>
+                <div style={{ width: `${pct ?? 0}%` }} />
+              </div>
+              <p className="small">{running.message ?? "Starting…"}</p>
+            </>
+          ) : (
+            <p className="small">
+              You need to be online for this step. Once it is done, Smriti works offline as usual.
+            </p>
+          )}
+          {error ? (
+            <p className="small" style={{ color: "var(--danger)", marginTop: 10 }}>
+              {friendlyError(error, "models")}
+            </p>
+          ) : null}
+        </>
+      }
+    />
   );
 }
 

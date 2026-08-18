@@ -15,6 +15,7 @@ import {
 } from "./components/Icons";
 import JobsIndicator from "./components/JobsIndicator";
 import Logo from "./components/Logo";
+import { REPO_URL, openExternal } from "./lib/desktop";
 
 const NAV: { sec: string; items: { to: string; label: string; Icon: typeof IconPhotos }[] }[] = [
   {
@@ -38,7 +39,7 @@ const NAV: { sec: string; items: { to: string; label: string; Icon: typeof IconP
   {
     sec: "Manage",
     items: [
-      { to: "/dupes", label: "Duplicates", Icon: IconCopy },
+      { to: "/cleanup", label: "Cleanup", Icon: IconCopy },
       { to: "/settings", label: "Your library", Icon: IconSliders },
     ],
   },
@@ -50,6 +51,21 @@ const NAV: { sec: string; items: { to: string; label: string; Icon: typeof IconP
  * it shows what is actually serving. Rendered as a sibling *below*
  * JobsIndicator: when a job starts, its progress card appears above this line
  * and pushes nothing around, so the two never contend for the same space. */
+/** A quiet way to say thanks, next to the version.
+ *  Routed through the shell on desktop — a plain link there would navigate the
+ *  app itself out of the library and leave no way back. */
+function StarOnGitHub() {
+  return (
+    <button
+      className="rail-star"
+      title="Star Smriti on GitHub"
+      onClick={() => openExternal(REPO_URL)}
+    >
+      ★ Star on GitHub
+    </button>
+  );
+}
+
 function AppVersion() {
   const { data } = useQuery({
     queryKey: ["health"],
@@ -108,6 +124,7 @@ export default function App() {
             ))}
           </div>
           <JobsIndicator />
+          <StarOnGitHub />
           <AppVersion />
         </aside>
         {/* key remounts pages on route change so the page-enter animation plays */}

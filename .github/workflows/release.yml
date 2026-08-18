@@ -33,9 +33,12 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
       tag: ${{ steps.v.outputs.tag }}
+      changelog: ${{ steps.log.outputs.changelog }}
       dry_run: ${{ github.event_name == 'workflow_dispatch' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # need history and tags to diff against the last release
       - id: v
         name: Verify the tag matches pyproject.toml
         run: |
@@ -43,6 +46,31 @@ jobs:
           python3 desktop/scripts/sync_version.py --expect "$TAG"
           echo "tag=$TAG"              >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}"      >> "$GITHUB_OUTPUT"
+
+      # What changed, straight from the commits. No changelog file to keep in
+      # sync and forget — the updater dialog said only "You have 0.1.16." until
+      # this existed, because `notes` was never populated.
+      - id: log
+        name: Collect what changed since the last release
+        run: |
+          TAG="${{ steps.v.outputs.tag }}"
+          PREV=$(git describe --tags --abbrev=0 --exclude "$TAG" "$TAG^" 2>/dev/null || true)
+          if [ -n "$PREV" ]; then
+            RANGE="$PREV..$TAG"
+          else
+            RANGE="$TAG"
+          fi
+          # drop the bare version-bump commits; they say nothing a user wants
+          LOG=$(git log --no-merges --pretty=format:'%s' "$RANGE" \
+                | grep -Ev '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+                | sed 's/^/- /' || true)
+          [ -z "$LOG" ] && LOG="- Maintenance and internal fixes"
+          echo "since $PREV:"; echo "$LOG"
+          {
+            echo "changelog<<CHANGELOG_EOF"
+            echo "$LOG"
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
 
   # ------------------------------------------------------------------- wheel
   # Built once, on Linux, and consumed by the macOS job — so the .app and the
@@ -291,6 +319,7 @@ jobs:
           python3 desktop/scripts/make_latest_json.py \
             --version "${{ needs.meta.outputs.version }}" \
             --tag "${{ needs.meta.outputs.tag }}" \
+            --notes "${{ needs.meta.outputs.changelog }}" \
             --repo "${{ github.repository }}" \
             --artifacts staged \
             --out latest.json
@@ -314,8 +343,16 @@ jobs:
             || echo "windows=false" >> "$GITHUB_OUTPUT"
 
       - name: Compose release notes
+        env:
+          # via env, not inline: the changelog is multi-line, and interpolating
+          # it straight into the block scalar breaks the YAML
+          CHANGELOG: ${{ needs.meta.outputs.changelog }}
         run: |
           {
+            echo "## What's changed"
+            echo
+            printf '%s\n' "$CHANGELOG"
+            echo
             echo "## Install"
             echo
             echo '```bash'

@@ -1,0 +1,10 @@
+# App-level commands are not grantable to a remote origin without a manifest,
+# and the SPA is a remote origin (it is served by the local Python server, not
+# the tauri:// protocol). This is the whole grant: one command, no arguments,
+# which asks the updater whether a newer build exists.
+"$schema" = "schemas/schema.json"
+
+[[permission]]
+identifier = "allow-check-updates-now"
+description = "Allows the in-app Check for updates button to run an update check."
+commands.allow = ["check_updates_now"]

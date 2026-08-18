@@ -249,7 +249,7 @@ export default function LandingPage() {
                   <li><span className="tick">✓</span> Face recognition runs on your CPU — photos never leave the machine</li>
                   <li><span className="tick">✓</span> Reverse geocoding from a bundled offline dataset</li>
                   <li><span className="tick">✓</span> Originals stay untouched — deleting is always a recoverable move to the system Trash</li>
-                  <li><span className="tick">✓</span> Works with the network cable unplugged</li>
+                  <li><span className="tick">✓</span> Offline once set up — only the one-time model download needs a connection</li>
                 </ul>
               </div>
             </div>

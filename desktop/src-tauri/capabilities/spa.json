@@ -1,0 +1,27 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "spa",
+  "description": "What the SPA served by the local Python server is allowed to ask the shell for. The `default` capability deliberately leaves IPC inert on that origin, so each entry here is opened deliberately and kept minimal. start_dragging / internal_toggle_maximize: with an Overlay titlebar the webview covers the whole title area, so macOS offers no draggable strip of its own and the page must nominate one with data-tauri-drag-region \u2014 which Tauri implements over IPC. opener:allow-open-url: opens a link in the user's own browser, so the 'Star on GitHub' link does not navigate the app itself out of the library. check_updates_now: lets the Check for updates button reach the updater. The whole surface is moving the window and opening a URL.",
+  "windows": [
+    "main"
+  ],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:*",
+      "http://localhost:*"
+    ]
+  },
+  "permissions": [
+    "core:window:allow-start-dragging",
+    "core:window:allow-internal-toggle-maximize",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://github.com/jadonharsh109/smriti.photos*"
+        }
+      ]
+    },
+    "allow-check-updates-now"
+  ]
+}

@@ -17,6 +17,7 @@ const LABEL: Record<string, string> = {
   models: "Downloading models",
   classify: "Sorting documents",
   remove: "Removing a folder",
+  blur: "Checking sharpness",
 };
 
 /** Full sentence: what the library page says while that stage is running.
@@ -32,6 +33,7 @@ const SENTENCE: Record<string, string> = {
   models: "Downloading the face models",
   classify: "Sorting out screenshots and scans",
   remove: "Removing a folder from your library",
+  blur: "Checking your photos for blur",
 };
 
 /** Stages slow enough that silence reads as a hang. Faces on a 40k-photo
@@ -49,6 +51,7 @@ const UNIT: Record<string, string> = {
   neardup: "photos compared",
   classify: "photos sorted",
   remove: "photos removed",
+  blur: "photos checked",
 };
 
 export const stageLabel = (kind: string) => LABEL[kind] ?? kind;

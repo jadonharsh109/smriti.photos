@@ -1,13 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api, cardDelay, type Person } from "../api/client";
 import { ArtPeople } from "../components/Illustrations";
 
 export default function PeoplePage() {
+  const [showHidden, setShowHidden] = useState(false);
   const qc = useQueryClient();
   const { data: people } = useQuery({
-    queryKey: ["people"],
-    queryFn: () => api.get<Person[]>("/api/people"),
+    queryKey: ["people", showHidden],
+    queryFn: () => api.get<Person[]>(`/api/people${showHidden ? "?include_hidden=true" : ""}`),
   });
   const { data: stats } = useQuery({
     queryKey: ["stats"],
@@ -24,6 +26,10 @@ export default function PeoplePage() {
   const cluster = useMutation({
     mutationFn: () => api.post("/api/faces/recluster"),
     onSettled: () => qc.invalidateQueries(),
+  });
+  const unhide = useMutation({
+    mutationFn: (pid: number) => api.patch(`/api/people/${pid}`, { is_hidden: false }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["people"] }),
   });
   const getModels = useMutation({
     mutationFn: () => api.post("/api/models/download"),
@@ -48,6 +54,16 @@ export default function PeoplePage() {
           </p>
         </div>
         <div className="actions">
+          {/* Hidden people are still in the library. Without a way back this
+              action was one-way and unreachable, which is most of why it read
+              as broken. */}
+          <button
+            className={showHidden ? "on" : ""}
+            title="Show people you've hidden, so you can bring one back"
+            onClick={() => setShowHidden((v) => !v)}
+          >
+            {showHidden ? "Hide hidden" : "Show hidden"}
+          </button>
           {stats?.face_model_ready === false ? (
             <button className="primary" onClick={() => getModels.mutate()} disabled={getModels.isPending}>
               Download face models (≈280 MB)
@@ -107,7 +123,22 @@ export default function PeoplePage() {
               </div>
               <div className="meta" style={{ textAlign: "center" }}>
                 <div className="name">{p.name ?? "Add a name"}</div>
-                <div className="sub">{p.photo_count} photos</div>
+                <div className="sub">
+                  {p.photo_count} photos{p.is_hidden ? " · hidden" : ""}
+                </div>
+                {p.is_hidden ? (
+                  <button
+                    className="small"
+                    style={{ marginTop: 8 }}
+                    onClick={(e) => {
+                      e.preventDefault();   // the whole card is a Link
+                      e.stopPropagation();
+                      unhide.mutate(p.id);
+                    }}
+                  >
+                    Unhide
+                  </button>
+                ) : null}
               </div>
             </Link>
           ))}

@@ -35,9 +35,16 @@ export default function PersonPage() {
       setRenaming(false);
     },
   });
-  const hide = useMutation({
-    mutationFn: () => api.patch(`/api/people/${personId}`, { is_hidden: true }),
-    onSuccess: () => nav("/people"),
+  // Hiding without invalidating left the person visibly still there on the
+  // page we navigate to — react-query served the cached list. That is what
+  // made this look broken.
+  const setHidden = useMutation({
+    mutationFn: (hidden: boolean) => api.patch(`/api/people/${personId}`, { is_hidden: hidden }),
+    onSuccess: (_d, hidden) => {
+      qc.invalidateQueries({ queryKey: ["people"] });
+      qc.invalidateQueries({ queryKey: ["person", personId] });
+      if (hidden) nav("/people");
+    },
   });
   const merge = useMutation({
     mutationFn: (toId: number) => api.post("/api/people/merge", { from_id: personId, to_id: toId }),
@@ -114,9 +121,23 @@ export default function PersonPage() {
             </div>
             <AddAllToAlbum filters={filters} />
             <button onClick={() => setMerging((m) => !m)}>Merge into…</button>
-            <button className="danger" onClick={() => hide.mutate()}>
-              Hide
-            </button>
+            {person.is_hidden ? (
+              <button
+                className="primary"
+                title="Show this person in People again"
+                onClick={() => setHidden.mutate(false)}
+              >
+                Unhide this person
+              </button>
+            ) : (
+              <button
+                className="danger"
+                title="Remove this person from the People page. No photos are deleted, and you can unhide them later."
+                onClick={() => setHidden.mutate(true)}
+              >
+                Hide this person
+              </button>
+            )}
           </div>
         )}
       </header>

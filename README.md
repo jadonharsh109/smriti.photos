@@ -4,8 +4,9 @@
 sitting on your Mac or PC into a proper library — timeline, people, places, trips, duplicates —
 with **everything computed on your own machine**.
 
-No cloud. No account. Nothing uploaded. It works with the network unplugged, and your original
-files are never moved or modified.
+No cloud. No account. Nothing uploaded, ever — and your original files are never moved or
+modified. Setting up a library downloads the face-recognition models once (~280 MB); after that
+Smriti works with the network unplugged.
 
 ---
 
@@ -27,8 +28,9 @@ Nothing else to install. Python, ffmpeg and every dependency are bundled inside 
 >
 > Only needed once. Updates after that are handled in-app.
 
-Point it at a folder and it does the rest. Face grouping needs a one-time ~280 MB model
-download, offered inside the app — it's the only download Smriti ever makes.
+Point it at a folder and it does the rest. The first folder you add downloads the
+face-recognition models (~280 MB, once) — the only download Smriti ever makes. Everything
+after that runs on your machine.
 
 ---
 

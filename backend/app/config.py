@@ -42,6 +42,17 @@ EVENT_MIN_ITEMS = 3
 
 NEAR_DUP_MAX_HAMMING = 8
 
+# Blur: variance of the Laplacian over the 512px thumbnail. Calibrated against
+# a textured test image blurred by known amounts, measured through the same
+# 512px WebP the app actually stores:
+#     sharp 2890 · slightly soft 1770 · clearly blurry 250 · very blurry 38
+# Every tier sits well below "slightly soft", so a sharp photo is never flagged;
+# the tiers look identical on a test set with four discrete blur levels and
+# spread out on a real library, where sharpness is a continuum.
+# Absolute rather than percentile, so a library of uniformly sharp photos
+# correctly reports nothing rather than always indicting its worst 5%.
+BLUR_CEILINGS = {"gentle": 100.0, "normal": 400.0, "aggressive": 1200.0}
+
 FACE_MODEL_DIR = MODELS_DIR / "buffalo_l"
 FACE_DET_SIZE = 640
 FACE_DET_SCORE_MIN = 0.55

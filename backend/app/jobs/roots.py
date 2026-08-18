@@ -16,26 +16,10 @@ twice as many unlinks: far too slow to hold an HTTP request open, and far too
 slow to hold the single global SQLite lock in one transaction.
 """
 import asyncio
-import time
-from pathlib import Path
 
-from .. import config, db
+from .. import db
+from ..services import purge
 from .runner import manager
-
-CHUNK = 500
-
-
-def _artifact(base: Path, ident: int, suffix: str = ".webp") -> Path:
-    """`config.shard_path` without its mkdir — creating directories on the way
-    out would leave empty shards behind for files that never had a thumbnail."""
-    return base / f"{ident % 256:02x}" / f"{ident}{suffix}"
-
-
-def _unlink(p: Path) -> None:
-    try:
-        p.unlink(missing_ok=True)
-    except OSError:
-        pass  # a cache file we cannot remove is not worth failing the job over
 
 
 def _ids_under(root) -> set[int]:
@@ -54,32 +38,6 @@ def _ids_under(root) -> set[int]:
     return {r["id"] for r in rows if r["rel_path"] == rel or (r["rel_path"] or "").startswith(prefix)}
 
 
-def _purge(job_id: int, ids: list[int]) -> None:
-    """Delete rows and caches in batches, reporting progress as it goes."""
-    total = len(ids)
-    last = 0.0
-    for i in range(0, total, CHUNK):
-        chunk = ids[i : i + CHUNK]
-        marks = ",".join("?" * len(chunk))
-
-        # face crops are keyed by face id, so they have to be collected before
-        # the cascade takes the rows away
-        face_ids = [r["id"] for r in db.query(f"SELECT id FROM faces WHERE file_id IN ({marks})", chunk)]
-
-        db.execute(f"DELETE FROM files WHERE id IN ({marks})", chunk)  # cascades everywhere
-
-        for fid in chunk:
-            _unlink(_artifact(config.THUMBS_DIR, fid))
-            _unlink(_artifact(config.PREVIEWS_DIR, fid))
-        for face_id in face_ids:
-            _unlink(_artifact(config.FACE_CROPS_DIR, face_id))
-
-        now = time.monotonic()
-        if now - last >= 0.5:  # the publish throttle every other job uses
-            last = now
-            manager.update(job_id, total=total, done=min(i + CHUNK, total))
-
-
 async def run_remove_root(job_id: int, root_id: int) -> None:
     root = db.query_one("SELECT * FROM roots WHERE id=?", (root_id,))
     if not root:
@@ -96,13 +54,9 @@ async def run_remove_root(job_id: int, root_id: int) -> None:
     manager.update(job_id, total=len(ids), done=0, message=f"removing {len(ids):,} photos from the library…")
 
     if ids:
-        await asyncio.to_thread(_purge, job_id, ids)
+        await asyncio.to_thread(purge.purge_files, job_id, ids)
 
-    # faces.person_id is ON DELETE SET NULL, so people whose every photo just
-    # went would otherwise linger as empty entries in People.
-    db.execute(
-        "DELETE FROM persons WHERE id NOT IN (SELECT person_id FROM faces WHERE person_id IS NOT NULL)"
-    )
+    purge.drop_orphan_people()
     # albums and events are user-facing groupings; their membership cascaded
     # away, and an emptied album is left alone rather than silently deleted.
 

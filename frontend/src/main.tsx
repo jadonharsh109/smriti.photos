@@ -1,12 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import App from "./App";
 import AlbumPage from "./pages/AlbumPage";
 import AlbumsPage from "./pages/AlbumsPage";
 import DocumentsPage from "./pages/DocumentsPage";
-import DupesPage from "./pages/DupesPage";
+import CleanupPage from "./pages/CleanupPage";
 import EventPage from "./pages/EventPage";
 import EventsPage from "./pages/EventsPage";
 import LandingPage from "./pages/LandingPage";
@@ -43,7 +43,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="events/:id" element={<EventPage />} />
             <Route path="documents" element={<DocumentsPage />} />
           <Route path="locked" element={<LockedPage />} />
-            <Route path="dupes" element={<DupesPage />} />
+            <Route path="cleanup" element={<CleanupPage />} />
+            {/* the page was called Duplicates until 0.1.18 */}
+            <Route path="dupes" element={<Navigate to="/cleanup" replace />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Routes>

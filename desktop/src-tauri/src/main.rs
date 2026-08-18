@@ -33,6 +33,15 @@ fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+/// "Check for updates", from the UI. Reports the up-to-date and offline cases
+/// too — the automatic check swallows both on purpose, which is right when
+/// nobody asked and wrong the moment somebody does.
+#[cfg(desktop)]
+#[tauri::command]
+fn check_updates_now(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move { check_for_update(app, true).await });
+}
+
 /// The user's Downloads folder, falling back to home then the temp dir.
 fn downloads_dir() -> std::path::PathBuf {
     let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
@@ -144,7 +153,7 @@ const UPDATE_OVERLAY_JS: &str = r#"
 /// bandwidth or attention, and every failure is silent — a machine that is
 /// offline (which this app fully supports) must not see an error.
 #[cfg(desktop)]
-async fn check_for_update(app: tauri::AppHandle) {
+async fn check_for_update(app: tauri::AppHandle, asked: bool) {
     use tauri_plugin_updater::UpdaterExt;
 
     let updater = match app.updater() {
@@ -158,11 +167,26 @@ async fn check_for_update(app: tauri::AppHandle) {
         Ok(Some(u)) => u,
         Ok(None) => {
             println!("smriti: already up to date");
+            if asked {
+                let current = app.package_info().version.to_string();
+                app.dialog()
+                    .message(format!("Smriti {current} is the latest version."))
+                    .title("You're up to date")
+                    .blocking_show();
+            }
             return;
         }
         Err(e) => {
             // Offline is a supported way to run this app — never nag about it.
+            // Unless someone just pressed the button, in which case silence
+            // looks like the button is broken.
             eprintln!("smriti: update check failed: {e}");
+            if asked {
+                app.dialog()
+                    .message("Couldn't reach the update server. Check your connection and try again.")
+                    .title("Update check failed")
+                    .blocking_show();
+            }
             return;
         }
     };
@@ -278,7 +302,7 @@ fn main() {
             server: Mutex::new(None),
             log_path: Mutex::new(None),
         })
-        .invoke_handler(tauri::generate_handler![reveal_log, quit_app])
+        .invoke_handler(tauri::generate_handler![reveal_log, quit_app, check_updates_now])
         .setup(|app| {
             // Empty title: the app brands itself in its own sidebar, so the
             // titlebar only needs to carry the traffic lights.
@@ -374,7 +398,7 @@ fn main() {
                 let h = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-                    check_for_update(h).await;
+                    check_for_update(h, false).await;
                 });
             }
 
