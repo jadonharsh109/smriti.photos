@@ -12,7 +12,9 @@ export default function PeoplePage() {
   const { data: stats } = useQuery({
     queryKey: ["stats"],
     queryFn: () =>
-      api.get<{ faces: number; face_pending: number; face_model_ready: boolean }>("/api/stats"),
+      api.get<{ faces: number; people_visible: number; face_pending: number; face_model_ready: boolean }>(
+        "/api/stats"
+      ),
   });
 
   const scan = useMutation({
@@ -33,9 +35,16 @@ export default function PeoplePage() {
       <header className="page-head">
         <div>
           <h1>People</h1>
+          {/* People, not faces. A face count is an internal detail — it can read
+              in the thousands while this page is empty, because a face only
+              becomes a person once several of them match. */}
           <p className="sub">
-            {stats?.faces ?? 0} faces found
-            {stats && stats.face_pending > 0 ? ` · ${stats.face_pending} photos not scanned yet` : ""}
+            {(stats?.people_visible ?? 0) > 0
+              ? `${stats!.people_visible.toLocaleString()} ${stats!.people_visible === 1 ? "person" : "people"}`
+              : "No one grouped yet"}
+            {stats && stats.face_pending > 0
+              ? ` · ${stats.face_pending.toLocaleString()} photos still to check`
+              : ""}
           </p>
         </div>
         <div className="actions">
@@ -59,7 +68,31 @@ export default function PeoplePage() {
       {(people ?? []).length === 0 ? (
         <div className="empty">
           <ArtPeople className="art" />
-          <p>No people yet — scan for faces, then group them. Everything runs on this machine.</p>
+          {/* "Scan for faces, then group them" is the wrong thing to say to
+              someone who has already done both — which is the common case when
+              a small library finds a few faces that never cluster. Say what is
+              actually true of their library instead. */}
+          {stats?.face_model_ready === false ? (
+            <p>
+              People needs the face-recognition models first — about 280 MB, downloaded once.
+              Everything then runs on this machine.
+            </p>
+          ) : (stats?.faces ?? 0) === 0 ? (
+            <p>
+              {(stats?.face_pending ?? 0) > 0
+                ? "Your photos haven't been checked for faces yet — press Scan for faces."
+                : "No one found in your photos yet."}
+            </p>
+          ) : (
+            <p>
+              Smriti has found people in your photos, but not yet enough of the same person to
+              group anyone. It waits until someone appears in several photos before calling
+              them a person — add more photos, or press Group into people to try again.
+              {(stats?.face_pending ?? 0) > 0
+                ? ` ${stats!.face_pending.toLocaleString()} photos still to check.`
+                : ""}
+            </p>
+          )}
         </div>
       ) : (
         <div className="card-grid">

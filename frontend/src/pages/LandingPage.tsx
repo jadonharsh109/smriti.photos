@@ -20,6 +20,7 @@ interface Stats {
   photos: number;
   videos: number;
   persons: number;
+  people_visible: number;
   faces: number;
   geocoded: number;
 }
@@ -118,7 +119,7 @@ export default function LandingPage() {
             <div className="lp-stats">
               <span className="chip"><span className="dot" /><strong>{fmt(stats?.photos)}</strong>&nbsp;photos indexed</span>
               <span className="chip"><strong>{fmt(stats?.videos)}</strong>&nbsp;videos</span>
-              <span className="chip"><strong>{fmt(stats?.persons)}</strong>&nbsp;people recognized</span>
+              <span className="chip"><strong>{fmt(stats?.people_visible)}</strong>&nbsp;people recognized</span>
               <span className="chip"><strong>{fmt(stats?.geocoded)}</strong>&nbsp;photos placed on the map</span>
             </div>
           </div>

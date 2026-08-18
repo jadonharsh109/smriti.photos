@@ -32,6 +32,7 @@ interface Stats {
   geocoded: number;
   faces: number;
   persons: number;
+  people_visible: number;
   face_pending: number;
   db_bytes: number;
   thumbs_bytes: number;
@@ -544,12 +545,24 @@ function Ready({
           </button>
         </div>
       )}
+      {/* Only offer People when People has somebody in it. Faces alone do not
+          make a person: a face joins a group once enough of them cluster
+          together, so a handful of faces across a handful of photos correctly
+          produces nobody — and linking there anyway sends someone to an empty
+          page wondering what they did wrong. */}
       {stats?.face_model_ready && (stats?.faces ?? 0) > 0 && (
-        <p className="muted small setup-quiet">
-          {n(stats.faces)} faces found
-          {(stats.persons ?? 0) > 0 ? ` · ${n(stats.persons)} people named` : ""} —{" "}
-          <Link to="/people">open People</Link>
-        </p>
+        (stats?.people_visible ?? 0) > 0 ? (
+          <p className="muted small setup-quiet">
+            {n(stats.people_visible)} {stats.people_visible === 1 ? "person" : "people"} found
+            {(stats.persons ?? 0) > 0 ? `, ${n(stats.persons)} named` : ""} —{" "}
+            <Link to="/people">open People</Link>
+          </p>
+        ) : (
+          <p className="muted small setup-quiet">
+            No one grouped yet — Smriti needs to see the same person in several photos before it
+            can tell them apart. It keeps trying as more photos come in.
+          </p>
+        )
       )}
     </>
   );

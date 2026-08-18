@@ -118,6 +118,16 @@ def stats():
         "geocoded": db.query_one("SELECT COUNT(*) n FROM file_places")["n"],
         "faces": db.query_one("SELECT COUNT(*) n FROM faces")["n"],
         "persons": db.query_one("SELECT COUNT(*) n FROM persons WHERE name IS NOT NULL")["n"],
+        # People the People page will actually show. `persons` above counts only
+        # NAMED people, so it is 0 on a library full of unnamed clusters — and
+        # faces alone prove nothing, since a face only becomes a person once
+        # FACE_MIN_CLUSTER_SIZE of them cluster together. Anything that offers
+        # to send someone to People has to ask this, or it promises an empty page.
+        "people_visible": db.query_one(
+            "SELECT COUNT(*) n FROM persons p WHERE p.is_hidden=0 AND EXISTS ("
+            " SELECT 1 FROM faces fa JOIN files f ON f.id=fa.file_id "
+            " WHERE fa.person_id=p.id AND f.status='active' "
+            " AND f.id NOT IN (SELECT file_id FROM locked_items))")["n"],
         "face_pending": db.query_one(
             "SELECT COUNT(*) n FROM files WHERE status='active' AND media_type='photo' AND face_scanned=0")["n"],
         "db_bytes": os.path.getsize(config.DB_PATH) if config.DB_PATH.exists() else 0,
