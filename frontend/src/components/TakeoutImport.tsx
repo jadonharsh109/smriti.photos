@@ -170,8 +170,9 @@ export default function TakeoutImport({ onClose }: { onClose: () => void }) {
             </header>
             <div className="modal-body" style={{ display: "grid", gap: 16 }}>
               <p className="muted small">
-                Smriti unpacks the export, puts the dates and places Google kept in its
-                sidecar files back into the photos, and adds the result to your library.
+                Smriti unpacks the export and puts the dates and places Google kept in its
+                sidecar files back into the photos. It stops there: you get a folder of
+                repaired photos, and whether it joins your library is up to you afterwards.
                 Your original .zip files are never modified.
               </p>
 
@@ -206,8 +207,8 @@ export default function TakeoutImport({ onClose }: { onClose: () => void }) {
                 </div>
                 {dest && a && (
                   <p className="muted small" style={{ marginTop: 6 }}>
-                    A “{a.photos_root}” folder will be created there, and added to your library
-                    automatically once the copy finishes.
+                    The repaired photos go into a “{a.photos_root}” folder there. Nothing is
+                    added to your library — you can do that later, from this page.
                   </p>
                 )}
               </div>
@@ -233,7 +234,8 @@ export default function TakeoutImport({ onClose }: { onClose: () => void }) {
                     <p className="muted small">
                       {a.albums.length} album{a.albums.length === 1 ? "" : "s"} —{" "}
                       {a.albums.slice(0, 3).map((al) => `${al.name} (${al.count})`).join(", ")}
-                      {a.albums.length > 3 ? ", …" : ""}. They become albums in Smriti.
+                      {a.albums.length > 3 ? ", …" : ""}. Kept as folders, and turned into Smriti
+                      albums if you add this to your library.
                     </p>
                   )}
                   {a.duplicate_paths > 0 && (
@@ -284,7 +286,7 @@ export default function TakeoutImport({ onClose }: { onClose: () => void }) {
                 disabled={!zips.length || !dest || !a || start.isPending}
                 onClick={() => start.mutate()}
               >
-                {start.isPending ? "Starting…" : a ? `Import ${a.total.toLocaleString()} items` : "Import"}
+                {start.isPending ? "Starting…" : a ? `Repair ${a.total.toLocaleString()} items` : "Repair"}
               </button>
             </footer>
           </div>

@@ -16,6 +16,7 @@ from . import events as events_job
 from . import faces as faces_job
 from . import geocode as geocode_job
 from . import scan as scan_job
+from . import takeout as takeout_job
 from .runner import manager
 
 
@@ -45,6 +46,10 @@ async def run_post_scan() -> None:
         if await _stage("faces", lambda jid: faces_job.run_face_scan(jid)) == "done":
             await _wait_idle("faces", "recluster")
             await _stage("recluster", lambda jid: faces_job.run_recluster(jid))
+    # A Takeout import records its albums but cannot apply them — the photos
+    # have no ids until a scan covers them, which only happens if the user
+    # chooses to add the folder. This is that moment, whenever it arrives.
+    await asyncio.to_thread(takeout_job.apply_pending_albums)
 
 
 async def run_pipeline(root_id: int) -> None:

@@ -1,9 +1,13 @@
-"""Google Takeout import: look before you leap, then import.
+"""Google Takeout import: look before you leap, then heal.
 
 `analyze` exists so the import is never a surprise. It reads only the archives'
 central directories — a fraction of a second even for tens of gigabytes — and
 answers the questions worth answering first: how many photos, how much disk,
 which albums, and whether the set of parts looks complete.
+
+An import heals photos into a folder and stops there. Adding that folder to the
+library is a separate decision, made through the ordinary "add a folder" path,
+which is why nothing here registers a root.
 """
 import os
 
@@ -89,9 +93,45 @@ def start_import(body: ImportIn):
     return {"job_id": job_id}
 
 
+def _watched_paths() -> list[str]:
+    """Absolute paths of every watched folder, from the volumes table rather
+    than from the disk — no mount probing, so this stays cheap enough to call
+    whenever the library page renders."""
+    out = []
+    for r in db.query(
+        "SELECT r.rel_path, v.last_mount_path FROM roots r JOIN volumes v ON v.id=r.volume_id"
+    ):
+        mount = r["last_mount_path"]
+        if not mount:
+            continue
+        out.append(os.path.join(mount, *r["rel_path"].split("/")) if r["rel_path"] else mount)
+    return out
+
+
+def _covered(path: str, roots: list[str]) -> bool:
+    target = os.path.normcase(os.path.abspath(path))
+    for root in roots:
+        r = os.path.normcase(os.path.abspath(root))
+        if target == r or target.startswith(r.rstrip(os.sep) + os.sep):
+            return True
+    return False
+
+
 @router.get("/takeout/imports")
 def list_imports():
-    return [dict(r) for r in db.query(
+    """Finished imports, and whether their folder is in the library yet.
+
+    The UI uses this to offer the choice the import deliberately does not make
+    on the user's behalf."""
+    roots = _watched_paths()
+    out = []
+    for r in db.query(
         "SELECT i.*, (SELECT COUNT(DISTINCT album_name) FROM takeout_album_items t "
         " WHERE t.import_id=i.id) AS albums "
-        "FROM takeout_imports i ORDER BY i.id DESC LIMIT 20")]
+        "FROM takeout_imports i WHERE i.finished_at IS NOT NULL ORDER BY i.id DESC LIMIT 20"
+    ):
+        row = dict(r)
+        row["in_library"] = _covered(row["dest_path"], roots)
+        row["exists"] = os.path.isdir(row["dest_path"])
+        out.append(row)
+    return out

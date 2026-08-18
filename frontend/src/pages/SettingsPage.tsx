@@ -17,6 +17,14 @@ interface Removal {
   faces: number;
   locked: number;
 }
+interface TakeoutImport {
+  id: number;
+  dest_path: string;
+  media_count: number;
+  albums: number;
+  in_library: boolean;
+  exists: boolean;
+}
 interface AppSettings {
   auto_scan: boolean;
   auto_scan_minutes: number;
@@ -75,6 +83,10 @@ export default function SettingsPage() {
     staleTime: Infinity,
   });
   const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: () => api.get<AppSettings>("/api/settings") });
+  const { data: takeouts } = useQuery({
+    queryKey: ["takeout-imports"],
+    queryFn: () => api.get<TakeoutImport[]>("/api/takeout/imports"),
+  });
 
   // live log: seed with recent history once, then append from the SSE stream
   useEffect(() => {
@@ -118,6 +130,7 @@ export default function SettingsPage() {
       setPickerOpen(false);
       await api.post("/api/process", { root_id: r.id }); // index + everything else, automatically
       qc.invalidateQueries({ queryKey: ["jobs"] });
+      qc.invalidateQueries({ queryKey: ["takeout-imports"] });
     },
   });
   const reprocess = useMutation({
@@ -259,13 +272,42 @@ export default function SettingsPage() {
         <div>
           <strong>Coming from Google Photos?</strong>
           <p className="muted small" style={{ marginTop: 3 }}>
-            Import a Google Takeout export. Smriti unpacks it, restores the dates and places
-            Google moved into sidecar files, and brings your albums across.
+            Repair a Google Takeout export. Smriti unpacks it and puts back the dates and
+            places Google moved into sidecar files. You get a folder of fixed photos — adding
+            them to your library is up to you.
           </p>
         </div>
         <span className="spacer" />
         <button onClick={() => setTakeoutOpen(true)}>Import Takeout…</button>
       </div>
+
+      {/* A repaired export is just a folder until the user says otherwise —
+          so this offers, rather than assumes. It disappears once the folder is
+          watched, and never nags again. */}
+      {(takeouts ?? [])
+        .filter((t) => t.exists && !t.in_library)
+        .map((t) => (
+          <div className="panel setup-card" key={t.id}>
+            <div>
+              <strong>
+                {n(t.media_count)} repaired {t.media_count === 1 ? "photo" : "photos and videos"} ready
+              </strong>
+              <p className="muted small" style={{ marginTop: 3, wordBreak: "break-word" }}>
+                {t.dest_path}
+              </p>
+              <p className="muted small" style={{ marginTop: 3 }}>
+                They are not in your library yet. Add them and Smriti indexes them like any other
+                folder{t.albums > 0
+                  ? `, and your ${t.albums} Google ${t.albums === 1 ? "album comes" : "albums come"} across`
+                  : ""}.
+              </p>
+            </div>
+            <span className="spacer" />
+            <button className="primary" onClick={() => addRoot.mutate(t.dest_path)}>
+              Add to library
+            </button>
+          </div>
+        ))}
 
       {/* Everything below is machinery: kept in full, closed by default. */}
       <details className="adv">

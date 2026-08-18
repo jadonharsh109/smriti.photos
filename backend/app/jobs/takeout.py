@@ -13,10 +13,15 @@ if they are wrong:
   * **Never a partial file.** Everything is written to a temporary name and
     renamed into place, so an interrupted import leaves whole files or nothing.
 
-Once the bytes are on disk the job hands over to the ordinary machinery: the
-destination is registered as a library folder and `pipeline.run_pipeline` runs
-exactly as it does for a folder the user picked themselves. Albums are applied
-last, because they need the file ids that only the scan can produce.
+The import stops once the bytes are on disk. It does not index anything and it
+does not touch the library: healing a Takeout export and deciding to live with
+those photos are two different decisions, and only the first one is being asked
+for here. The result is an ordinary folder of ordinary photos, which the user
+can add through the normal "add a folder" path whenever they want — or never.
+
+Albums are the one thing that has to wait: they need file ids, which only exist
+after a scan. So they are recorded now and applied by `apply_pending_albums`
+after whichever scan eventually covers them.
 """
 from __future__ import annotations
 
@@ -196,14 +201,30 @@ def apply_albums(import_id: int) -> int:
             [(album_id, fid, start + n) for n, fid in enumerate(file_ids)],
         )
         made += 1
-    db.execute("UPDATE takeout_imports SET albums_applied=1 WHERE id=?", (import_id,))
+    if made:
+        db.execute("UPDATE takeout_imports SET albums_applied=1 WHERE id=?", (import_id,))
     return made
+
+
+def apply_pending_albums() -> int:
+    """Give any finished import its albums, once its photos have file ids.
+
+    Called after every scan. Until the user adds the imported folder there is
+    nothing to match, so this finds nothing and costs one indexed query; the
+    moment they do add it, the albums appear without them asking."""
+    total = 0
+    for row in db.query(
+        "SELECT id FROM takeout_imports WHERE albums_applied=0 AND finished_at IS NOT NULL"
+    ):
+        try:
+            total += apply_albums(row["id"])
+        except Exception:  # noqa: BLE001 - never fail a scan over this
+            pass
+    return total
 
 
 async def run_import(job_id: int, archives: list[str], destination: str,
                      write_exif: bool = True) -> None:
-    from . import pipeline
-
     manager.update(job_id, message="reading the archives…")
     man = await asyncio.to_thread(tk.scan_archives, archives)
     if man.unreadable:
@@ -242,8 +263,11 @@ async def run_import(job_id: int, archives: list[str], destination: str,
                        f"stopped after {stats['written']:,} files — run the import again to carry on")
         return
 
-    summary = (f"{stats['written']:,} copied"
-               + (f" · {stats['skipped']:,} already there" if stats["skipped"] else "")
+    written = stats["written"] + stats["skipped"]
+    db.execute("UPDATE takeout_imports SET finished_at=?, media_count=? WHERE id=?",
+               (int(time.time()), written, import_id))
+
+    summary = (f"{written:,} photos and videos ready in {dest_root.name}"
                + (f" · {stats['repaired']:,} dates restored" if stats["repaired"] else "")
                + (f" · {stats['linked']:,} album copies linked" if stats["linked"] else "")
                + (f" · {stats['errors']:,} failed" if stats["errors"] else "")
@@ -251,17 +275,6 @@ async def run_import(job_id: int, archives: list[str], destination: str,
                # in a part of the export that was not selected.
                + (f" · {stats['undated']:,} still without a date"
                   if stats["undated"] else ""))
+    # Deliberately the end of the road: nothing is indexed and no folder is
+    # watched until the user says so.
     manager.finish(job_id, "done", summary)
-
-    # Hand over to the ordinary machinery: from here it is just a folder.
-    try:
-        volume_id, _, rel = vol_svc.volume_for_path(str(dest_root))
-    except ValueError:
-        return
-    root = db.query_one("SELECT id FROM roots WHERE volume_id=? AND rel_path=?", (volume_id, rel))
-    root_id = root["id"] if root else db.execute(
-        "INSERT INTO roots (volume_id, rel_path) VALUES (?,?)", (volume_id, rel)
-    ).lastrowid
-
-    await pipeline.run_pipeline(root_id)
-    await asyncio.to_thread(apply_albums, import_id)

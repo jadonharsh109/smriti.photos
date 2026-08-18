@@ -47,10 +47,10 @@ after that runs on your machine.
   stays exactly as you arranged it.
 - **Duplicates** — exact (BLAKE2) and near-duplicate (perceptual hash) detection with a
   suggested keeper. Cleanup moves files to the **system Trash** — always recoverable.
-- **Google Takeout import** — point it at the `.zip` parts of a Google Photos
-  export. It puts back the dates and GPS that Google moved out into sidecar
-  files, brings your albums across as Smriti albums, and never re-encodes a
-  photo. See below.
+- **Google Takeout repair** — point it at the `.zip` parts of a Google Photos
+  export and it hands back a folder of repaired photos, with the dates and GPS
+  that Google moved out into sidecar files put back where they belong. Nothing
+  is re-encoded, and nothing joins your library unless you say so. See below.
 - **Export** — select anything and save the originals as a `.zip`.
 - **Locked** — a passcode-protected section; hidden photos vanish from every other view.
 - **Videos** — ffprobe metadata, poster frames, scrubbing via HTTP range requests.
@@ -62,7 +62,13 @@ after that runs on your machine.
 ## Coming from Google Photos
 
 **Your library → Import Takeout…** takes the `.zip` parts Google gives you and
-turns them into a folder Smriti watches.
+turns them into a folder of repaired photos.
+
+It stops there, on purpose. Repairing an export and deciding to live with those
+photos are two different decisions, so the import makes only the first one: you
+get an ordinary folder you can open in Finder, copy to a drive, or ignore. When
+you do want it in the library, one button on the same page adds it — and the
+albums the repair recorded come across at that point.
 
 Select every part you downloaded at once — this is not optional politeness.
 Google splits an export across numbered zips and routinely files a photo's
@@ -78,15 +84,17 @@ What the import fixes:
   itself, so other apps see it too. A photo that already has its own date is
   never overwritten.
 - **Places.** GPS from the sidecar, for the photos that lost it.
-- **Albums.** Your Google albums become Smriti albums.
+- **Albums.** Kept as folders, and turned into Smriti albums if and when you add
+  the folder to your library.
 - **Duplicates.** Takeout stores an album's photos twice, byte for byte. Both
   paths are recreated, but the second is a hardlink — the mirror is exact and
   the bytes exist once.
 
 Nothing is re-encoded: the capture date is spliced into the JPEG's metadata
 segment, leaving every byte of image data untouched. Your `.zip` files are only
-ever read. An interrupted import picks up where it left off, and importing the
-remaining parts later fills in the metadata that was missing the first time.
+ever read, and nothing is indexed, scanned or watched until you ask for it. An
+interrupted repair picks up where it left off, and repairing the remaining parts
+later fills in the metadata that was missing the first time.
 
 > The import copies photos out of the archives, so it needs roughly as much free
 > space as the export itself. Smriti checks before it starts.
