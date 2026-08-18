@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from .. import db
 from ..jobs import pipeline
+from ..jobs import roots as roots_job
 from ..jobs import scan as scan_job
 from ..jobs.runner import manager
 from ..services import volumes as vol_svc
@@ -48,10 +49,49 @@ def add_root(body: RootIn):
     return {"id": cur.lastrowid, "existed": False}
 
 
+@router.get("/roots/{root_id}/removal")
+def removal_preview(root_id: int):
+    """What removing this folder would actually take out of the library.
+
+    The UI asks before it deletes, and "1,234 photos" is only honest if it is
+    the number this specific removal would touch — files still covered by
+    another watched folder are not counted, because they are not going."""
+    root = db.query_one("SELECT * FROM roots WHERE id=?", (root_id,))
+    if not root:
+        raise HTTPException(404, "no such folder")
+    doomed = roots_job._ids_under(root)
+    for other in db.query("SELECT * FROM roots WHERE id!=?", (root_id,)):
+        doomed -= roots_job._ids_under(other)
+    if not doomed:
+        return {"files": 0, "photos": 0, "videos": 0, "faces": 0, "locked": 0}
+    marks = ",".join("?" * len(doomed))
+    ids = list(doomed)
+    kinds = {r["media_type"]: r["n"] for r in db.query(
+        f"SELECT media_type, COUNT(*) n FROM files WHERE id IN ({marks}) GROUP BY media_type", ids)}
+    return {
+        "files": len(ids),
+        "photos": kinds.get("photo", 0),
+        "videos": kinds.get("video", 0),
+        "faces": db.query_one(f"SELECT COUNT(*) n FROM faces WHERE file_id IN ({marks})", ids)["n"],
+        # worth calling out separately: these are deliberately hidden photos
+        "locked": db.query_one(
+            f"SELECT COUNT(*) n FROM locked_items WHERE file_id IN ({marks})", ids)["n"],
+    }
+
+
 @router.delete("/roots/{root_id}")
 def delete_root(root_id: int):
-    db.execute("DELETE FROM roots WHERE id=?", (root_id,))
-    return {"ok": True}
+    """Stop watching a folder AND take its photos out of the library.
+
+    Runs as a job: a large folder is tens of thousands of row deletes plus the
+    thumbnail, preview and face-crop caches. Nothing on disk is touched."""
+    if not db.query_one("SELECT id FROM roots WHERE id=?", (root_id,)):
+        raise HTTPException(404, "no such folder")
+    if manager.any_running("scan") or manager.any_running("remove"):
+        raise HTTPException(409, "wait for the current scan to finish, then try again")
+    job_id = manager.create("remove", root_id=root_id)
+    manager.start(job_id, roots_job.run_remove_root(job_id, root_id))
+    return {"job_id": job_id}
 
 
 @router.post("/scan")

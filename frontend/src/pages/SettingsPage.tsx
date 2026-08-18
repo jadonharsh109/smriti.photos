@@ -13,6 +13,13 @@ interface FsList {
   dirs: { name: string; path: string }[];
   media_count: number;
 }
+interface Removal {
+  files: number;
+  photos: number;
+  videos: number;
+  faces: number;
+  locked: number;
+}
 interface AppSettings {
   auto_scan: boolean;
   auto_scan_minutes: number;
@@ -363,15 +370,8 @@ export default function SettingsPage() {
       )}
 
       {confirmingRemove && (
-        <ConfirmDialog
-          title="Stop watching this folder?"
-          body={
-            "Smriti will stop looking here for new photos. Nothing on your disk is touched — " +
-            "the folder and every file in it stay exactly where they are.\n\n" +
-            "Photos already added from this folder remain in your library."
-          }
-          confirmLabel="Stop watching"
-          danger
+        <RemoveDialog
+          root={confirmingRemove}
           onConfirm={() => delRoot.mutate(confirmingRemove.id)}
           onClose={() => setConfirmingRemove(null)}
         />
@@ -555,6 +555,64 @@ function Ready({
   );
 }
 
+/** Asks before removing a folder, using the numbers this removal would really
+ *  touch rather than a guess. Photos still covered by another watched folder
+ *  are not counted, because they are not going anywhere. */
+function RemoveDialog({
+  root,
+  onConfirm,
+  onClose,
+}: {
+  root: Root;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const { data, isPending } = useQuery({
+    queryKey: ["removal", root.id],
+    queryFn: () => api.get<Removal>(`/api/roots/${root.id}/removal`),
+  });
+  return (
+    <ConfirmDialog
+      title="Remove this folder from your library?"
+      confirmLabel={isPending ? "Checking…" : "Remove from library"}
+      danger
+      body={
+        <>
+          <p style={{ marginBottom: 10, wordBreak: "break-word" }}>{root.abs_path}</p>
+          {isPending || !data ? (
+            <p>Checking what this would remove…</p>
+          ) : data.files === 0 ? (
+            <p>Smriti will stop watching this folder. Nothing was indexed from it, so nothing is lost.</p>
+          ) : (
+            <>
+              <p style={{ marginBottom: 10 }}>
+                <strong>
+                  {n(data.photos)} photos{data.videos > 0 ? ` and ${n(data.videos)} videos` : ""}
+                </strong>{" "}
+                will be taken out of your library, along with{" "}
+                {data.faces > 0 ? `${n(data.faces)} faces and ` : ""}anything built from them —
+                trips, places and album entries.
+              </p>
+              {data.locked > 0 && (
+                <p style={{ marginBottom: 10, color: "var(--danger)" }}>
+                  {n(data.locked)} of them {data.locked === 1 ? "is" : "are"} in your Locked
+                  section.
+                </p>
+              )}
+              <p>
+                <strong>Your files are not deleted.</strong> Every photo stays exactly where it is
+                on disk — add the folder again and Smriti will index it back.
+              </p>
+            </>
+          )}
+        </>
+      }
+      onConfirm={onConfirm}
+      onClose={onClose}
+    />
+  );
+}
+
 function FolderList({
   roots,
   onRefresh,
@@ -583,7 +641,7 @@ function FolderList({
           <button onClick={() => onRefresh(r.id)} disabled={!r.is_online} title="Look for anything new in this folder">
             Refresh
           </button>
-          <button className="danger" onClick={() => onRemove(r)} title="Stop watching this folder — your files are not touched">
+          <button className="danger" onClick={() => onRemove(r)} title="Take this folder out of your library — your files on disk are not touched">
             Remove
           </button>
         </div>

@@ -67,7 +67,7 @@ export function ConfirmDialog({
   onClose,
 }: {
   title: string;
-  body?: string;
+  body?: React.ReactNode;
   confirmLabel?: string;
   danger?: boolean;
   onConfirm: () => void;
