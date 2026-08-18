@@ -52,3 +52,43 @@ fn does_not_grant_anyone_else() {
         assert!(!matches(url), "must not match {url}");
     }
 }
+
+/// Every capability file must also be *switched on* in tauri.conf.json.
+///
+/// This is the trap that shipped a broken fix: `app.security.capabilities` is an
+/// explicit whitelist, so a capability file can be parsed, resolved and written
+/// into the build output while never being activated. Nothing fails — the
+/// command is simply absent from the ACL at runtime, and in a release build the
+/// rejection reads only "not allowed by ACL" with no hint that the capability
+/// exists but is dormant.
+#[test]
+fn every_capability_file_is_activated() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let conf: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("tauri.conf.json")).unwrap())
+            .unwrap();
+    let enabled: Vec<String> = conf["app"]["security"]["capabilities"]
+        .as_array()
+        .expect("app.security.capabilities must stay an explicit whitelist")
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+
+    for entry in std::fs::read_dir(dir.join("capabilities")).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let cap: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let id = cap["identifier"].as_str().expect("capability needs an identifier");
+        assert!(
+            enabled.iter().any(|e| e == id),
+            "capability {:?} ({}) is never activated — add {:?} to \
+             app.security.capabilities in tauri.conf.json, or delete the file",
+            path.file_name().unwrap(),
+            id,
+            id
+        );
+    }
+}
