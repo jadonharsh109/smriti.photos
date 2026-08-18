@@ -1,6 +1,7 @@
+import justifiedLayout from "justified-layout";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, fetchAllItems, filterQS, fmtDay, type Bucket, type Filters, type Item } from "../api/client";
 import { ArtPhotos } from "./Illustrations";
 import JustifiedGrid from "./JustifiedGrid";
@@ -9,7 +10,7 @@ import Lightbox from "./Lightbox";
 import SelectionBar from "./SelectionBar";
 
 const ROW_H = 220;
-const HEADER_H = 44;
+const HEADER_H = 46;   // .day-header is height:46px (border-box) in styles.css
 
 interface Props {
   filters: Filters;
@@ -27,6 +28,7 @@ export default function TimelineGrid({ filters, emptyText = "Nothing here yet", 
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(1000);
   const [scrollMargin, setScrollMargin] = useState(0);
+  const estimateCache = useRef(new Map<string, number>());
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [lightbox, setLightbox] = useState<{ dayIdx: number; itemIdx: number; item: Item } | null>(null);
 
@@ -58,15 +60,50 @@ export default function TimelineGrid({ filters, emptyText = "Nothing here yet", 
     };
   }, []);
 
-  const estimate = (count: number) => {
-    const perRow = Math.max(1, Math.floor(width / (ROW_H * 1.35)));
-    return HEADER_H + Math.ceil(count / perRow) * (ROW_H + 4) + 12;
-  };
+  /** How tall a day will be, before any of its photos have been fetched.
+   *
+   *  This has to be close, because the virtualizer builds the entire scroll
+   *  range out of these numbers and then corrects each one as it is measured.
+   *  A correction to a day ABOVE the viewport forces a compensating scroll —
+   *  which is felt as the timeline lurching under the cursor. The old guess
+   *  assumed every photo was landscape 3:2 and over-estimated a portrait-heavy
+   *  day by more than 40%, so every day corrected, and the whole scroll range
+   *  shrank as you went.
+   *
+   *  So run the real layout algorithm rather than approximating it: the day's
+   *  average shape, repeated `count` times, packed by the same function the
+   *  grid itself uses. Memoized per (day, width) because the virtualizer asks
+   *  for these constantly. */
+  const estimate = useCallback(
+    (b: Bucket) => {
+      // Keyed by day alone: the cache is emptied whenever the width changes,
+      // so an entry can never describe a layout that is no longer on screen.
+      const hit = estimateCache.current.get(b.day);
+      if (hit !== undefined) return hit;
+      const avg = b.ar && b.count ? b.ar / b.count : 1.5;
+      const boxes = Array.from({ length: b.count }, () => ({ width: avg * 1000, height: 1000 }));
+      const { containerHeight } = justifiedLayout(boxes, {
+        containerWidth: Math.max(width, 200),
+        targetRowHeight: ROW_H,
+        boxSpacing: 4,
+        containerPadding: 0,
+      });
+      const h = HEADER_H + containerHeight;
+      estimateCache.current.set(b.day, h);
+      return h;
+    },
+    [width]
+  );
+
+  // A resize re-lays out every day, so every cached height is now wrong.
+  useEffect(() => {
+    estimateCache.current.clear();
+  }, [width]);
 
   const virtualizer = useVirtualizer({
     count: buckets?.length ?? 0,
     getScrollElement: () => document.getElementById("main-scroll"),
-    estimateSize: (i) => estimate(buckets![i].count),
+    estimateSize: (i) => estimate(buckets![i]),
     overscan: 4,
     getItemKey: (i) => buckets![i].day,
     scrollMargin,
@@ -162,7 +199,7 @@ export default function TimelineGrid({ filters, emptyText = "Nothing here yet", 
               filterKey={filterKey}
               filters={filters}
               width={width - 70}
-              estHeight={estimate(buckets[vi.index].count) - HEADER_H}
+              estHeight={estimate(buckets[vi.index]) - HEADER_H}
               onOpen={(itemIdx) => openAt(vi.index, itemIdx)}
               selected={selected}
               onToggleSelect={toggleSelect}
