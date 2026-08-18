@@ -141,25 +141,23 @@ def check_takeout(tmp: str) -> None:
     print(f"repair: lonely={lonely_date} shared={shared_date} gps={bool(shared_gps)}")
 
     # Healing is the whole job: nothing may have been indexed or watched, and
-    # no album may exist yet. Adding the folder is the user's separate call.
+    # no album may exist yet. Whether these photos join the library is a
+    # separate decision, taken later through the ordinary "add a folder" path.
     assert not any(a["name"] == "Goa Trip" for a in get("/api/albums")), \
         "the import created an album without being asked to"
     assert not any(r["abs_path"].startswith(dest) for r in get("/api/roots")), \
         "the import added a library folder without being asked to"
-    pending = [t for t in get("/api/takeout/imports") if t["dest_path"].startswith(dest)]
-    assert pending and not pending[0]["in_library"], f"import not offered for adding: {pending}"
-    assert pending[0]["media_count"] == 2, f"wrong count offered: {pending[0]}"
-    print("import left the library untouched, and is offered for adding — PASS")
+    print("import left the library untouched — PASS")
 
-    # ...and when the user does say yes, the albums it recorded come across.
+    # ...and if the folder is added later, like any other folder, the albums
+    # the import recorded come across with it.
     added = post("/api/roots", {"path": root})
     post("/api/process", {"root_id": added["id"]})
     wait_for(lambda: any(a["name"] == "Goa Trip" for a in get("/api/albums")), 240,
              "the Takeout album to become a Smriti album")
     goa = next(a for a in get("/api/albums") if a["name"] == "Goa Trip")
     assert goa["count"] == 1, f"album has the wrong contents: {goa}"
-    assert get("/api/takeout/imports")[0]["in_library"], "import still reported as not added"
-    print(f"after adding to the library: album 'Goa Trip' -> {goa['count']} item — PASS")
+    print(f"after adding the folder by hand: album 'Goa Trip' -> {goa['count']} item — PASS")
 
 
 def main() -> None:

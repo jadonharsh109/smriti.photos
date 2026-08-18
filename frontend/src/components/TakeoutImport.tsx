@@ -208,7 +208,7 @@ export default function TakeoutImport({ onClose }: { onClose: () => void }) {
                 {dest && a && (
                   <p className="muted small" style={{ marginTop: 6 }}>
                     The repaired photos go into a “{a.photos_root}” folder there. Nothing is
-                    added to your library — you can do that later, from this page.
+                    added to your library — add that folder like any other if you want it in.
                   </p>
                 )}
               </div>
@@ -235,7 +235,7 @@ export default function TakeoutImport({ onClose }: { onClose: () => void }) {
                       {a.albums.length} album{a.albums.length === 1 ? "" : "s"} —{" "}
                       {a.albums.slice(0, 3).map((al) => `${al.name} (${al.count})`).join(", ")}
                       {a.albums.length > 3 ? ", …" : ""}. Kept as folders, and turned into Smriti
-                      albums if you add this to your library.
+                      albums if you ever add this folder to your library.
                     </p>
                   )}
                   {a.duplicate_paths > 0 && (

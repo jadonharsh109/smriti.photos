@@ -65,10 +65,10 @@ after that runs on your machine.
 turns them into a folder of repaired photos.
 
 It stops there, on purpose. Repairing an export and deciding to live with those
-photos are two different decisions, so the import makes only the first one: you
-get an ordinary folder you can open in Finder, copy to a drive, or ignore. When
-you do want it in the library, one button on the same page adds it — and the
-albums the repair recorded come across at that point.
+photos are two different decisions, so the repair makes only the first one: you
+get an ordinary folder you can open in Finder, copy to a drive, or ignore. If
+you do want those photos in your library, add the folder the way you would add
+any other — and the albums the repair recorded come across with it.
 
 Select every part you downloaded at once — this is not optional politeness.
 Google splits an export across numbered zips and routinely files a photo's
@@ -84,8 +84,8 @@ What the import fixes:
   itself, so other apps see it too. A photo that already has its own date is
   never overwritten.
 - **Places.** GPS from the sidecar, for the photos that lost it.
-- **Albums.** Kept as folders, and turned into Smriti albums if and when you add
-  the folder to your library.
+- **Albums.** Kept as folders, and turned into Smriti albums if you ever add the
+  folder to your library.
 - **Duplicates.** Takeout stores an album's photos twice, byte for byte. Both
   paths are recreated, but the second is a hardlink — the mirror is exact and
   the bytes exist once.

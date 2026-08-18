@@ -264,8 +264,8 @@ async def run_import(job_id: int, archives: list[str], destination: str,
         return
 
     written = stats["written"] + stats["skipped"]
-    db.execute("UPDATE takeout_imports SET finished_at=?, media_count=? WHERE id=?",
-               (int(time.time()), written, import_id))
+    db.execute("UPDATE takeout_imports SET finished_at=? WHERE id=?",
+               (int(time.time()), import_id))
 
     summary = (f"{written:,} photos and videos ready in {dest_root.name}"
                + (f" · {stats['repaired']:,} dates restored" if stats["repaired"] else "")

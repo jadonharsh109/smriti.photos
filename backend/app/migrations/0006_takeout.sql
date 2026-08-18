@@ -11,7 +11,6 @@ CREATE TABLE takeout_imports (
   archives     TEXT NOT NULL,        -- JSON array of the source .zip paths
   created_at   INTEGER NOT NULL,
   finished_at  INTEGER,              -- NULL while running or if it was cancelled
-  media_count  INTEGER NOT NULL DEFAULT 0,
   albums_applied INTEGER NOT NULL DEFAULT 0
 );
 

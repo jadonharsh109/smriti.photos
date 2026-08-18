@@ -43,7 +43,7 @@ const SENTENCE: Record<string, string> = {
 const NOTE: Record<string, string> = {
   faces: "This one takes a while on a big library — you can keep browsing.",
   models: "About 280 MB, downloaded once.",
-  takeout: "Your .zip files are only read, never changed. Indexing starts by itself afterwards.",
+  takeout: "Your .zip files are only read, never changed. The repaired photos land in a folder — adding it to your library is up to you.",
 };
 
 /** What the counter is counting, so "9,847" reads as something. */
