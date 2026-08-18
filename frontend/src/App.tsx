@@ -39,7 +39,7 @@ const NAV: { sec: string; items: { to: string; label: string; Icon: typeof IconP
     sec: "Manage",
     items: [
       { to: "/dupes", label: "Duplicates", Icon: IconCopy },
-      { to: "/settings", label: "Library setup", Icon: IconSliders },
+      { to: "/settings", label: "Your library", Icon: IconSliders },
     ],
   },
 ];

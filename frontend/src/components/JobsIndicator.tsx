@@ -1,16 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import type { Job } from "../api/client";
-
-const LABELS: Record<string, string> = {
-  scan: "Indexing",
-  faces: "Finding faces",
-  recluster: "Grouping people",
-  geocode: "Locating",
-  neardup: "Finding duplicates",
-  events: "Building events",
-  models: "Downloading face models",
-};
+import { stageLabel } from "../lib/stages";
 
 interface VolToast {
   id: number;
@@ -78,7 +69,7 @@ export default function JobsIndicator() {
         <div className="jobs-card">
           <div className="jc-title">
             <div className="spin" />
-            {LABELS[j.kind] ?? j.kind}
+            {stageLabel(j.kind)}
             {running.length > 1 && <span className="faint">+{running.length - 1}</span>}
           </div>
           <div>

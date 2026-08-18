@@ -29,7 +29,7 @@ export default function TimelinePage() {
           <p>Your library is empty — point Smriti at the folders that hold your photos and it will do the rest.</p>
           <div className="cta row" style={{ justifyContent: "center" }}>
             <Link to="/settings">
-              <button className="primary">Add a library folder</button>
+              <button className="primary">Choose a photos folder</button>
             </Link>
             <Link to="/welcome">
               <button className="ghost">What is Smriti?</button>

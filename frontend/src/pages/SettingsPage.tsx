@@ -1,8 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, fmtBytes, type Job, type Root, type Volume } from "../api/client";
 import { ConfirmDialog } from "../components/Dialogs";
+import { ArtFolder } from "../components/Illustrations";
 import Portal from "../components/Portal";
+import { friendlyError, stageLabel, stageNote, stageSentence, stageUnit } from "../lib/stages";
 
 interface FsList {
   path: string;
@@ -29,33 +32,26 @@ interface Stats {
   face_model_ready: boolean;
 }
 
-const STAGES: { kind: string; label: string }[] = [
-  { kind: "scan", label: "Index" },
-  { kind: "geocode", label: "Locate" },
-  { kind: "events", label: "Events" },
-  { kind: "neardup", label: "Duplicates" },
-  { kind: "faces", label: "Faces" },
-  { kind: "recluster", label: "People" },
-];
-// `models` is not a pipeline stage (it never runs as part of a scan), but it
-// still needs a friendly name in the activity log and status line
-const STAGE_LABEL: Record<string, string> = {
-  ...Object.fromEntries(STAGES.map((s) => [s.kind, s.label])),
-  models: "Face models",
-};
+/** Stages the pipeline runs by itself, in order — used only by the Advanced
+ *  log, since the calm view shows one sentence rather than six dots. */
+const STAGES = ["scan", "geocode", "events", "neardup", "faces", "recluster"] as const;
 
 const fmtLine = (time: string, j: Job) =>
-  `${time}  ${STAGE_LABEL[j.kind] ?? j.kind} · ${j.status}` +
+  `${time}  ${stageLabel(j.kind)} · ${j.status}` +
   (j.total > 0 ? ` ${j.done}/${j.total}` : "") +
   (j.errors ? ` (${j.errors} errors)` : "") +
   (j.message ? ` — ${j.message}` : "");
+
+const n = (x: number | undefined) => (x ?? 0).toLocaleString();
 
 export default function SettingsPage() {
   const qc = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
+  const [confirmingRemove, setConfirmingRemove] = useState<Root | null>(null);
   const [showLogs, setShowLogs] = useState(false);
   const [log, setLog] = useState<string[]>([]);
+  const [live, setLive] = useState<Record<number, Job>>({});
   const logRef = useRef<HTMLDivElement>(null);
 
   const { data: volumes } = useQuery({ queryKey: ["volumes"], queryFn: () => api.get<Volume[]>("/api/volumes") });
@@ -73,15 +69,17 @@ export default function SettingsPage() {
     let dead = false;
     api.get<Job[]>("/api/jobs?limit=30").then((history) => {
       if (dead) return;
-      const lines = [...history]
-        .reverse()
-        .map((j) => fmtLine(j.started_at ? new Date(j.started_at * 1000).toLocaleTimeString() : "—", j));
-      setLog(lines);
+      setLog(
+        [...history]
+          .reverse()
+          .map((j) => fmtLine(j.started_at ? new Date(j.started_at * 1000).toLocaleTimeString() : "—", j))
+      );
     });
     const es = new EventSource("/api/jobs/stream");
     es.addEventListener("job", (e) => {
       const j: Job = JSON.parse((e as MessageEvent).data);
       setLog((prev) => [...prev.slice(-299), fmtLine(new Date().toLocaleTimeString(), j)]);
+      setLive((prev) => ({ ...prev, [j.id]: j }));
     });
     return () => {
       dead = true;
@@ -89,7 +87,6 @@ export default function SettingsPage() {
     };
   }, []);
 
-  // keep the console pinned to the latest line
   useEffect(() => {
     const el = logRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -101,7 +98,6 @@ export default function SettingsPage() {
       qc.invalidateQueries({ queryKey: ["roots"] });
       setPickerOpen(false);
       await api.post("/api/process", { root_id: r.id }); // index + everything else, automatically
-      setShowLogs(true);
       qc.invalidateQueries({ queryKey: ["jobs"] });
     },
   });
@@ -133,193 +129,253 @@ export default function SettingsPage() {
     },
   });
 
-  // latest job per stage drives the pipeline strip
+  // The 2.5s poll is the history; SSE is the present. Merging them (live wins)
+  // keeps this page's progress identical to the sidebar card's, which reads the
+  // same stream — otherwise the two show different percentages side by side.
+  const byId = new Map<number, Job>();
+  for (const j of jobs ?? []) byId.set(j.id, j);
+  for (const j of Object.values(live)) byId.set(j.id, j);
+  const allJobs = [...byId.values()].sort((a, b) => b.id - a.id);
+
   const latest: Record<string, Job> = {};
-  for (const j of jobs ?? []) if (!latest[j.kind]) latest[j.kind] = j;
-  const running = (jobs ?? []).find((j) => j.status === "running");
+  for (const j of allJobs) if (!latest[j.kind]) latest[j.kind] = j;
+  const running = allJobs.find((j) => j.status === "running");
+
+  // ---- which of the four faces is this page wearing? ----------------------
+  const rootList = roots ?? [];
+  const media = (stats?.photos ?? 0) + (stats?.videos ?? 0);
+  const offline = rootList.filter((r) => !r.is_online);
+  const allOffline = rootList.length > 0 && offline.length === rootList.length;
+  const lastFailed = allJobs.find((j) => j.status === "failed");
+
+  // Progress takes the whole page only during the very first index, when there
+  // is genuinely nothing else to show. Once photos exist, a running job — an
+  // automatic scan, say — is a banner above the normal page, so opening this
+  // page mid-scan never hides the folders or the settings.
+  const firstIndex = !!running && media === 0;
+  const view: "invite" | "working" | "attention" | "ready" =
+    rootList.length === 0 ? "invite"
+    : firstIndex ? "working"
+    : running ? "ready"
+    : allOffline || media === 0 ? "attention"
+    : "ready";
 
   return (
     <div className="page">
       <header className="page-head">
         <div>
-          <h1>Library setup</h1>
+          <h1>Your library</h1>
           <p className="sub">
-            Add a folder and Smriti does the rest — indexing, locations, events, duplicates, faces and people
-            all run automatically.
+            {view === "invite"
+              ? "Point Smriti at a folder and it takes care of the rest."
+              : "The folders Smriti watches, and what it has found in them."}
           </p>
         </div>
       </header>
 
-      <div className="panel">
-        <h2>Drives</h2>
-        {(volumes ?? []).map((v) => (
-          <div className="list-row" key={v.id}>
-            <span>{v.internal ? "💻" : "🗄"}</span>
-            <strong>{v.label}</strong>
-            <span className="muted small">{v.mount_path}</span>
-            <span className="spacer" />
-            <span className="muted small">
-              {v.free_bytes != null ? `${fmtBytes(v.free_bytes)} free of ${fmtBytes(v.total_bytes)}` : ""}
-            </span>
-            <span className={`badge ${v.is_online ? "green" : "red"}`}>{v.is_online ? "online" : "offline"}</span>
-          </div>
-        ))}
-      </div>
+      {view === "invite" && <Invite onChoose={() => setPickerOpen(true)} error={addRoot.error} />}
 
-      <div className="panel">
-        <div className="row" style={{ marginBottom: 6 }}>
-          <h2>Library folders</h2>
-          <span className="spacer" />
-          <button className="primary" onClick={() => setPickerOpen(true)}>
-            + Add folder
-          </button>
-        </div>
-        {(roots ?? []).length === 0 && (
-          <p className="muted">
-            Pick the folder that holds your photos — everything else happens on its own.
-          </p>
-        )}
-        {(roots ?? []).map((r) => (
-          <div className="list-row" key={r.id}>
-            <strong>{r.abs_path}</strong>
-            <span className="muted small">{r.file_count} files indexed</span>
-            <span className={`badge ${r.is_online ? "green" : "red"}`}>{r.is_online ? "online" : "offline"}</span>
-            <span className="spacer" />
-            <button
-              onClick={() => reprocess.mutate(r.id)}
-              disabled={!r.is_online || !!running}
-              title="Re-index this folder and re-run all processing"
-            >
-              Re-process
-            </button>
-            <button className="danger" onClick={() => delRoot.mutate(r.id)}>
-              Remove
-            </button>
-          </div>
-        ))}
-        {(addRoot.error || reprocess.error) && (
-          <p className="small" style={{ color: "var(--danger)" }}>{String(addRoot.error ?? reprocess.error)}</p>
-        )}
+      {view === "working" && (
+        <Working job={running!} onStop={() => cancelJob.mutate(running!.id)} />
+      )}
 
-        {/* pipeline status strip */}
-        <div className="row" style={{ marginTop: 14, gap: 8 }}>
-          {STAGES.map((s) => {
-            const j = latest[s.kind];
-            const state =
-              j?.status === "running" ? "run" : j?.status === "done" ? "done" : j?.status === "failed" ? "fail" : "";
-            return (
-              <span key={s.kind} className={`chip stage ${state}`} title={j?.message ?? ""}>
-                {state === "run" ? <span className="spin" /> : <span className="dot" />}
-                {s.label}
-                {state === "run" && j!.total > 0 && (
-                  <span className="faint">{Math.round((j!.done / j!.total) * 100)}%</span>
-                )}
-              </span>
-            );
-          })}
-          {running && (
-            <button className="small" onClick={() => cancelJob.mutate(running.id)}>
-              Cancel
-            </button>
-          )}
-        </div>
-        {!stats?.face_model_ready && (
-          <div style={{ marginTop: 10 }}>
-            <p className="muted small" style={{ marginBottom: 8 }}>
-              Faces &amp; People stay off until the on-device recognition models are downloaded —
-              ≈280 MB, once, and the only download the app ever needs.
+      {view === "attention" && (
+        <Attention
+          roots={rootList}
+          allOffline={allOffline}
+          onChoose={() => setPickerOpen(true)}
+          onRefresh={(id) => reprocess.mutate(id)}
+          onRemove={(r) => setConfirmingRemove(r)}
+        />
+      )}
+
+      {view === "ready" && running && (
+        <Working job={running} onStop={() => cancelJob.mutate(running.id)} />
+      )}
+
+      {view === "ready" && (
+        <Ready
+          roots={rootList}
+          stats={stats}
+          onChoose={() => setPickerOpen(true)}
+          onRefresh={(id) => reprocess.mutate(id)}
+          onRemove={(r) => setConfirmingRemove(r)}
+          onEnablePeople={() => runJob.mutate("/api/models/download")}
+        />
+      )}
+
+      {/* Auto-scan is a single decision, so it reads as a single sentence.
+          The 10/30/60 interval is tuning, and lives in Advanced. */}
+      {view !== "invite" && (
+        <div className="panel setup-row">
+          <div>
+            <strong>Add new photos automatically</strong>
+            <p className="muted small" style={{ marginTop: 3 }}>
+              {settings?.auto_scan
+                ? "Smriti checks your folders now and then and picks up anything new."
+                : "New photos won't appear until you refresh a folder yourself."}
             </p>
-            <button className="primary" onClick={() => runJob.mutate("/api/models/download")} disabled={!!running}>
-              Download face models
-            </button>
           </div>
-        )}
-      </div>
-
-      <div className="panel">
-        <div className="row">
-          <h2 style={{ marginBottom: 0 }}>Automatic scanning</h2>
           <span className="spacer" />
-          <button className="small" onClick={() => checkNow.mutate()} disabled={!!running || checkNow.isPending}>
-            Check now
-          </button>
           <button
             className={`switch${settings?.auto_scan ? " on" : ""}`}
             aria-pressed={settings?.auto_scan ?? false}
-            title={settings?.auto_scan ? "Turn off automatic scanning" : "Turn on automatic scanning"}
+            aria-label="Add new photos automatically"
             onClick={() => saveSettings.mutate({ auto_scan: !settings?.auto_scan })}
           />
         </div>
-        <p className="muted small" style={{ marginTop: 8 }}>
-          Smriti watches your folders for new photos and processes them automatically
-          {settings?.auto_scan ? ` — checking every ${settings.auto_scan_minutes} minutes.` : " — currently off."}
-        </p>
-        {settings?.auto_scan && (
-          <div className="row" style={{ marginTop: 10 }}>
-            <span className="muted small">Check every</span>
-            <div className="seg">
-              {[10, 30, 60].map((m) => (
-                <button
-                  key={m}
-                  className={settings.auto_scan_minutes === m ? "on" : ""}
-                  onClick={() => saveSettings.mutate({ auto_scan_minutes: m })}
-                >
-                  {m === 60 ? "1 hour" : `${m} min`}
-                </button>
-              ))}
+      )}
+
+      {/* Everything below is machinery: kept in full, closed by default. */}
+      <details className="adv">
+        <summary>Advanced</summary>
+
+        <div className="panel">
+          <h2>Drives</h2>
+          {(volumes ?? []).map((v) => (
+            <div className="list-row" key={v.id}>
+              <span>{v.internal ? "💻" : "🗄"}</span>
+              <strong>{v.label}</strong>
+              <span className="muted small">{v.mount_path}</span>
+              <span className="spacer" />
+              <span className="muted small">
+                {v.free_bytes != null ? `${fmtBytes(v.free_bytes)} free of ${fmtBytes(v.total_bytes)}` : ""}
+              </span>
+              <span className={`badge ${v.is_online ? "green" : "red"}`}>{v.is_online ? "online" : "offline"}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="panel">
+          <div className="row">
+            <h2 style={{ marginBottom: 0 }}>Activity</h2>
+            <span className="muted small">
+              {running
+                ? `${stageLabel(running.kind)}${running.total > 0 ? ` — ${running.done}/${running.total}` : ""}…`
+                : "idle"}
+            </span>
+            <span className="spacer" />
+            <button className="small" onClick={() => checkNow.mutate()} disabled={!!running || checkNow.isPending}>
+              Check now
+            </button>
+            <button onClick={() => setShowLogs((s) => !s)}>{showLogs ? "Hide logs" : "Show logs"}</button>
+          </div>
+          {showLogs && (
+            <div className="logbox" ref={logRef}>
+              {log.length === 0 ? (
+                <span className="faint">Nothing yet — add a folder to start.</span>
+              ) : (
+                log.map((l, i) => (
+                  <div key={i} className="log-line">
+                    {l}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+          {/* the stage strip: precise, and now only where precision is wanted */}
+          <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: "wrap" }}>
+            {STAGES.map((kind) => {
+              const j = latest[kind];
+              const state =
+                j?.status === "running" ? "run" : j?.status === "done" ? "done" : j?.status === "failed" ? "fail" : "";
+              return (
+                <span key={kind} className={`chip stage ${state}`} title={j?.message ?? ""}>
+                  {state === "run" ? <span className="spin" /> : <span className="dot" />}
+                  {stageLabel(kind)}
+                  {state === "run" && j!.total > 0 && (
+                    <span className="faint">{Math.round((j!.done / j!.total) * 100)}%</span>
+                  )}
+                </span>
+              );
+            })}
+            {running && (
+              <button className="small" onClick={() => cancelJob.mutate(running.id)}>
+                Cancel
+              </button>
+            )}
+          </div>
+          {settings?.auto_scan && (
+            <div className="row" style={{ marginTop: 12 }}>
+              <span className="muted small">Check every</span>
+              <div className="seg">
+                {[10, 30, 60].map((m) => (
+                  <button
+                    key={m}
+                    className={settings.auto_scan_minutes === m ? "on" : ""}
+                    onClick={() => saveSettings.mutate({ auto_scan_minutes: m })}
+                  >
+                    {m === 60 ? "1 hour" : `${m} min`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="panel">
+          <h2>Re-run a single step</h2>
+          <p className="muted small" style={{ marginBottom: 10 }}>
+            These all run on their own after a scan. Use them only to redo one step.
+          </p>
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <button onClick={() => runJob.mutate("/api/places/geocode")}>Locate photos</button>
+            <button onClick={() => runJob.mutate("/api/events/rebuild")}>Rebuild events</button>
+            <button onClick={() => runJob.mutate("/api/dupes/run")}>Find near-duplicates</button>
+            <button onClick={() => runJob.mutate("/api/kinds/classify")}>Sort documents</button>
+            <button onClick={() => runJob.mutate("/api/faces/scan")} disabled={!stats?.face_model_ready}>
+              Scan faces
+            </button>
+            <button onClick={() => runJob.mutate("/api/faces/recluster")} disabled={!stats?.face_model_ready}>
+              Group into people
+            </button>
+          </div>
+          <div className="row" style={{ marginTop: 12 }}>
+            <button className="danger" onClick={() => setConfirmingReset(true)} disabled={!stats?.face_model_ready}>
+              Reset people…
+            </button>
+          </div>
+          {runJob.error ? (
+            <p className="small" style={{ color: "var(--danger)", marginTop: 8 }}>{String(runJob.error)}</p>
+          ) : null}
+        </div>
+
+        {stats && (
+          <div className="panel">
+            <h2>Storage &amp; index</h2>
+            <div className="stat-grid">
+              <div className="stat-tile"><div className="v">{n(stats.photos)}</div><div className="k">photos</div></div>
+              <div className="stat-tile"><div className="v">{n(stats.videos)}</div><div className="k">videos</div></div>
+              <div className="stat-tile"><div className="v">{n(stats.missing)}</div><div className="k">missing (drive offline?)</div></div>
+              <div className="stat-tile"><div className="v">{n(stats.with_gps)}</div><div className="k">with GPS</div></div>
+              <div className="stat-tile"><div className="v">{n(stats.faces)}</div><div className="k">faces</div></div>
+              <div className="stat-tile"><div className="v">{fmtBytes(stats.db_bytes)}</div><div className="k">database</div></div>
+              <div className="stat-tile"><div className="v">{fmtBytes(stats.thumbs_bytes)}</div><div className="k">thumbnails</div></div>
+              <div className="stat-tile"><div className="v">{fmtBytes(stats.previews_bytes)}</div><div className="k">previews</div></div>
             </div>
           </div>
         )}
-        {checkNow.error && <p className="small" style={{ color: "var(--danger)" }}>{String(checkNow.error)}</p>}
-      </div>
+      </details>
 
-      <div className="panel">
-        <div className="row">
-          <h2 style={{ marginBottom: 0 }}>Activity</h2>
-          <span className="muted small">
-            {running
-              ? `${STAGE_LABEL[running.kind] ?? running.kind} running${running.total > 0 ? ` — ${running.done}/${running.total}` : ""}…`
-              : "idle"}
-          </span>
-          <span className="spacer" />
-          <button onClick={() => setShowLogs((s) => !s)}>{showLogs ? "Hide logs" : "Show logs"}</button>
-        </div>
-        {showLogs && (
-          <div className="logbox" ref={logRef}>
-            {log.length === 0 ? (
-              <span className="faint">Nothing yet — add a folder to start.</span>
-            ) : (
-              log.map((l, i) => (
-                <div key={i} className="log-line">
-                  {l}
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
+      {/* A failure is worth surfacing outside Advanced — but as a sentence. */}
+      {!running && lastFailed && (
+        <p className="setup-problem small">{friendlyError(lastFailed.message, lastFailed.kind)}</p>
+      )}
 
-      <div className="panel">
-        <h2>Manual steps</h2>
-        <p className="muted small" style={{ marginBottom: 10 }}>
-          Everything above runs automatically — use these only to re-run a single step.
-        </p>
-        <div className="row">
-          <button onClick={() => runJob.mutate("/api/places/geocode")}>Locate photos</button>
-          <button onClick={() => runJob.mutate("/api/events/rebuild")}>Rebuild events</button>
-          <button onClick={() => runJob.mutate("/api/dupes/run")}>Find near-duplicates</button>
-          <button onClick={() => runJob.mutate("/api/faces/scan")} disabled={!stats?.face_model_ready}>
-            Scan faces
-          </button>
-          <button onClick={() => runJob.mutate("/api/faces/recluster")} disabled={!stats?.face_model_ready}>
-            Group into people
-          </button>
-          <button className="danger" onClick={() => setConfirmingReset(true)} disabled={!stats?.face_model_ready}>
-            Reset people…
-          </button>
-        </div>
-        {runJob.error ? <p className="small" style={{ color: "var(--danger)" }}>{String(runJob.error)}</p> : null}
-      </div>
+      {confirmingRemove && (
+        <ConfirmDialog
+          title="Stop watching this folder?"
+          body={
+            "Smriti will stop looking here for new photos. Nothing on your disk is touched — " +
+            "the folder and every file in it stay exactly where they are.\n\n" +
+            "Photos already added from this folder remain in your library."
+          }
+          confirmLabel="Stop watching"
+          danger
+          onConfirm={() => delRoot.mutate(confirmingRemove.id)}
+          onClose={() => setConfirmingRemove(null)}
+        />
+      )}
 
       {confirmingReset && (
         <ConfirmDialog
@@ -335,23 +391,203 @@ export default function SettingsPage() {
         />
       )}
 
-      {stats && (
-        <div className="panel">
-          <h2>Storage &amp; index</h2>
-          <div className="stat-grid">
-            <div className="stat-tile"><div className="v">{stats.photos.toLocaleString()}</div><div className="k">photos</div></div>
-            <div className="stat-tile"><div className="v">{stats.videos.toLocaleString()}</div><div className="k">videos</div></div>
-            <div className="stat-tile"><div className="v">{stats.missing.toLocaleString()}</div><div className="k">missing (drive offline?)</div></div>
-            <div className="stat-tile"><div className="v">{stats.with_gps.toLocaleString()}</div><div className="k">with GPS</div></div>
-            <div className="stat-tile"><div className="v">{stats.faces.toLocaleString()}</div><div className="k">faces</div></div>
-            <div className="stat-tile"><div className="v">{fmtBytes(stats.db_bytes)}</div><div className="k">database</div></div>
-            <div className="stat-tile"><div className="v">{fmtBytes(stats.thumbs_bytes)}</div><div className="k">thumbnails</div></div>
-            <div className="stat-tile"><div className="v">{fmtBytes(stats.previews_bytes)}</div><div className="k">previews</div></div>
-          </div>
+      {pickerOpen && <FolderPicker onPick={(p) => addRoot.mutate(p)} onClose={() => setPickerOpen(false)} />}
+    </div>
+  );
+}
+
+/* ---- the four faces ------------------------------------------------------ */
+
+function Invite({ onChoose, error }: { onChoose: () => void; error: unknown }) {
+  return (
+    <div className="setup-hero">
+      <ArtFolder className="art" />
+      <h2>Let&rsquo;s find your photos</h2>
+      <p>
+        Choose the folder where your photos live — Smriti looks inside it and every folder
+        within. It reads them where they are: nothing is moved, copied or changed.
+      </p>
+      <button className="primary big" onClick={onChoose}>
+        Choose a folder
+      </button>
+      {error ? <p className="setup-problem small">{friendlyError(error)}</p> : null}
+    </div>
+  );
+}
+
+function Working({ job, onStop }: { job: Job; onStop: () => void }) {
+  const pct = job.total > 0 ? Math.round((job.done / job.total) * 100) : null;
+  const note = stageNote(job.kind);
+  return (
+    <div className="panel setup-progress">
+      <div className="sp-head">
+        <span className="spin" />
+        <strong>{stageSentence(job.kind)}</strong>
+        <span className="spacer" />
+        {pct != null && <span className="sp-pct">{pct}%</span>}
+        <button className="small sp-stop" onClick={onStop}>
+          Stop
+        </button>
+      </div>
+      {pct != null && (
+        <div className="progress">
+          <div style={{ width: `${pct}%` }} />
         </div>
       )}
+      <p className="muted small sp-count">
+        {job.total > 0 ? `${n(job.done)} ${stageUnit(job.kind)}` : "Getting started…"}
+        {job.errors ? ` · ${n(job.errors)} skipped` : ""}
+      </p>
+      <p className="muted small">
+        {note ?? "You can start browsing — this keeps going in the background."}
+      </p>
+    </div>
+  );
+}
 
-      {pickerOpen && <FolderPicker onPick={(p) => addRoot.mutate(p)} onClose={() => setPickerOpen(false)} />}
+function Attention({
+  roots,
+  allOffline,
+  onChoose,
+  onRefresh,
+  onRemove,
+}: {
+  roots: Root[];
+  allOffline: boolean;
+  onChoose: () => void;
+  onRefresh: (id: number) => void;
+  onRemove: (r: Root) => void;
+}) {
+  const names = roots.filter((r) => !r.is_online).map((r) => r.label);
+  return (
+    <>
+      <div className="panel setup-note">
+        {allOffline ? (
+          <>
+            <strong>
+              {names.length === 1 ? `${names[0]} isn't connected` : "Your photo drives aren't connected"}
+            </strong>
+            <p className="muted">
+              Plug {names.length === 1 ? "it" : "them"} back in and Smriti picks up exactly where it left off.
+              Nothing has been lost — your photos, people and albums are all still here.
+            </p>
+          </>
+        ) : (
+          <>
+            <strong>No photos or videos in that folder</strong>
+            <p className="muted">
+              Smriti looked through it and everything inside, and didn&rsquo;t find any photos or
+              videos it recognises. Try a different folder.
+            </p>
+            <button className="primary" onClick={onChoose} style={{ marginTop: 12 }}>
+              Choose another folder
+            </button>
+          </>
+        )}
+      </div>
+      <FolderList roots={roots} onRefresh={onRefresh} onRemove={onRemove} onChoose={onChoose} />
+    </>
+  );
+}
+
+function Ready({
+  roots,
+  stats,
+  onChoose,
+  onRefresh,
+  onRemove,
+  onEnablePeople,
+}: {
+  roots: Root[];
+  stats?: Stats;
+  onChoose: () => void;
+  onRefresh: (id: number) => void;
+  onRemove: (r: Root) => void;
+  onEnablePeople: () => void;
+}) {
+  return (
+    <>
+      <div className="panel setup-summary">
+        <div className="ss-counts">
+          <span>
+            <strong>{n(stats?.photos)}</strong> photos
+          </span>
+          {(stats?.videos ?? 0) > 0 && (
+            <span>
+              <strong>{n(stats?.videos)}</strong> videos
+            </span>
+          )}
+          {(stats?.persons ?? 0) > 0 && (
+            <span>
+              <strong>{n(stats?.persons)}</strong> people
+            </span>
+          )}
+        </div>
+        <p className="muted small">Ready to browse. Your originals are untouched, exactly where you put them.</p>
+      </div>
+
+      <FolderList roots={roots} onRefresh={onRefresh} onRemove={onRemove} onChoose={onChoose} />
+
+      {/* The one optional thing on the page — so it gets to be the only card. */}
+      {stats && !stats.face_model_ready && (
+        <div className="panel setup-card">
+          <div>
+            <strong>Recognise people in your photos</strong>
+            <p className="muted small" style={{ marginTop: 4 }}>
+              Smriti can group every photo of the same person together. It needs a one-time
+              280 MB download, then runs entirely on this machine — your photos never leave it.
+            </p>
+          </div>
+          <span className="spacer" />
+          <button className="primary" onClick={onEnablePeople}>
+            Turn on People
+          </button>
+        </div>
+      )}
+      {stats?.face_model_ready && (stats?.faces ?? 0) > 0 && (
+        <p className="muted small setup-quiet">
+          {n(stats.faces)} faces found
+          {(stats.persons ?? 0) > 0 ? ` · ${n(stats.persons)} people named` : ""} —{" "}
+          <Link to="/people">open People</Link>
+        </p>
+      )}
+    </>
+  );
+}
+
+function FolderList({
+  roots,
+  onRefresh,
+  onRemove,
+  onChoose,
+}: {
+  roots: Root[];
+  onRefresh: (id: number) => void;
+  onRemove: (r: Root) => void;
+  onChoose: () => void;
+}) {
+  return (
+    <div className="panel">
+      <div className="row" style={{ marginBottom: 6 }}>
+        <h2>Folders</h2>
+        <span className="spacer" />
+        <button onClick={onChoose}>+ Add another folder</button>
+      </div>
+      {roots.map((r) => (
+        <div className="list-row" key={r.id}>
+          <strong>{r.abs_path}</strong>
+          <span className="muted small">
+            {r.is_online ? `${n(r.file_count)} photos and videos` : "drive not connected"}
+          </span>
+          <span className="spacer" />
+          <button onClick={() => onRefresh(r.id)} disabled={!r.is_online} title="Look for anything new in this folder">
+            Refresh
+          </button>
+          <button className="danger" onClick={() => onRemove(r)} title="Stop watching this folder — your files are not touched">
+            Remove
+          </button>
+        </div>
+      ))}
     </div>
   );
 }
@@ -364,46 +600,47 @@ function FolderPicker({ onPick, onClose }: { onPick: (path: string) => void; onC
     queryFn: () => api.get<FsList>(`/api/fs/list?path=${encodeURIComponent(path)}`),
   });
   const atSyntheticRoot = data?.path === "This PC";
+  const subfolders = data?.dirs.length ?? 0;
   return (
     <Portal>
-    <div className="modal-back" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <header>Choose a photos folder</header>
-        <div className="modal-body">
-          <div className="row" style={{ marginBottom: 8 }}>
-            <button
-              disabled={data?.parent == null}
-              onClick={() => data && data.parent != null && setPath(data.parent)}
-            >
-              ↑ Up
-            </button>
-            <button onClick={() => setPath("~")}>Home</button>
-            <span className="muted small" style={{ wordBreak: "break-all" }}>{data?.path ?? "…"}</span>
-          </div>
-          {data?.media_count ? (
-            <p className="small muted" style={{ marginBottom: 6 }}>
-              {data.media_count} photo/video files directly in this folder
-            </p>
-          ) : null}
-          {(data?.dirs ?? []).map((d) => (
-            <div key={d.path} className="dir-row" onClick={() => setPath(d.path)}>
-              <span>📁</span> {d.name}
+      <div className="modal-back" onClick={onClose}>
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <header>Choose a photos folder</header>
+          <div className="modal-body">
+            <div className="row" style={{ marginBottom: 8 }}>
+              <button disabled={data?.parent == null} onClick={() => data && data.parent != null && setPath(data.parent)}>
+                ↑ Up
+              </button>
+              <button onClick={() => setPath("~")}>Home</button>
+              <span className="muted small" style={{ wordBreak: "break-all" }}>{data?.path ?? "…"}</span>
             </div>
-          ))}
-          {data && data.dirs.length === 0 && <p className="muted small">No subfolders.</p>}
+            {/* Scanning recurses, so the direct-only count used to read as "this
+                folder is empty" when someone picked the right parent folder. */}
+            {data && !atSyntheticRoot && (
+              <p className="small muted" style={{ marginBottom: 6 }}>
+                {data.media_count > 0
+                  ? `${data.media_count.toLocaleString()} photos and videos here`
+                  : "Nothing directly in this folder"}
+                {subfolders > 0
+                  ? ` — Smriti will also look inside ${subfolders === 1 ? "the folder" : `all ${subfolders} folders`} within it.`
+                  : "."}
+              </p>
+            )}
+            {(data?.dirs ?? []).map((d) => (
+              <div key={d.path} className="dir-row" onClick={() => setPath(d.path)}>
+                <span>📁</span> {d.name}
+              </div>
+            ))}
+            {data && data.dirs.length === 0 && <p className="muted small">No subfolders.</p>}
+          </div>
+          <footer>
+            <button onClick={onClose}>Cancel</button>
+            <button className="primary" disabled={!data || atSyntheticRoot} onClick={() => data && onPick(data.path)}>
+              Use this folder
+            </button>
+          </footer>
         </div>
-        <footer>
-          <button onClick={onClose}>Cancel</button>
-          <button
-            className="primary"
-            disabled={!data || atSyntheticRoot}
-            onClick={() => data && onPick(data.path)}
-          >
-            Use this folder &amp; process everything
-          </button>
-        </footer>
       </div>
-    </div>
     </Portal>
   );
 }

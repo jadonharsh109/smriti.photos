@@ -1011,6 +1011,79 @@ code {
 .stat-tile .v { font-size: 21px; font-weight: 760; letter-spacing: -0.5px; }
 .stat-tile .k { font-size: 11.5px; color: var(--fg-dim); margin-top: 1px; }
 
+/* ============================================================
+   Your library — the calm setup surface
+   The page wears one of four faces (invite / working / needs
+   attention / ready); everything below is sized so a first-time
+   user meets exactly one decision at a time.
+   ============================================================ */
+.setup-hero {
+  text-align: center;
+  padding: 54px 24px 60px;
+  animation: rise 0.5s var(--ease) backwards;
+}
+.setup-hero .art { width: 168px; margin: 0 auto 22px; display: block; filter: drop-shadow(0 16px 34px rgba(2, 4, 10, 0.45)); }
+.setup-hero h2 { font-size: 25px; font-weight: 740; letter-spacing: -0.6px; margin-bottom: 10px; }
+.setup-hero p {
+  color: var(--fg-dim);
+  font-size: 14.5px;
+  line-height: 1.65;
+  max-width: 46ch;          /* the reassurance is the point — keep it readable */
+  margin: 0 auto 26px;
+}
+
+/* one bar and one sentence, in place of six stage dots */
+.sp-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; font-size: 15px; }
+.sp-pct { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 700; }
+.setup-progress .progress { height: 9px; }
+.sp-count { margin-top: 9px; font-variant-numeric: tabular-nums; }
+.sp-stop { flex: none; }
+
+.setup-summary .ss-counts { display: flex; gap: 22px; flex-wrap: wrap; align-items: baseline; margin-bottom: 6px; }
+.setup-summary .ss-counts span { color: var(--fg-dim); font-size: 13.5px; }
+.setup-summary .ss-counts strong { font-size: 27px; font-weight: 760; letter-spacing: -0.7px; color: var(--fg); margin-right: 5px; }
+
+/* the single optional call to action, and the auto-scan decision */
+.setup-card, .setup-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+/* long absolute paths must not push the buttons off a narrow window */
+.list-row { flex-wrap: wrap; }
+.list-row strong { word-break: break-word; min-width: 0; }
+.setup-card { border-color: rgba(124, 196, 255, 0.3); background: linear-gradient(180deg, rgba(124, 196, 255, 0.07), var(--glass)); }
+.setup-card p, .setup-row p { max-width: 60ch; }
+.setup-card .primary { flex: none; }
+
+.setup-note strong { display: block; font-size: 16px; margin-bottom: 6px; }
+.setup-note p { line-height: 1.6; max-width: 60ch; }
+
+.setup-quiet { margin: -6px 2px 18px; }
+.setup-problem { color: var(--danger); margin: 10px 2px 0; line-height: 1.55; }
+
+/* Advanced: everything precise, one click away, never in the way */
+.adv { margin-top: 6px; }
+.adv > summary {
+  cursor: pointer;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 15px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 620;
+  color: var(--fg-dim);
+  border: 1px solid var(--stroke);
+  background: var(--glass-2);
+  transition: color 0.2s var(--ease), background 0.2s var(--ease);
+}
+.adv > summary::-webkit-details-marker { display: none; }
+.adv > summary::before { content: "›"; font-size: 15px; transition: transform 0.22s var(--ease); }
+.adv[open] > summary::before { transform: rotate(90deg); }
+.adv > summary:hover { color: var(--fg); background: rgba(255, 255, 255, 0.13); }
+.adv[open] > summary { margin-bottom: 16px; }
+/* panels inside Advanced start from the same delay, so opening it does not
+   stagger a long cascade of eight cards */
+.adv .panel { animation-delay: 0s; }
+
 /* pipeline stage chips (Library setup) */
 .chip.stage .dot { background: rgba(255, 255, 255, 0.22); box-shadow: none; }
 .chip.stage.done { color: var(--ok); border-color: rgba(111, 227, 165, 0.3); }
