@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, type Item } from "../api/client";
 import { ConfirmDialog, TextDialog } from "../components/Dialogs";
@@ -17,7 +17,8 @@ export default function AlbumPage() {
   const albumId = Number(id);
   const qc = useQueryClient();
   const nav = useNavigate();
-  const containerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const resizeObs = useRef<ResizeObserver | null>(null);
   const [width, setWidth] = useState(1000);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
@@ -29,14 +30,22 @@ export default function AlbumPage() {
     queryFn: () => api.get<AlbumDetail>(`/api/albums/${albumId}`),
   });
 
-  useEffect(() => {
-    const el = containerRef.current;
+  /** Callback ref, not an effect: this component returns early while the album
+   *  loads, so an effect with no deps would fire on a render where the
+   *  container does not exist yet and never run again — leaving the grid laid
+   *  out for whatever width it started with. Same trap as TimelineGrid. */
+  const attachContainer = useCallback((el: HTMLDivElement | null) => {
+    containerRef.current = el;
+    resizeObs.current?.disconnect();
+    resizeObs.current = null;
     if (!el) return;
     const ro = new ResizeObserver(() => setWidth(el.clientWidth));
     ro.observe(el);
+    resizeObs.current = ro;
     setWidth(el.clientWidth);
-    return () => ro.disconnect();
   }, []);
+
+  useEffect(() => () => resizeObs.current?.disconnect(), []);
 
   const rename = useMutation({
     mutationFn: (name: string) => api.patch(`/api/albums/${albumId}`, { name }),
@@ -61,7 +70,7 @@ export default function AlbumPage() {
   if (!album) return <div className="page empty">Loading…</div>;
   const items = album.items;
   return (
-    <div className="page" ref={containerRef}>
+    <div className="page" ref={attachContainer}>
       <header className="page-head">
         <div>
           <h1>{album.name}</h1>

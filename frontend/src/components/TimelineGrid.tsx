@@ -25,7 +25,8 @@ interface Props {
  * items are fetched per visible day section (section-level virtualization). */
 export default function TimelineGrid({ filters, emptyText = "Nothing here yet", selectionActions }: Props) {
   const qc = useQueryClient();
-  const containerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const resizeObs = useRef<ResizeObserver | null>(null);
   const [width, setWidth] = useState(1000);
   const [scrollMargin, setScrollMargin] = useState(0);
   const estimateCache = useRef(new Map<string, number>());
@@ -38,27 +39,44 @@ export default function TimelineGrid({ filters, emptyText = "Nothing here yet", 
     queryFn: () => api.get<Bucket[]>(`/api/timeline/buckets${filterQS(filters)}`),
   });
 
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const measure = () => {
-      setWidth(el.clientWidth);
-      // where the list starts inside the scroll container (page header above it)
-      const scroller = document.getElementById("main-scroll");
-      if (scroller) {
-        setScrollMargin(el.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop);
-      }
-    };
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    measure();
-    // remeasure once the page-enter animation has finished shifting layout
-    const t = setTimeout(measure, 450);
-    return () => {
-      ro.disconnect();
-      clearTimeout(t);
-    };
+  const measure = useCallback((el: HTMLDivElement) => {
+    setWidth(el.clientWidth);
+    // where the list starts inside the scroll container (page header above it)
+    const scroller = document.getElementById("main-scroll");
+    if (scroller) {
+      setScrollMargin(el.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop);
+    }
   }, []);
+
+  /** Watch the grid's own box for size changes.
+   *
+   *  A callback ref rather than an effect, because this component returns early
+   *  while the day buckets are loading — so on the render that an effect would
+   *  fire after, the container does not exist yet. An effect with no deps never
+   *  runs again, so the observer was never attached and `width` kept its
+   *  initial default for the life of the page: photos were laid out for a
+   *  1000px container no matter how wide the window actually was, and a
+   *  narrower window simply clipped them. A callback ref runs whenever the node
+   *  appears or goes away, which is exactly when this needs to happen. */
+  const attachContainer = useCallback(
+    (el: HTMLDivElement | null) => {
+      containerRef.current = el;
+      resizeObs.current?.disconnect();
+      resizeObs.current = null;
+      if (!el) return;
+      const ro = new ResizeObserver(() => measure(el));
+      ro.observe(el);
+      resizeObs.current = ro;
+      measure(el);
+      // remeasure once the page-enter animation has finished shifting layout
+      window.setTimeout(() => {
+        if (containerRef.current === el) measure(el);
+      }, 450);
+    },
+    [measure]
+  );
+
+  useEffect(() => () => resizeObs.current?.disconnect(), []);
 
   /** How tall a day will be, before any of its photos have been fetched.
    *
@@ -178,7 +196,7 @@ export default function TimelineGrid({ filters, emptyText = "Nothing here yet", 
     );
 
   return (
-    <div ref={containerRef} style={{ position: "relative", paddingRight: 70 }}>
+    <div ref={attachContainer} style={{ position: "relative", paddingRight: 70 }}>
       <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
         {virtualizer.getVirtualItems().map((vi) => (
           <div
