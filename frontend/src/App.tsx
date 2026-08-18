@@ -72,7 +72,13 @@ export default function App() {
         <i /><i /><i />
       </div>
       <div className="grain" />
-      <div className="shell">
+      {/* Bare data-tauri-drag-region fires only on *direct* clicks, so the
+          shell's own padding — the 32px strip the traffic lights sit in, the
+          14px frame, the gap between rail and stage — drags the window, while
+          the rail and stage swallow their own clicks as usual. With an Overlay
+          titlebar macOS stops offering a draggable strip of its own, so
+          without this the window cannot be moved at all. */}
+      <div className="shell" data-tauri-drag-region>
         <aside className="rail">
           <Link to="/welcome" className="rail-brand" title="About Smriti">
             <Logo size={27} />

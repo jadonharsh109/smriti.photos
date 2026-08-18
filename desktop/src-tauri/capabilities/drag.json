@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "drag",
+  "description": "Window dragging for the SPA served by the local Python server. With an Overlay titlebar the webview covers the whole title area, so macOS no longer offers a draggable strip of its own — the page must nominate one with data-tauri-drag-region, and Tauri implements that over IPC (invoke 'plugin:window|start_dragging'). The `default` capability deliberately leaves IPC inert on this origin, so this grants the two window-movement commands and nothing else: the entire surface exposed is moving and zooming the window the user is already looking at.",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["http://127.0.0.1:*", "http://localhost:*"]
+  },
+  "permissions": [
+    "core:window:allow-start-dragging",
+    "core:window:allow-internal-toggle-maximize"
+  ]
+}

@@ -28,3 +28,7 @@ lto = true
 opt-level = "s"
 panic = "abort"
 strip = true
+
+[dev-dependencies]
+tauri-utils = "2"
+url = "2"

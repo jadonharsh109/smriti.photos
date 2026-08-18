@@ -307,8 +307,10 @@ code {
    browser. With an Overlay titlebar the window content runs edge to edge and
    the traffic lights float over the top-left — right where the rail's lotus
    would be. Drop the panels below them so the lights sit on the wallpaper.
-   Dragging needs no help: the transparent titlebar is still a real NSWindow
-   titlebar, so that strip stays draggable natively. */
+
+   This padding is also the window's drag handle. An Overlay titlebar is NOT
+   natively draggable — the webview covers the title area and eats the events —
+   so .shell carries data-tauri-drag-region and this strip is what you grab. */
 [data-smriti-desktop] .shell {
   padding-top: 32px;
 }

@@ -66,7 +66,7 @@ export default function LandingPage() {
       <div className="grain" />
 
       <div className="lp">
-        <nav className="lp-nav">
+        <nav className="lp-nav" data-tauri-drag-region>
           <div className="lp-nav-inner">
             <span className="brand">
               <Logo size={27} />
