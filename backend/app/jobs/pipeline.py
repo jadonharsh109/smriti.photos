@@ -1,5 +1,5 @@
 """One-click pipeline: scan a root, then run every processing step in order
-(geocode → events → near-duplicates → faces → people). Each stage is a normal
+(documents → geocode → events → near-duplicates → faces → people). Each stage is a normal
 job row, so the SSE stream / activity log shows exactly what's happening.
 
 Also hosts the auto-scan watcher: a background loop that periodically
@@ -10,6 +10,7 @@ import time
 
 from .. import config, db
 from ..services import volumes as vol_svc
+from . import classify as classify_job
 from . import dupes as dupes_job
 from . import events as events_job
 from . import faces as faces_job
@@ -32,6 +33,10 @@ async def _stage(kind: str, coro_factory, root_id: int | None = None) -> str:
 
 
 async def run_post_scan() -> None:
+    # First, and deliberately: it is metadata-only and finishes in well under a
+    # second, and until it has run every screenshot is still sitting in the main
+    # timeline. Cheapest stage, and the one whose absence is most visible.
+    await _stage("classify", lambda jid: classify_job.run_classify(jid))
     await _stage("geocode", lambda jid: geocode_job.run_geocode(jid, False))
     await _stage("events", lambda jid: events_job.run_events_rebuild(jid))
     await _stage("neardup", lambda jid: dupes_job.run_near_dupes(jid))

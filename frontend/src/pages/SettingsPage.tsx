@@ -41,7 +41,7 @@ interface Stats {
 
 /** Stages the pipeline runs by itself, in order — used only by the Advanced
  *  log, since the calm view shows one sentence rather than six dots. */
-const STAGES = ["scan", "geocode", "events", "neardup", "faces", "recluster"] as const;
+const STAGES = ["scan", "classify", "geocode", "events", "neardup", "faces", "recluster"] as const;
 
 const fmtLine = (time: string, j: Job) =>
   `${time}  ${stageLabel(j.kind)} · ${j.status}` +
