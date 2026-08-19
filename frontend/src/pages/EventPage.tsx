@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { api } from "../api/client";
 import AddAllToAlbum from "../components/AddAllToAlbum";
+import BackLink from "../components/BackLink";
 import { TextDialog } from "../components/Dialogs";
 import TimelineGrid from "../components/TimelineGrid";
 
@@ -34,15 +35,13 @@ export default function EventPage() {
     <div className="page">
       <header className="page-head">
         <div>
+          <BackLink to="/events" label="Events" />
           <h1>{event?.title ?? "Event"}</h1>
           {event && <p className="sub">{event.count} items</p>}
         </div>
         <div className="actions">
           <AddAllToAlbum filters={{ event_id: eventId }} />
           <button onClick={() => setRenaming(true)}>Rename</button>
-          <Link to="/events">
-            <button className="ghost">← All events</button>
-          </Link>
         </div>
       </header>
       <TimelineGrid filters={{ event_id: eventId }} emptyText="No items in this event" />

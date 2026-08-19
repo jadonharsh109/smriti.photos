@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api, type Person } from "../api/client";
 import AddAllToAlbum from "../components/AddAllToAlbum";
 import { IconPencil } from "../components/Icons";
+import BackLink from "../components/BackLink";
 import { PhotoGridSkeleton } from "../components/Skeletons";
 import TimelineGrid from "../components/TimelineGrid";
 
@@ -75,56 +76,59 @@ export default function PersonPage() {
   return (
     <div className="page">
       <header className="page-head">
-        <div className="row" style={{ gap: 16 }}>
-          {person.cover_face_id && (
-            <img
-              src={`/api/faces/${person.cover_face_id}/thumb`}
-              style={{
-                width: 72,
-                height: 72,
-                borderRadius: "50%",
-                objectFit: "cover",
-                border: "2px solid rgba(255,255,255,0.2)",
-                boxShadow: "0 8px 24px rgba(2,4,10,0.5), 0 0 20px rgba(110,123,255,0.25)",
-              }}
-              alt=""
-            />
-          )}
-          {renaming ? (
-            <div className="row">
-              <input
-                type="text"
-                autoFocus
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && rename.mutate(name)}
-                placeholder="Name"
-              />
-              <button className="primary" onClick={() => rename.mutate(name)}>
-                Save
-              </button>
-              <button className="ghost" onClick={() => setRenaming(false)}>Cancel</button>
-            </div>
-          ) : (
-            <div>
-              {/* the name IS the rename control — clicking it is the obvious
-                  gesture, and the pencil makes that discoverable */}
-              <button
-                className={`name-edit${person.name ? "" : " unnamed"}`}
-                title={person.name ? "Rename this person" : "Give this person a name"}
-                onClick={() => {
-                  setName(person.name ?? "");
-                  setRenaming(true);
+        <div>
+          <BackLink to="/people" label="People" />
+          <div className="row" style={{ gap: 16 }}>
+            {person.cover_face_id && (
+              <img
+                src={`/api/faces/${person.cover_face_id}/thumb`}
+                style={{
+                  width: 72,
+                  height: 72,
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                  border: "2px solid rgba(255,255,255,0.2)",
+                  boxShadow: "0 8px 24px rgba(2,4,10,0.5), 0 0 20px rgba(110,123,255,0.25)",
                 }}
-              >
-                <h1>{person.name ?? "Unnamed person"}</h1>
-                <span className="pencil">
-                  <IconPencil size={17} />
-                </span>
-              </button>
-              {person.photo_count != null && <p className="sub">{person.photo_count} photos</p>}
-            </div>
-          )}
+                alt=""
+              />
+            )}
+            {renaming ? (
+              <div className="row">
+                <input
+                  type="text"
+                  autoFocus
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && rename.mutate(name)}
+                  placeholder="Name"
+                />
+                <button className="primary" onClick={() => rename.mutate(name)}>
+                  Save
+                </button>
+                <button className="ghost" onClick={() => setRenaming(false)}>Cancel</button>
+              </div>
+            ) : (
+              <div>
+                {/* the name IS the rename control — clicking it is the obvious
+                    gesture, and the pencil makes that discoverable */}
+                <button
+                  className={`name-edit${person.name ? "" : " unnamed"}`}
+                  title={person.name ? "Rename this person" : "Give this person a name"}
+                  onClick={() => {
+                    setName(person.name ?? "");
+                    setRenaming(true);
+                  }}
+                >
+                  <h1>{person.name ?? "Unnamed person"}</h1>
+                  <span className="pencil">
+                    <IconPencil size={17} />
+                  </span>
+                </button>
+                {person.photo_count != null && <p className="sub">{person.photo_count} photos</p>}
+              </div>
+            )}
+          </div>
         </div>
         {!renaming && (
           <div className="actions">

@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { api, type Item } from "../api/client";
+import BackLink from "../components/BackLink";
 import { ConfirmDialog, TextDialog } from "../components/Dialogs";
 import JustifiedGrid from "../components/JustifiedGrid";
 import { PhotoGridSkeleton } from "../components/Skeletons";
@@ -85,13 +86,11 @@ export default function AlbumPage() {
     <div className="page" ref={attachContainer}>
       <header className="page-head">
         <div>
+          <BackLink to="/albums" label="Albums" />
           <h1>{album.name}</h1>
           <p className="sub">{items.length} items</p>
         </div>
         <div className="actions">
-          <Link to="/albums">
-            <button className="ghost">← Albums</button>
-          </Link>
           <button onClick={() => setRenaming(true)}>Rename</button>
           {selected.size > 0 && (
             <button onClick={() => removeItems.mutate([...selected])}>Remove {selected.size} from album</button>
