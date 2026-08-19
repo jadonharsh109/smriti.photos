@@ -160,6 +160,33 @@ def check_takeout(tmp: str) -> None:
     print(f"after adding the folder by hand: album 'Goa Trip' -> {goa['count']} item — PASS")
 
 
+def check_live_photos() -> None:
+    """Live Photos are two files that are one moment.
+
+    The pairing key is Apple's content identifier, written into both halves —
+    never the filename, which lies: a real library held IMG_3570.HEIC beside an
+    unrelated 26-second IMG_3570.MOV. There is no way to synthesise that
+    metadata here, so this asserts the parts that hold with or without a Live
+    Photo present: the schema exists, the endpoints answer, and a library with
+    none reports none rather than erroring."""
+    summary = get("/api/motion/summary")
+    for key in ("live", "unpaired_clips", "videos_unchecked"):
+        assert key in summary, f"motion summary missing {key}: {summary}"
+    assert summary["live"] == 0, f"a library with no Live Photos claims some: {summary}"
+
+    job_id = post("/api/motion/scan", {})["job_id"]
+    wait_for(lambda: get(f"/api/jobs/{job_id}")["status"] != "running", 120, "the live photo pass")
+    job = get(f"/api/jobs/{job_id}")
+    assert job["status"] == "done", f"live photo pass did not finish: {job}"
+
+    # the Live filter is a real filter, not an error, on a library without any
+    assert get("/api/timeline/buckets?live=1") == [], "live filter returned rows it should not have"
+    # and an ordinary photo is not marked as one
+    items = get("/api/timeline/items?limit=5")
+    assert items and all(i.get("live") in (0, None) for i in items), f"a plain photo claims to be live: {items}"
+    print(f"live photos: schema and filters answer correctly on a library with none — PASS")
+
+
 def main() -> None:
     tmp = tempfile.mkdtemp(prefix="smriti-smoke-")
     data_dir = os.path.join(tmp, "data")
@@ -207,6 +234,7 @@ def main() -> None:
         print("indexed 1 photo with thumbnail — PASS")
 
         check_takeout(tmp)
+        check_live_photos()
     finally:
         proc.terminate()
         try:

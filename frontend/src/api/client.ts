@@ -13,6 +13,8 @@ export interface Item {
   height: number | null;
   duration_s: number | null;
   day: string;
+  /** 1 when this still has a motion clip attached (a Live Photo). */
+  live?: number;
 }
 
 export interface Filters {
@@ -27,6 +29,8 @@ export interface Filters {
   /** "any" = every screenshot/scan; or a specific kind. Omitted from the
    *  timeline, where documents are hidden by default. */
   kind?: "any" | "screenshot" | "document";
+  /** only Live Photos — stills that carry a motion clip */
+  live?: boolean;
 }
 
 export interface Person {
@@ -112,6 +116,7 @@ export function filterQS(f: Filters, extra: Record<string, string | number> = {}
   if (f.solo) p.set("solo", "1");
   if (f.media_type) p.set("media_type", f.media_type);
   if (f.kind) p.set("kind", f.kind);
+  if (f.live) p.set("live", "1");
   for (const [k, v] of Object.entries(extra)) p.set(k, String(v));
   const s = p.toString();
   return s ? `?${s}` : "";

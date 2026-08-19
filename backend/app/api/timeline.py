@@ -6,7 +6,8 @@ from ..services import filters
 router = APIRouter()
 
 ITEM_SQL = ("SELECT f.id, f.media_type, m.width, m.height, m.duration_s, "
-            "substr(m.taken_at, 1, 10) AS day "
+            "substr(m.taken_at, 1, 10) AS day, "
+            "EXISTS (SELECT 1 FROM file_motion mo WHERE mo.file_id = f.id) AS live "
             "FROM files f {joins} WHERE {where} "
             "ORDER BY m.taken_at DESC, f.id DESC")
 
@@ -14,7 +15,7 @@ ITEM_SQL = ("SELECT f.id, f.media_type, m.width, m.height, m.duration_s, "
 @router.get("/timeline/buckets")
 def buckets(person_id: int | None = None, country: str | None = None, city: str | None = None,
             album_id: int | None = None, event_id: int | None = None, solo: int = 0,
-            media_type: str | None = None, kind: str | None = None):
+            media_type: str | None = None, kind: str | None = None, live: int = 0):
     """The scroll skeleton: one row per day, and just enough shape to predict
     how tall that day will be.
 
@@ -28,7 +29,7 @@ def buckets(person_id: int | None = None, country: str | None = None, city: str 
     The COALESCE mirrors what the grid falls back to for media whose dimensions
     were never read (3x2), so the estimate matches what gets rendered."""
     joins, where, params = filters.build(person_id, country, city, album_id, event_id, solo=bool(solo),
-                                         media_type=media_type, kind=kind)
+                                         media_type=media_type, kind=kind, live=bool(live))
     rows = db.query(
         f"SELECT substr(m.taken_at, 1, 10) AS day, COUNT(*) n, "
         f"SUM(CAST(COALESCE(m.width, 3) AS REAL) / COALESCE(NULLIF(m.height, 0), 2)) AS ar "
@@ -42,9 +43,9 @@ def buckets(person_id: int | None = None, country: str | None = None, city: str 
 def items(day: str | None = None, limit: int = 1000, offset: int = 0,
           person_id: int | None = None, country: str | None = None, city: str | None = None,
           album_id: int | None = None, event_id: int | None = None, solo: int = 0,
-          media_type: str | None = None, kind: str | None = None):
+          media_type: str | None = None, kind: str | None = None, live: int = 0):
     joins, where, params = filters.build(person_id, country, city, album_id, event_id, day, solo=bool(solo),
-                                         media_type=media_type, kind=kind)
+                                         media_type=media_type, kind=kind, live=bool(live))
     rows = db.query(
         ITEM_SQL.format(joins=joins, where=where) + " LIMIT ? OFFSET ?",
         (*params, min(limit, 2000), offset),

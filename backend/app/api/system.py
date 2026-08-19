@@ -107,9 +107,15 @@ def _dir_size(path) -> int:
 
 @router.get("/stats")
 def stats():
+    # The movie half of a Live Photo is not counted as a video: the tab that
+    # uses this number filters it out, and a count that disagrees with what the
+    # tab shows is worse than no count.
     counts = {r["media_type"]: r["n"] for r in
               db.query("SELECT media_type, COUNT(*) n FROM files WHERE status='active' "
-                       "AND id NOT IN (SELECT file_id FROM locked_items) GROUP BY media_type")}
+                       "AND id NOT IN (SELECT file_id FROM locked_items) "
+                       "AND id NOT IN (SELECT video_file_id FROM file_motion "
+                       "               WHERE video_file_id IS NOT NULL) "
+                       "GROUP BY media_type")}
     return {
         "photos": counts.get("photo", 0),
         "videos": counts.get("video", 0),
@@ -117,6 +123,9 @@ def stats():
         "with_gps": db.query_one("SELECT COUNT(*) n FROM metadata WHERE gps_lat IS NOT NULL")["n"],
         "geocoded": db.query_one("SELECT COUNT(*) n FROM file_places")["n"],
         "faces": db.query_one("SELECT COUNT(*) n FROM faces")["n"],
+        "live": db.query_one(
+            "SELECT COUNT(*) n FROM file_motion mo JOIN files f ON f.id=mo.file_id "
+            "WHERE f.status='active' AND f.id NOT IN (SELECT file_id FROM locked_items)")["n"],
         "persons": db.query_one("SELECT COUNT(*) n FROM persons WHERE name IS NOT NULL")["n"],
         # People the People page will actually show. `persons` above counts only
         # NAMED people, so it is 0 on a library full of unnamed clusters — and

@@ -366,6 +366,7 @@ export default function SettingsPage() {
             <button onClick={() => runJob.mutate("/api/events/rebuild")}>Rebuild events</button>
             <button onClick={() => runJob.mutate("/api/dupes/run")}>Find near-duplicates</button>
             <button onClick={() => runJob.mutate("/api/kinds/classify")}>Sort documents</button>
+            <button onClick={() => runJob.mutate("/api/motion/scan")}>Find live photos</button>
             <button onClick={() => runJob.mutate("/api/faces/scan")} disabled={!stats?.face_model_ready}>
               Scan faces
             </button>

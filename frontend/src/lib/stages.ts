@@ -18,6 +18,7 @@ const LABEL: Record<string, string> = {
   classify: "Sorting documents",
   remove: "Removing a folder",
   blur: "Checking sharpness",
+  motion: "Finding live photos",
   takeout: "Importing from Google",
 };
 
@@ -35,6 +36,7 @@ const SENTENCE: Record<string, string> = {
   classify: "Sorting out screenshots and scans",
   remove: "Removing a folder from your library",
   blur: "Checking your photos for blur",
+  motion: "Pairing live photos with their motion",
   takeout: "Unpacking your Google Takeout",
 };
 
@@ -55,6 +57,7 @@ const UNIT: Record<string, string> = {
   classify: "photos sorted",
   remove: "photos removed",
   blur: "photos checked",
+  motion: "photos checked",
   takeout: "photos and videos copied",
 };
 

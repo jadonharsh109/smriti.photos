@@ -255,11 +255,14 @@ def file_detail(file_id: int, lt: str | None = None):
         "SELECT DISTINCT p.id, p.name FROM faces fa JOIN persons p ON p.id=fa.person_id WHERE fa.file_id=?",
         (file_id,),
     )
+    motion = db.query_one("SELECT video_file_id FROM file_motion WHERE file_id=?", (file_id,))
     vol = db.query_one("SELECT label, last_mount_path, is_online FROM volumes WHERE id=?", (row["volume_id"],))
     return {
         **dict(row),
         "metadata": dict(meta) if meta else None,
         "place": dict(place) if place else None,
         "persons": [dict(p) for p in persons],
+        # the movie half of a Live Photo, so the viewer can play the moment
+        "motion_file_id": motion["video_file_id"] if motion else None,
         "volume": dict(vol) if vol else None,
     }

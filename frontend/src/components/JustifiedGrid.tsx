@@ -50,6 +50,7 @@ export default function JustifiedGrid({ items, width, onOpen, selected, onToggle
               onLoad={(e) => e.currentTarget.classList.add("ld")}
             />
             <span className="tl-shade" />
+            {it.live === 1 && <span className="live-badge">LIVE</span>}
             {it.media_type === "video" && (
               <>
                 <span className="vid-badge">▶</span>

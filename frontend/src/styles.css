@@ -921,6 +921,26 @@ code {
   padding: 7px 13px;
 }
 .selbar > strong { flex: none; white-space: nowrap; margin-right: 2px; }
+/* Live Photo: a quiet mark on the tile, and a control in the viewer. */
+.live-badge {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  z-index: 2;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 760;
+  letter-spacing: 0.6px;
+  color: var(--fg);
+  background: rgba(3, 4, 9, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+.icon-btn.live-btn { font-size: 10.5px; font-weight: 780; letter-spacing: 0.6px; width: auto; padding: 0 11px; }
+
 /* ---- filter-as-you-type box, sized to sit among the header actions ---- */
 .searchbox { position: relative; display: inline-flex; align-items: center; }
 .searchbox .mag {

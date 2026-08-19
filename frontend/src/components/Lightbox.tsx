@@ -28,6 +28,8 @@ interface Detail {
   place: { city: string | null; state: string | null; country: string | null } | null;
   persons: { id: number; name: string | null }[];
   volume: { label: string; is_online: number } | null;
+  /** the movie half, when this still is a Live Photo */
+  motion_file_id: number | null;
 }
 
 interface Props {
@@ -43,6 +45,7 @@ const ZOOM = 2.5;
 
 export default function Lightbox({ item, onClose, onPrev, onNext, qs = "" }: Props) {
   const [showInfo, setShowInfo] = useState(false);
+  const [playingLive, setPlayingLive] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const qc = useQueryClient();
   // always loaded (cheap, cached): also tells us whether the drive is online
@@ -79,6 +82,7 @@ export default function Lightbox({ item, onClose, onPrev, onNext, qs = "" }: Pro
   useEffect(() => {
     resetZoom();
     setEntranceDone(false);
+    setPlayingLive(false);
   }, [item.id]);
 
   const clampPan = (x: number, y: number, s: number) => {
@@ -183,6 +187,20 @@ export default function Lightbox({ item, onClose, onPrev, onNext, qs = "" }: Pro
             autoPlay
             onError={() => setMediaError(true)}
           />
+        ) : playingLive && detail?.motion_file_id ? (
+          // The whole point of a Live Photo is the movement; hand back the
+          // still the moment it finishes so the frame you chose is what stays.
+          <video
+            key={`live-${item.id}`}
+            className="lb-media"
+            src={`/api/media/${detail.motion_file_id}${qs}`}
+            poster={`/api/preview/${item.id}${qs}`}
+            autoPlay
+            muted
+            playsInline
+            onEnded={() => setPlayingLive(false)}
+            onError={() => setPlayingLive(false)}
+          />
         ) : (
           <img
             key={item.id}
@@ -215,6 +233,15 @@ export default function Lightbox({ item, onClose, onPrev, onNext, qs = "" }: Pro
       </div>
 
       <div className="lb-top" onClick={(e) => e.stopPropagation()}>
+        {detail?.motion_file_id && !offline && (
+          <button
+            className={`icon-btn live-btn${playingLive ? " on" : ""}`}
+            title="Play the moment (Live Photo)"
+            onClick={() => setPlayingLive((p) => !p)}
+          >
+            LIVE
+          </button>
+        )}
         <button
           className={`icon-btn${showInfo ? " on" : ""}`}
           title="Info (i)"

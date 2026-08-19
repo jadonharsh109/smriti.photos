@@ -15,6 +15,7 @@ from . import dupes as dupes_job
 from . import events as events_job
 from . import faces as faces_job
 from . import geocode as geocode_job
+from . import motion as motion_job
 from . import scan as scan_job
 from . import takeout as takeout_job
 from .runner import manager
@@ -38,6 +39,9 @@ async def run_post_scan() -> None:
     # second, and until it has run every screenshot is still sitting in the main
     # timeline. Cheapest stage, and the one whose absence is most visible.
     await _stage("classify", lambda jid: classify_job.run_classify(jid))
+    # Straight after the scan: it needs the identifiers ffprobe just collected,
+    # and everything downstream should already know a Live Photo is one item.
+    await _stage("motion", lambda jid: motion_job.run_motion_scan(jid))
     await _stage("geocode", lambda jid: geocode_job.run_geocode(jid, False))
     await _stage("events", lambda jid: events_job.run_events_rebuild(jid))
     await _stage("neardup", lambda jid: dupes_job.run_near_dupes(jid))

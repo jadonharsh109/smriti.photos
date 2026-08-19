@@ -14,7 +14,7 @@ from .runner import manager
 
 META_COLS = ("taken_at", "taken_at_ts", "taken_at_src", "width", "height", "orientation",
              "camera_make", "camera_model", "iso", "f_number", "exposure", "focal_length",
-             "duration_s", "video_codec", "gps_lat", "gps_lon")
+             "duration_s", "video_codec", "gps_lat", "gps_lon", "content_id")
 
 IN_FLIGHT = 64
 

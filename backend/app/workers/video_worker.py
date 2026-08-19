@@ -97,6 +97,13 @@ def _process(file_id: int, abs_path: str, thumb_path: str) -> dict:
         if latlon:
             meta["gps_lat"], meta["gps_lon"] = latlon
 
+    # A Live Photo's movie half carries the UUID that ties it to its still.
+    # Its presence is also what distinguishes a 3-second Live Photo component
+    # from an ordinary video, which matters before any pairing happens.
+    cid = tags.get("com.apple.quicktime.content.identifier")
+    if cid:
+        meta["content_id"] = cid
+
     ct = tags.get("com.apple.quicktime.creationdate") or tags.get("creation_time")
     d = exif_svc.parse_video_creation_time(ct) if ct else None
     src = "video"

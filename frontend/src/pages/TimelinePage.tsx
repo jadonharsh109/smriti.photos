@@ -9,9 +9,10 @@ interface Stats {
   photos: number;
   videos: number;
   persons: number;
+  live: number;
 }
 
-type MediaTab = "all" | "photo" | "video";
+type MediaTab = "all" | "photo" | "video" | "live";
 
 export default function TimelinePage() {
   const [tab, setTab] = useState<MediaTab>("all");
@@ -20,7 +21,8 @@ export default function TimelinePage() {
     queryFn: () => api.get<Stats>("/api/stats"),
   });
   const empty = stats && stats.photos + stats.videos === 0;
-  const filters: Filters = { media_type: tab === "all" ? undefined : tab };
+  const filters: Filters =
+    tab === "live" ? { live: true } : { media_type: tab === "all" ? undefined : tab };
   return (
     <div className="page">
       {empty ? (
@@ -54,12 +56,25 @@ export default function TimelinePage() {
                 <button className={tab === "video" ? "on" : ""} onClick={() => setTab("video")}>
                   Videos{stats ? ` · ${stats.videos.toLocaleString()}` : ""}
                 </button>
+                {/* Only offered when there are any: a tab that is always empty
+                    is a question the library cannot answer. */}
+                {(stats?.live ?? 0) > 0 && (
+                  <button className={tab === "live" ? "on" : ""} onClick={() => setTab("live")}>
+                    Live · {stats!.live.toLocaleString()}
+                  </button>
+                )}
               </div>
             </div>
           </header>
           <TimelineGrid
             filters={filters}
-            emptyText={tab === "video" ? "No videos in your library yet" : "Nothing here yet"}
+            emptyText={
+              tab === "video"
+                ? "No videos in your library yet"
+                : tab === "live"
+                ? "No Live Photos found yet"
+                : "Nothing here yet"
+            }
           />
         </>
       )}
