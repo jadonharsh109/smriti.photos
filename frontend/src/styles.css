@@ -888,7 +888,60 @@ code {
   padding: 7px 13px;
 }
 .selbar > strong { flex: none; white-space: nowrap; margin-right: 2px; }
-.selbar .album-picks { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; max-width: 460px; }
+/* ---- album picker: a scrollable, searchable list in a dialog ----
+   Replaces the row of album buttons that used to live in the selection bar,
+   which had no upper bound and pushed the bar's own actions off screen. */
+.album-list {
+  max-height: 40vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 2px;
+  margin: 2px -8px;
+  padding: 2px 8px;
+}
+.album-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  text-align: left;
+}
+.album-row:hover { background: var(--glass-2); border-color: var(--stroke); transform: none; }
+.album-row img, .album-row .ph {
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  object-fit: cover;
+  flex: none;
+  background: var(--glass-2);
+  border: 1px solid var(--stroke);
+}
+.album-row .ph { display: grid; place-items: center; color: var(--fg-faint); }
+.album-row .nm { font-weight: 620; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.album-row .ct { margin-left: auto; color: var(--fg-faint); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+/* a quiet rule with a label, separating "pick one" from "make one" */
+.album-new { padding: 0 24px 4px; }
+.album-or {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 10px;
+  color: var(--fg-faint);
+  font-size: 12px;
+}
+.album-or::before, .album-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--stroke);
+}
 
 /* ============================================================
    Cards

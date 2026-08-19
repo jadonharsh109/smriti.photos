@@ -3,15 +3,10 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, fmtBytes } from "../api/client";
 import { getLockedToken, lockedApi, setLockedToken } from "../lockedStore";
-import { ConfirmDialog, TextDialog } from "./Dialogs";
+import AlbumPicker from "./AlbumPicker";
+import { ConfirmDialog } from "./Dialogs";
 import { IconDownload, IconLock } from "./Icons";
 import Portal from "./Portal";
-
-interface Album {
-  id: number;
-  name: string;
-  count: number;
-}
 
 /** Hide-in-Locked flow: set-up hint / inline unlock / confirm, in one dialog. */
 function HideInLockedDialog({ ids, onDone, onClose }: { ids: number[]; onDone: () => void; onClose: () => void }) {
@@ -96,17 +91,11 @@ interface Props {
 
 export default function SelectionBar({ selected, onClear, onSelectAll, extraActions }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [naming, setNaming] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [hiding, setHiding] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [note, setNote] = useState<{ text: string; err: boolean } | null>(null);
   const qc = useQueryClient();
-  const { data: albums } = useQuery({
-    queryKey: ["albums"],
-    queryFn: () => api.get<Album[]>("/api/albums"),
-    enabled: pickerOpen,
-  });
 
   if (selected.size === 0) return null;
 
@@ -114,13 +103,11 @@ export default function SelectionBar({ selected, onClear, onSelectAll, extraActi
     await api.post(`/api/albums/${albumId}/items`, { file_ids: [...selected] });
     qc.invalidateQueries({ queryKey: ["albums"] });
     qc.invalidateQueries({ queryKey: ["album"] });
-    setPickerOpen(false);
     onClear();
   };
 
   const createAndAdd = async (name: string) => {
     const r = await api.post<{ id: number }>("/api/albums", { name });
-    setNaming(false);
     await addTo(r.id);
   };
 
@@ -171,19 +158,7 @@ export default function SelectionBar({ selected, onClear, onSelectAll, extraActi
       <div className="selbar">
         <strong>{selected.size} selected</strong>
         {onSelectAll && <button onClick={onSelectAll}>Select all</button>}
-        <button onClick={() => setPickerOpen((o) => !o)}>Add to album</button>
-        {pickerOpen && (
-          <div className="album-picks">
-            {(albums ?? []).map((a) => (
-              <button key={a.id} onClick={() => addTo(a.id)}>
-                {a.name}
-              </button>
-            ))}
-            <button className="primary" onClick={() => setNaming(true)}>
-              + New
-            </button>
-          </div>
-        )}
+        <button onClick={() => setPickerOpen(true)}>Add to album</button>
         {extraActions}
         <button
           onClick={exportZip}
@@ -221,13 +196,12 @@ export default function SelectionBar({ selected, onClear, onSelectAll, extraActi
       {hiding && (
         <HideInLockedDialog ids={[...selected]} onDone={onClear} onClose={() => setHiding(false)} />
       )}
-      {naming && (
-        <TextDialog
-          title="New album"
-          placeholder="Album name"
-          submitLabel="Create & add"
-          onSubmit={createAndAdd}
-          onClose={() => setNaming(false)}
+      {pickerOpen && (
+        <AlbumPicker
+          title={`Add ${selected.size} ${selected.size === 1 ? "item" : "items"} to an album`}
+          onPick={addTo}
+          onCreate={createAndAdd}
+          onClose={() => setPickerOpen(false)}
         />
       )}
     </>
