@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, cardDelay, type Person } from "../api/client";
 import { ArtPeople } from "../components/Illustrations";
+import SearchBox from "../components/SearchBox";
 
 export default function PeoplePage() {
   const [showHidden, setShowHidden] = useState(false);
+  const [query, setQuery] = useState("");
   const qc = useQueryClient();
   const { data: people } = useQuery({
     queryKey: ["people", showHidden],
@@ -36,6 +38,16 @@ export default function PeoplePage() {
     onSettled: () => qc.invalidateQueries({ queryKey: ["stats"] }),
   });
 
+  /** Names only: an unnamed cluster has nothing to match on, so a query
+   *  necessarily hides them — which is the useful behaviour, since searching is
+   *  how you find someone you have already named. */
+  const shown = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return people ?? [];
+    return (people ?? []).filter((p) => (p.name ?? "").toLowerCase().includes(needle));
+  }, [people, query]);
+  const searching = query.trim().length > 0;
+
   return (
     <div className="page">
       <header className="page-head">
@@ -54,6 +66,14 @@ export default function PeoplePage() {
           </p>
         </div>
         <div className="actions">
+          {(people ?? []).length > 0 && (
+            <SearchBox
+              value={query}
+              onChange={setQuery}
+              placeholder="Search people"
+              result={`${shown.length} of ${people!.length}`}
+            />
+          )}
           {/* Hidden people are still in the library. Without a way back this
               action was one-way and unreachable, which is most of why it read
               as broken. */}
@@ -81,7 +101,15 @@ export default function PeoplePage() {
         </div>
       </header>
       {scan.error && <p className="sub" style={{ color: "var(--danger)" }}>{String(scan.error)}</p>}
-      {(people ?? []).length === 0 ? (
+      {searching && shown.length === 0 ? (
+        <div className="empty">
+          <ArtPeople className="art" />
+          <p>
+            No one named “{query.trim()}”. People you haven’t named yet can’t be found by
+            search — clear the box to see everyone.
+          </p>
+        </div>
+      ) : (people ?? []).length === 0 ? (
         <div className="empty">
           <ArtPeople className="art" />
           {/* "Scan for faces, then group them" is the wrong thing to say to
@@ -112,7 +140,7 @@ export default function PeoplePage() {
         </div>
       ) : (
         <div className="card-grid">
-          {people!.map((p, i) => (
+          {shown.map((p, i) => (
             <Link key={p.id} to={`/people/${p.id}`} className="card" style={cardDelay(i)}>
               <div className="face-wrap">
                 {p.cover_face_id ? (

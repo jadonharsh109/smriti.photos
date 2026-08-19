@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, cardDelay } from "../api/client";
 import { ArtPlaces } from "../components/Illustrations";
+import SearchBox from "../components/SearchBox";
 
 interface CityEntry {
   city: string;
@@ -21,6 +23,29 @@ export default function PlacesPage() {
     queryKey: ["places"],
     queryFn: () => api.get<CountryEntry[]>("/api/places/summary"),
   });
+  const [query, setQuery] = useState("");
+
+  /** A query can match a country or a city. Matching the country keeps all of
+   *  its cities (you asked for the country); matching only cities keeps the
+   *  country as their heading with just those cities under it. */
+  const shown = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return places ?? [];
+    const out: CountryEntry[] = [];
+    for (const c of places ?? []) {
+      if (c.country.toLowerCase().includes(needle)) {
+        out.push(c);
+        continue;
+      }
+      const cities = c.cities.filter((ct) => ct.city.toLowerCase().includes(needle));
+      if (cities.length) out.push({ ...c, cities, count: cities.reduce((n, ct) => n + ct.count, 0) });
+    }
+    return out;
+  }, [places, query]);
+  const searching = query.trim().length > 0;
+  const cityCount = (places ?? []).reduce((n, c) => n + c.cities.length, 0);
+  const shownCities = shown.reduce((n, c) => n + c.cities.length, 0);
+
   const geocode = useMutation({
     mutationFn: () => api.post("/api/places/geocode"),
     onSettled: () => qc.invalidateQueries({ queryKey: ["places"] }),
@@ -34,6 +59,14 @@ export default function PlacesPage() {
           <p className="sub">Grouped by GPS data — everything resolved offline.</p>
         </div>
         <div className="actions">
+          {(places ?? []).length > 0 && (
+            <SearchBox
+              value={query}
+              onChange={setQuery}
+              placeholder="Search places"
+              result={`${shownCities} of ${cityCount}`}
+            />
+          )}
           <Link to="/map">
             <button>Globe view</button>
           </Link>
@@ -42,13 +75,18 @@ export default function PlacesPage() {
           </button>
         </div>
       </header>
-      {(places ?? []).length === 0 ? (
+      {searching && shown.length === 0 ? (
+        <div className="empty">
+          <ArtPlaces className="art" />
+          <p>Nowhere called “{query.trim()}” in your library.</p>
+        </div>
+      ) : (places ?? []).length === 0 ? (
         <div className="empty">
           <ArtPlaces className="art" />
           <p>No places yet. Index photos with GPS, then press "Locate new photos".</p>
         </div>
       ) : (
-        places!.map((c) => (
+        shown.map((c) => (
           <div key={c.country} style={{ marginBottom: 30 }}>
             <div className="row" style={{ marginBottom: 12 }}>
               <h2 style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.3px" }}>
