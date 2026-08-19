@@ -4,12 +4,13 @@ import { Link } from "react-router-dom";
 import { api, cardDelay, type Person } from "../api/client";
 import { ArtPeople } from "../components/Illustrations";
 import SearchBox from "../components/SearchBox";
+import { PeopleGridSkeleton } from "../components/Skeletons";
 
 export default function PeoplePage() {
   const [showHidden, setShowHidden] = useState(false);
   const [query, setQuery] = useState("");
   const qc = useQueryClient();
-  const { data: people } = useQuery({
+  const { data: people, isLoading } = useQuery({
     queryKey: ["people", showHidden],
     queryFn: () => api.get<Person[]>(`/api/people${showHidden ? "?include_hidden=true" : ""}`),
   });
@@ -57,7 +58,12 @@ export default function PeoplePage() {
               in the thousands while this page is empty, because a face only
               becomes a person once several of them match. */}
           <p className="sub">
-            {(stats?.people_visible ?? 0) > 0
+            {/* Say nothing until we know something: "No one grouped yet" is a
+                claim about the library, and it was being made before the
+                answer had arrived. */}
+            {!stats
+              ? "\u00a0"
+              : (stats?.people_visible ?? 0) > 0
               ? `${stats!.people_visible.toLocaleString()} ${stats!.people_visible === 1 ? "person" : "people"}`
               : "No one grouped yet"}
             {stats && stats.face_pending > 0
@@ -101,7 +107,9 @@ export default function PeoplePage() {
         </div>
       </header>
       {scan.error && <p className="sub" style={{ color: "var(--danger)" }}>{String(scan.error)}</p>}
-      {searching && shown.length === 0 ? (
+      {isLoading ? (
+        <PeopleGridSkeleton />
+      ) : searching && shown.length === 0 ? (
         <div className="empty">
           <ArtPeople className="art" />
           <p>

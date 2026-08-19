@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { api, cardDelay } from "../api/client";
 import { ArtPlaces } from "../components/Illustrations";
 import SearchBox from "../components/SearchBox";
+import { CardGridSkeleton } from "../components/Skeletons";
 
 interface CityEntry {
   city: string;
@@ -19,7 +20,7 @@ interface CountryEntry {
 
 export default function PlacesPage() {
   const qc = useQueryClient();
-  const { data: places } = useQuery({
+  const { data: places, isLoading } = useQuery({
     queryKey: ["places"],
     queryFn: () => api.get<CountryEntry[]>("/api/places/summary"),
   });
@@ -75,7 +76,9 @@ export default function PlacesPage() {
           </button>
         </div>
       </header>
-      {searching && shown.length === 0 ? (
+      {isLoading ? (
+        <CardGridSkeleton count={6} wide />
+      ) : searching && shown.length === 0 ? (
         <div className="empty">
           <ArtPlaces className="art" />
           <p>Nowhere called “{query.trim()}” in your library.</p>

@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, type Item } from "../api/client";
 import { ConfirmDialog, TextDialog } from "../components/Dialogs";
 import JustifiedGrid from "../components/JustifiedGrid";
+import { PhotoGridSkeleton } from "../components/Skeletons";
 import Lightbox from "../components/Lightbox";
 
 interface AlbumDetail {
@@ -67,7 +68,18 @@ export default function AlbumPage() {
     onSuccess: () => nav("/albums"),
   });
 
-  if (!album) return <div className="page empty">Loading…</div>;
+  if (!album)
+    return (
+      <div className="page">
+        <header className="page-head">
+          <div>
+            <div className="skeleton line" style={{ width: 220, height: 22 }} />
+            <div className="skeleton line short" style={{ width: 70 }} />
+          </div>
+        </header>
+        <PhotoGridSkeleton />
+      </div>
+    );
   const items = album.items;
   return (
     <div className="page" ref={attachContainer}>

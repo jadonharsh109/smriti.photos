@@ -5,6 +5,7 @@ import { IconLock } from "../components/Icons";
 import JustifiedGrid from "../components/JustifiedGrid";
 import Lightbox from "../components/Lightbox";
 import Portal from "../components/Portal";
+import { Loading } from "../components/Skeletons";
 import { getLockedToken, lockedApi, lockedQS, setLockedToken } from "../lockedStore";
 
 /** Backup codes, shown exactly once after setup or a passcode change. */
@@ -247,7 +248,14 @@ export default function LockedPage() {
     );
   }
 
-  if (!status) return <div className="page" />;
+  // Blank reads as broken, and this is the one page where a blank screen also
+  // looks like it might be hiding something.
+  if (!status)
+    return (
+      <div className="page lock-center">
+        <Loading label="Checking the lock…" />
+      </div>
+    );
 
   if (!status.configured) {
     return (

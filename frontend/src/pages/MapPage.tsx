@@ -67,7 +67,7 @@ export default function MapPage() {
   const inertiaRef = useRef<number | null>(null);
   const velRef = useRef({ x: 0, y: 0, t: 0, vl: 0, vp: 0 });
 
-  const { data: points } = useQuery({
+  const { data: points, isLoading: pointsLoading } = useQuery({
     queryKey: ["map-points"],
     queryFn: () => api.get<Point[]>("/api/places/points?precision=1"),
   });
@@ -416,8 +416,17 @@ export default function MapPage() {
         </div>
         <div className="actions">
           <span className="chip">
-            <span className="dot" />
-            <strong>{(points ?? []).reduce((s, p) => s + p.n, 0).toLocaleString()}</strong>&nbsp;located photos · fully offline
+            {pointsLoading ? (
+              <>
+                <span className="spin" />
+                &nbsp;finding your places…
+              </>
+            ) : (
+              <>
+                <span className="dot" />
+                <strong>{(points ?? []).reduce((s, p) => s + p.n, 0).toLocaleString()}</strong>&nbsp;located photos · fully offline
+              </>
+            )}
           </span>
         </div>
       </header>

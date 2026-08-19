@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api, type Person } from "../api/client";
 import AddAllToAlbum from "../components/AddAllToAlbum";
 import { IconPencil } from "../components/Icons";
+import { PhotoGridSkeleton } from "../components/Skeletons";
 import TimelineGrid from "../components/TimelineGrid";
 
 export default function PersonPage() {
@@ -54,7 +55,23 @@ export default function PersonPage() {
     },
   });
 
-  if (!person) return <div className="page empty">Loading…</div>;
+  // A person page is a header plus a photo grid; show that shape rather than
+  // the word "Loading", so nothing jumps when the real thing arrives.
+  if (!person)
+    return (
+      <div className="page">
+        <header className="page-head">
+          <div className="row" style={{ gap: 16 }}>
+            <div className="skeleton" style={{ width: 72, height: 72, borderRadius: "50%" }} />
+            <div>
+              <div className="skeleton line" style={{ width: 180, height: 22 }} />
+              <div className="skeleton line short" style={{ width: 90 }} />
+            </div>
+          </div>
+        </header>
+        <PhotoGridSkeleton />
+      </div>
+    );
   return (
     <div className="page">
       <header className="page-head">

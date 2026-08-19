@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api, cardDelay } from "../api/client";
 import { ArtEvents } from "../components/Illustrations";
+import { CardGridSkeleton } from "../components/Skeletons";
 
 interface Event {
   id: number;
@@ -14,7 +15,7 @@ interface Event {
 
 export default function EventsPage() {
   const qc = useQueryClient();
-  const { data: events } = useQuery({
+  const { data: events, isLoading } = useQuery({
     queryKey: ["events"],
     queryFn: () => api.get<Event[]>("/api/events"),
   });
@@ -36,7 +37,9 @@ export default function EventsPage() {
           </button>
         </div>
       </header>
-      {(events ?? []).length === 0 ? (
+      {isLoading ? (
+        <CardGridSkeleton count={8} wide />
+      ) : (events ?? []).length === 0 ? (
         <div className="empty">
           <ArtEvents className="art" />
           <p>No events yet — index some photos and press "Rebuild events".</p>

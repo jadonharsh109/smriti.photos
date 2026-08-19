@@ -747,6 +747,15 @@ code {
   opacity: 0.8;
 }
 
+/* skeleton cards: the same box as the real card, minus the content */
+.skel-card { pointer-events: none; }
+.skel-card .cover { aspect-ratio: 1; width: 100%; display: block; border-radius: 0; }
+.skel-card .cover.wide { aspect-ratio: 16/10; }
+.skel-card .face-cover { border: none; }
+.skeleton.line { height: 11px; border-radius: 6px; }
+.skeleton.line.short { height: 9px; margin-top: 7px; opacity: 0.6; }
+.loading-row { gap: 10px; padding: 18px 4px; }
+
 /* ---- time rail: proportional-to-time scrubber on the right edge ---- */
 .tscrub {
   position: fixed;

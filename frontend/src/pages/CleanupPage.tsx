@@ -3,6 +3,7 @@ import { useState } from "react";
 import { api, fmtBytes } from "../api/client";
 import { ConfirmDialog } from "../components/Dialogs";
 import { ArtDupes } from "../components/Illustrations";
+import { Loading } from "../components/Skeletons";
 
 interface DupeItem {
   id: number;
@@ -53,17 +54,17 @@ export default function CleanupPage() {
 
   const isDupeTab = tab === "exact" || tab === "near";
 
-  const { data: groups } = useQuery({
+  const { data: groups, isLoading: dupesLoading } = useQuery({
     queryKey: ["dupes", tab],
     queryFn: () => api.get<Group[]>(`/api/dupes/${tab}`),
     enabled: isDupeTab,
   });
-  const { data: blurry } = useQuery({
+  const { data: blurry, isLoading: blurryLoading } = useQuery({
     queryKey: ["blurry", sens],
     queryFn: () => api.get<Blurry>(`/api/cleanup/blurry?sensitivity=${sens}`),
     enabled: tab === "blurry",
   });
-  const { data: missing } = useQuery({
+  const { data: missing, isLoading: missingLoading } = useQuery({
     queryKey: ["missing"],
     queryFn: () => api.get<Missing>("/api/cleanup/missing"),
     enabled: tab === "missing",
@@ -222,7 +223,8 @@ export default function CleanupPage() {
       )}
 
       {/* ---- exact / similar ------------------------------------------- */}
-      {isDupeTab &&
+      {isDupeTab && dupesLoading && <Loading label="Looking through your library…" />}
+      {isDupeTab && !dupesLoading &&
         ((groups ?? []).length === 0 ? (
           <div className="empty">
             <ArtDupes className="art" />
@@ -266,6 +268,7 @@ export default function CleanupPage() {
         ))}
 
       {/* ---- blurry ----------------------------------------------------- */}
+      {tab === "blurry" && blurryLoading && <Loading label="Reading sharpness scores…" />}
       {tab === "blurry" &&
         (blurry == null ? null : blurry.scored === 0 ? (
           <div className="empty">
@@ -311,6 +314,7 @@ export default function CleanupPage() {
         ))}
 
       {/* ---- missing ---------------------------------------------------- */}
+      {tab === "missing" && missingLoading && <Loading label="Checking for missing files…" />}
       {tab === "missing" &&
         (missing == null ? null : missing.total === 0 ? (
           <div className="empty">

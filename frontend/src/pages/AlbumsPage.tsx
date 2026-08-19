@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { api, cardDelay } from "../api/client";
 import { TextDialog } from "../components/Dialogs";
 import { ArtAlbums } from "../components/Illustrations";
+import { CardGridSkeleton } from "../components/Skeletons";
 
 interface Album {
   id: number;
@@ -15,7 +16,7 @@ interface Album {
 export default function AlbumsPage() {
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
-  const { data: albums } = useQuery({
+  const { data: albums, isLoading } = useQuery({
     queryKey: ["albums"],
     queryFn: () => api.get<Album[]>("/api/albums"),
   });
@@ -40,7 +41,9 @@ export default function AlbumsPage() {
           </button>
         </div>
       </header>
-      {(albums ?? []).length === 0 ? (
+      {isLoading ? (
+        <CardGridSkeleton count={8} />
+      ) : (albums ?? []).length === 0 ? (
         <div className="empty">
           <ArtAlbums className="art" />
           <p>No albums yet. Select photos in the timeline and choose "Add to album".</p>

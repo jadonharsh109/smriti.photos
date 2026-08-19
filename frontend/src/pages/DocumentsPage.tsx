@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, type Filters } from "../api/client";
 import { ArtFolder } from "../components/Illustrations";
+import { PhotoGridSkeleton } from "../components/Skeletons";
 import TimelineGrid from "../components/TimelineGrid";
 
 interface KindSummary {
@@ -18,7 +19,7 @@ export default function DocumentsPage() {
   const qc = useQueryClient();
   const [kind, setKind] = useState<"any" | string>("any");
 
-  const { data: summary } = useQuery({
+  const { data: summary, isLoading } = useQuery({
     queryKey: ["kinds"],
     queryFn: () => api.get<KindSummary>("/api/kinds/summary"),
   });
@@ -63,7 +64,9 @@ export default function DocumentsPage() {
         </div>
       </header>
 
-      {summary?.total === 0 ? (
+      {isLoading ? (
+        <PhotoGridSkeleton />
+      ) : summary?.total === 0 ? (
         <div className="empty">
           <ArtFolder className="art" />
           <p>
