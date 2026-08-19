@@ -505,7 +505,15 @@ code {
 .stage {
   flex: 1;
   min-width: 0;
-  overflow-y: auto;
+  /* `scroll`, not `auto`: the scrollbar here is styled, so it takes real width
+     rather than floating over the content. With `auto` it appears and vanishes
+     as the page grows and shrinks — filtering People from 27 cards to 1 removed
+     it and slid the whole right-aligned header 11px sideways under the cursor.
+     Reserving the track always costs nothing visually (it is transparent, and
+     the thumb only renders when there is something to scroll) and keeps every
+     measurement of this element stable, which the timeline virtualizer relies
+     on too. */
+  overflow-y: scroll;
   overflow-x: hidden;
   position: relative;
   border-radius: var(--r-panel);
@@ -907,13 +915,12 @@ code {
   pointer-events: none;
 }
 .searchbox input[type="text"] {
-  width: 216px;
+  width: 232px;   /* one fixed width: focus must not resize it, or the buttons
+                     beside it move the moment you click into the box */
   padding-left: 36px;
   padding-right: 34px;
   border-radius: var(--r-ctl);
 }
-.searchbox input[type="text"]:focus { width: 260px; }
-.searchbox input[type="text"] { transition: width 0.22s var(--ease), border-color 0.16s, box-shadow 0.16s, background 0.16s; }
 /* how many of the list survived the filter — the answer to "is it just not there?" */
 .searchbox .hits {
   position: absolute;
@@ -945,7 +952,7 @@ code {
    which had no upper bound and pushed the bar's own actions off screen. */
 .album-list {
   max-height: 40vh;
-  overflow-y: auto;
+  overflow-y: scroll;      /* reserve the track: see .stage */
   display: grid;
   gap: 2px;
   margin: 2px -8px;
