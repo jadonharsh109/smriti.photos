@@ -9,8 +9,13 @@
  * frontend gains no npm dependency on the shell it may not be running inside.
  */
 
+type Unlisten = () => void;
+
 interface TauriGlobal {
   core?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> };
+  event?: {
+    listen?: (name: string, handler: (e: { payload: unknown }) => void) => Promise<Unlisten>;
+  };
 }
 
 const tauri = (): TauriGlobal | null =>
@@ -25,6 +30,25 @@ async function invoke(cmd: string, args?: Record<string, unknown>): Promise<unkn
   const fn = tauri()?.core?.invoke;
   if (!fn) throw new Error("not running in the desktop app");
   return fn(cmd, args);
+}
+
+/** Subscribe to an event the shell emits. Returns a synchronous unsubscribe,
+ *  safe to call before the listener has finished registering. */
+export function onShellEvent<T>(name: string, handler: (payload: T) => void): Unlisten {
+  const listen = tauri()?.event?.listen;
+  if (!listen) return () => {};
+  let stop: Unlisten | null = null;
+  let dropped = false;
+  listen(name, (e) => handler(e.payload as T))
+    .then((off) => {
+      if (dropped) off();
+      else stop = off;
+    })
+    .catch(() => {});
+  return () => {
+    dropped = true;
+    stop?.();
+  };
 }
 
 /** Open a link in the user's real browser.
@@ -43,10 +67,42 @@ export async function openExternal(url: string): Promise<void> {
   }
 }
 
-/** Ask the shell to check for a new version. Desktop only — the shell shows its
- *  own dialogs for all three outcomes (update / up to date / offline). */
-export async function checkForUpdates(): Promise<void> {
-  await invoke("check_updates_now");
+/* ------------------------------------------------------------------ updates */
+
+/** A newer build, as the shell describes it. */
+export interface UpdateInfo {
+  /** The version on offer. */
+  version: string;
+  /** The version running right now. */
+  current: string;
+  /** Release notes, one `- item` per line, as the release workflow wrote them. */
+  notes: string;
 }
+
+/** The three ways a check can land. */
+export type CheckResult =
+  | ({ status: "available" } & UpdateInfo)
+  | { status: "current"; current: string }
+  | { status: "offline"; error: string };
+
+export interface UpdateProgress {
+  phase: "downloading" | "installing" | "restarting";
+  downloaded: number;
+  /** 0 when the server sent no content-length. */
+  total: number;
+  /** 0..100, and 0 for as long as `total` is unknown. */
+  pct: number;
+}
+
+/** Ask the shell to check now, and say what it found. Desktop only. */
+export const checkForUpdates = () => invoke("check_updates_now") as Promise<CheckResult>;
+
+/** What the automatic check turned up, if anything. It runs ~10s after launch —
+ *  usually before this page exists — so its event is long gone by now. */
+export const pendingUpdate = () => invoke("pending_update") as Promise<UpdateInfo | null>;
+
+/** Accept the pending update. Progress arrives as `update://` events; on
+ *  success the app restarts, so this resolving means only that it started. */
+export const installUpdate = () => invoke("install_update") as Promise<void>;
 
 export const REPO_URL = "https://github.com/jadonharsh109/smriti.photos";

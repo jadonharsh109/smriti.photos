@@ -501,6 +501,34 @@ code {
 .vol-toast.in { border-color: rgba(111, 227, 165, 0.3); }
 .vol-toast.out { border-color: rgba(255, 138, 128, 0.3); }
 
+/* update notice — the same card as jobs, except this one is a button that
+   opens the sheet. It waits in the rail for as long as it takes; the offer is
+   never spent by dismissing something. */
+.update-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-weight: inherit;
+  border-color: rgba(124, 196, 255, 0.32);
+}
+.update-card:hover {
+  background: rgba(124, 196, 255, 0.09);
+  border-color: rgba(124, 196, 255, 0.55);
+}
+.update-card .jc-title { color: var(--accent); }
+
+/* what changed, in the update sheet */
+.update-notes {
+  margin: 12px 0 2px;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  color: var(--fg-dim);
+  line-height: 1.55;
+}
+.update-progress { margin-top: 16px; display: grid; gap: 9px; }
+.update-progress .progress { height: 8px; }
+
 /* main stage */
 .stage {
   flex: 1;

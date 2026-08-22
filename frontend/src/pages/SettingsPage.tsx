@@ -7,7 +7,8 @@ import FolderPicker from "../components/FolderPicker";
 import TakeoutImport from "../components/TakeoutImport";
 import { ArtFolder } from "../components/Illustrations";
 import Portal from "../components/Portal";
-import { checkForUpdates, isDesktop } from "../lib/desktop";
+import { isDesktop } from "../lib/desktop";
+import { check as checkForUpdates, openSheet, useUpdates } from "../lib/updates";
 import { friendlyError, stageLabel, stageNote, stageSentence, stageUnit } from "../lib/stages";
 
 interface Removal {
@@ -75,6 +76,17 @@ export default function SettingsPage() {
     staleTime: Infinity,
   });
   const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: () => api.get<AppSettings>("/api/settings") });
+
+  // The row answers in place. A check that finds nothing used to say so in a
+  // dialog, which is a lot of ceremony for "no news".
+  const update = useUpdates();
+  const updateLine = update.available
+    ? `Smriti ${update.available.version} is ready to install.`
+    : update.answer === "current"
+      ? "You’re on the latest version."
+      : update.answer === "offline"
+        ? "Couldn’t reach the update server — check your connection and try again."
+        : "Smriti checks for updates on its own shortly after it starts.";
 
   // live log: seed with recent history once, then append from the SSE stream
   useEffect(() => {
@@ -404,13 +416,25 @@ export default function SettingsPage() {
             <strong>Smriti {version?.version ?? ""}</strong>
             <p className="muted small" style={{ marginTop: 3 }}>
               {isDesktop()
-                ? "Smriti checks for updates on its own shortly after it starts."
+                ? updateLine
                 : "Updates are handled by however you installed Smriti."}
             </p>
           </div>
           <span className="spacer" />
           {isDesktop() && (
-            <button onClick={() => checkForUpdates().catch(() => {})}>Check for updates</button>
+            /* Whatever it finds is said here and in the rail — never in a
+               dialog of its own that opens behind the window. */
+            <button
+              className={update.available ? "primary" : undefined}
+              disabled={update.checking || update.progress !== null}
+              onClick={() => (update.available ? openSheet() : checkForUpdates())}
+            >
+              {update.checking
+                ? "Checking…"
+                : update.available
+                  ? `Update to ${update.available.version}`
+                  : "Check for updates"}
+            </button>
           )}
         </div>
       </details>

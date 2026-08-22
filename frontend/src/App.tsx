@@ -15,6 +15,7 @@ import {
 } from "./components/Icons";
 import JobsIndicator from "./components/JobsIndicator";
 import Logo from "./components/Logo";
+import UpdateNotice from "./components/UpdateNotice";
 import { REPO_URL, openExternal } from "./lib/desktop";
 
 const NAV: { sec: string; items: { to: string; label: string; Icon: typeof IconPhotos }[] }[] = [
@@ -124,6 +125,7 @@ export default function App() {
             ))}
           </div>
           <JobsIndicator />
+          <UpdateNotice />
           <StarOnGitHub />
           <AppVersion />
         </aside>

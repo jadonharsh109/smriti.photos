@@ -1,0 +1,11 @@
+# App-level commands are not grantable to a remote origin without a manifest,
+# and the SPA is a remote origin (it is served by the local Python server, not
+# the tauri:// protocol). This is the whole grant: three commands, no arguments
+# between them, which ask the updater whether a newer build exists, what an
+# earlier check already turned up, and to install it.
+"$schema" = "schemas/schema.json"
+
+[[permission]]
+identifier = "allow-updates"
+description = "Allows the in-app update notice to check for, read and install an update."
+commands.allow = ["check_updates_now", "pending_update", "install_update"]
