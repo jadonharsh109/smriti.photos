@@ -174,6 +174,18 @@ fn main() {
 
             let window = builder.build()?;
 
+            // Returning to the app is the moment a waiting update matters most,
+            // and — because a sleeping machine does not advance timers — the
+            // moment the poll below is least likely to have just run.
+            {
+                let h = app.handle().clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Focused(true) = event {
+                        updates::check_on_focus(&h);
+                    }
+                });
+            }
+
             let handle = app.handle().clone();
             // Blocking work off the UI thread: fetching, spawning and health-polling
             // the server takes seconds, and the splash must stay animating.
@@ -215,16 +227,9 @@ fn main() {
                 }
             });
 
-            // Deliberately after the server is up, not before: a slow or
-            // unreachable GitHub must never delay the library opening, and
-            // by then the SPA is loaded and can show what it finds.
-            {
-                let h = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-                    updates::auto_check(h).await;
-                });
-            }
+            // Keep an eye out for new versions for as long as the app runs —
+            // the timing of all of it lives in updates.rs.
+            tauri::async_runtime::spawn(updates::watch(app.handle().clone()));
 
             Ok(())
         })

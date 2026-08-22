@@ -20,7 +20,7 @@
 
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
@@ -28,11 +28,30 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 
 const MB: u64 = 1_048_576;
 
+/// How long to let the app settle before the first check. Deliberately after
+/// the server is up: a slow or unreachable GitHub must never delay the library
+/// opening, and by then the SPA is loaded and can show what the check finds.
+const FIRST_CHECK: Duration = Duration::from_secs(10);
+
+/// How often to look after that, for as long as the app runs.
+const POLL_EVERY: Duration = Duration::from_secs(30 * 60);
+
+/// Ignore a focus-triggered check this soon after the last one, so moving
+/// between windows does not turn into a stream of requests to GitHub.
+const FOCUS_DEBOUNCE: Duration = Duration::from_secs(5 * 60);
+
 /// What the last check found. Held so that accepting an update does not have to
 /// ask GitHub a second time, and so a page loaded *after* the automatic check
 /// can still learn what it turned up.
 #[derive(Default)]
-pub struct Pending(Mutex<Option<Update>>);
+pub struct Pending {
+    update: Mutex<Option<Update>>,
+    /// When a check last ran. Wall clock rather than `Instant` on purpose: a
+    /// macOS `Instant` does not tick while the machine is asleep, so a laptop
+    /// shut overnight would wake believing it had just checked — which is the
+    /// one moment the check must not be skipped.
+    last_check: Mutex<Option<SystemTime>>,
+}
 
 /// Everything the UI needs to describe an available update.
 #[derive(Clone, serde::Serialize)]
@@ -87,17 +106,21 @@ async fn fetch(app: &tauri::AppHandle) -> Result<Option<Update>, String> {
 /// Run a check and remember what it found.
 async fn check(app: &tauri::AppHandle) -> CheckResult {
     let current = app.package_info().version.to_string();
-    match fetch(app).await {
+    let result = fetch(app).await;
+    // Recorded even when it failed: a flaky network must not turn every window
+    // focus into another attempt.
+    *app.state::<Pending>().last_check.lock().unwrap() = Some(SystemTime::now());
+    match result {
         Ok(Some(update)) => {
             let found = info(app, &update);
-            *app.state::<Pending>().0.lock().unwrap() = Some(update);
+            *app.state::<Pending>().update.lock().unwrap() = Some(update);
             println!("smriti: update {} available", found.version);
             CheckResult::Available(found)
         }
         Ok(None) => {
             // Clear it: an update that was pending may have been installed by
             // some other means since, and offering it again would just fail.
-            *app.state::<Pending>().0.lock().unwrap() = None;
+            *app.state::<Pending>().update.lock().unwrap() = None;
             println!("smriti: already up to date");
             CheckResult::Current { current }
         }
@@ -124,7 +147,7 @@ pub async fn check_updates_now(app: tauri::AppHandle) -> Result<CheckResult, Str
 #[tauri::command]
 pub fn pending_update(app: tauri::AppHandle) -> Option<UpdateInfo> {
     let pending = app.state::<Pending>();
-    let update = pending.0.lock().unwrap();
+    let update = pending.update.lock().unwrap();
     update.as_ref().map(|u| info(&app, u))
 }
 
@@ -132,17 +155,18 @@ pub fn pending_update(app: tauri::AppHandle) -> Option<UpdateInfo> {
 /// events; on success the app restarts, so nothing is ever returned for that.
 #[tauri::command]
 pub fn install_update(app: tauri::AppHandle) -> Result<(), String> {
-    let update = app.state::<Pending>().0.lock().unwrap().clone();
+    let update = app.state::<Pending>().update.lock().unwrap().clone();
     let update = update.ok_or_else(|| "No update is pending — check for one first.".to_string())?;
     tauri::async_runtime::spawn(install(app, update, false));
     Ok(())
 }
 
-/// The automatic check, run a while after launch. Silent by design: a machine
-/// that is offline — which this app fully supports — must never be nagged.
-pub async fn auto_check(app: tauri::AppHandle) {
-    let CheckResult::Available(found) = check(&app).await else {
-        return;
+/// One automatic check. Silent by design: a machine that is offline — which
+/// this app fully supports — must never be nagged. Returns whether it found
+/// something, so the caller knows to stop asking.
+async fn auto_check(app: &tauri::AppHandle) -> bool {
+    let CheckResult::Available(found) = check(app).await else {
+        return false;
     };
     let _ = app.emit("update://available", found.clone());
 
@@ -156,7 +180,7 @@ pub async fn auto_check(app: tauri::AppHandle) {
         .startup_failed
         .load(Ordering::Relaxed)
     {
-        return;
+        return true;
     }
 
     // Startup failed, so there is no SPA and never will be. Fall back to the
@@ -179,12 +203,56 @@ pub async fn auto_check(app: tauri::AppHandle) {
 
     if !accepted {
         println!("smriti: user postponed the update");
-        return;
+        return true;
     }
-    let update = app.state::<Pending>().0.lock().unwrap().clone();
+    let update = app.state::<Pending>().update.lock().unwrap().clone();
     if let Some(update) = update {
         install(app.clone(), update, true).await;
     }
+    true
+}
+
+/// Keep looking for as long as the app runs.
+///
+/// A photo library is something people leave open for days, so a check only at
+/// launch means a release published on Tuesday reaches a Thursday session
+/// never. Once something is found the polling stops: the notice is already
+/// waiting in the rail, and asking again cannot make it any more available.
+pub async fn watch(app: tauri::AppHandle) {
+    tokio::time::sleep(FIRST_CHECK).await;
+    loop {
+        if auto_check(&app).await {
+            return;
+        }
+        tokio::time::sleep(POLL_EVERY).await;
+    }
+}
+
+/// Coming back to the window is its own reason to look.
+///
+/// `watch` runs on a timer, and a timer is exactly what a sleeping machine does
+/// not advance — a laptop shut for the night wakes with most of its interval
+/// still to run. Returning to the app is both the moment a new version matters
+/// most and the moment that timer is least likely to have fired.
+pub fn check_on_focus(app: &tauri::AppHandle) {
+    let state = app.state::<Pending>();
+    if state.update.lock().unwrap().is_some() {
+        return; // already offering one
+    }
+    // Nothing recorded yet means the app has only just started, and the first
+    // check is already on its way.
+    let Some(last) = *state.last_check.lock().unwrap() else {
+        return;
+    };
+    // `elapsed` fails only if the clock went backwards, which is no reason to
+    // skip a check.
+    if last.elapsed().map(|since| since < FOCUS_DEBOUNCE).unwrap_or(false) {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        auto_check(&app).await;
+    });
 }
 
 /// Report one step of the download. Always as an event; additionally into the
