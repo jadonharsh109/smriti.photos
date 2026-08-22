@@ -67,6 +67,22 @@ export async function openExternal(url: string): Promise<void> {
   }
 }
 
+/** Hand the coordinates to a real map — deliberately, and only when asked.
+ *
+ * Smriti fetches no map tiles, so street-level detail is something only another
+ * app can offer. On a Mac that is Apple Maps, which needs no network of its own
+ * for the handoff; everywhere else it is OpenStreetMap in the user's own
+ * browser. Either way it takes a click, and the request then comes from an app
+ * the user opened rather than from a photo library sitting in the background. */
+export async function openInMaps(lat: number, lon: number, label?: string): Promise<void> {
+  const mac = typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent);
+  const url =
+    isDesktop() && mac
+      ? `maps://?ll=${lat},${lon}&q=${encodeURIComponent(label?.trim() || "Photo")}`
+      : `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=15/${lat}/${lon}`;
+  await openExternal(url);
+}
+
 /* ------------------------------------------------------------------ updates */
 
 /** A newer build, as the shell describes it. */

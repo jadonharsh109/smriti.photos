@@ -1589,6 +1589,34 @@ code {
 .globe-svg { display: block; cursor: grab; touch-action: none; user-select: none; }
 .globe-svg.dragging { cursor: grabbing; }
 .pin { cursor: pointer; }
+
+/* photo-location locator in the lightbox info panel. No tiles are fetched, so
+   this shows the finest region the bundled vector data can place the point in
+   — see PlaceInset.tsx. */
+.place-inset {
+  margin: 9px 0 7px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--stroke);
+  background: rgba(9, 13, 34, 0.6);
+  box-shadow: var(--edge-lit);
+}
+.place-inset svg { display: block; }
+/* the locator pin does not invite a click, unlike the globe's */
+.place-inset .pin { cursor: default; }
+
+.place-coords {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.place-coords .muted { font-variant-numeric: tabular-nums; }
+.place-coords button {
+  margin-left: auto;
+  padding: 5px 11px;
+  font-size: 12px;
+}
 /* state polygons: invisible hover targets that light up + show the name */
 .state-poly {
   fill: rgba(0, 0, 0, 0);

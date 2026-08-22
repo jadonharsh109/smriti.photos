@@ -3,7 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { api, fmtBytes, type Item } from "../api/client";
 import { ConfirmDialog } from "./Dialogs";
 import { IconChevronL, IconChevronR, IconClose, IconDownload, IconInfo, IconTrash } from "./Icons";
+import PlaceInset from "./PlaceInset";
 import Portal from "./Portal";
+import { openInMaps } from "../lib/desktop";
 
 interface Detail {
   id: number;
@@ -328,14 +330,36 @@ export default function Lightbox({ item, onClose, onPrev, onNext, qs = "" }: Pro
                   </div>
                 </>
               )}
-              {detail.place && (
+              {/* Coordinates alone earn the heading: a photo can carry GPS the
+                  offline geocoder could not name, and that is still a place. */}
+              {(detail.place || (m?.gps_lat != null && m?.gps_lon != null)) && (
                 <>
                   <h3>Place</h3>
-                  <div>{[detail.place.city, detail.place.state, detail.place.country].filter(Boolean).join(", ")}</div>
-                  {m?.gps_lat != null && (
-                    <div className="muted small">
-                      {m.gps_lat.toFixed(4)}, {m.gps_lon?.toFixed(4)}
-                    </div>
+                  {detail.place && (
+                    <div>{[detail.place.city, detail.place.state, detail.place.country].filter(Boolean).join(", ")}</div>
+                  )}
+                  {m?.gps_lat != null && m?.gps_lon != null && (
+                    <>
+                      <PlaceInset lat={m.gps_lat} lon={m.gps_lon} />
+                      <div className="place-coords">
+                        <span className="muted small">
+                          {m.gps_lat.toFixed(4)}, {m.gps_lon.toFixed(4)}
+                        </span>
+                        <button
+                          className="ghost small"
+                          title="Open these coordinates in your map app"
+                          onClick={() =>
+                            openInMaps(
+                              m.gps_lat!,
+                              m.gps_lon!,
+                              [detail.place?.city, detail.place?.country].filter(Boolean).join(", ")
+                            )
+                          }
+                        >
+                          Open in Maps ↗
+                        </button>
+                      </div>
+                    </>
                   )}
                 </>
               )}
