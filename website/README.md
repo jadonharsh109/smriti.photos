@@ -20,6 +20,18 @@ vercel --cwd website --prod     # production
 Or point a Vercel project at this repo and set **Root Directory** to `website`.
 There is no framework and no build command — Vercel serves `index.html` as-is.
 
+## The illustrations
+
+The three drawings — the app window, the drive, the three-step flow — are inline
+SVG, and they are **illustrations, not screenshots**. That is deliberate and the
+captions say so: real screenshots of a real library show real faces, and the
+sample library in `test-library/` renders as empty gradient tiles, which would
+undersell the app rather than explain it.
+
+When there are screenshots worth publishing, drop them in beside `og.png` and
+replace the `<svg>` inside each `<figure class="shot">` with an `<img>`. The
+figure, caption and framing already fit.
+
 ## The share card
 
 `og.png` is the 1200x630 image Slack, X, WhatsApp and LinkedIn show. Regenerate
