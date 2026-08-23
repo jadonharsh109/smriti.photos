@@ -49,6 +49,11 @@ def wait_for(pred, timeout, what):
     raise SystemExit(f"TIMEOUT waiting for {what}")
 
 
+# Small enough that the extractor's "already there at full size" resume check
+# would have judged it incomplete and replaced it.
+BYSTANDER_BYTES = b"\xff\xd8\xff\xe0 the user's own photo, not from any export \xff\xd9"
+
+
 def make_takeout(tmp: str) -> list:
     """Two zip parts shaped like a real export, minus the six gigabytes.
 
@@ -99,6 +104,17 @@ def check_takeout(tmp: str) -> None:
     os.makedirs(dest, exist_ok=True)
     archives = make_takeout(tmp)
 
+    # A photo of the user's own, already sitting where the import is about to
+    # write. The destination is a folder they picked, and Takeout filenames
+    # collide with a real photo folder as a matter of course — this one is
+    # deliberately smaller than the archived photo of the same name, which is
+    # exactly the shape the extractor used to overwrite without a word.
+    bystander_dir = os.path.join(dest, "Google Photos", "Photos from 2021")
+    os.makedirs(bystander_dir, exist_ok=True)
+    bystander = os.path.join(bystander_dir, "lonely.jpg")
+    with open(bystander, "wb") as f:
+        f.write(BYSTANDER_BYTES)
+
     summary = post("/api/takeout/analyze", {"archives": archives})
     assert summary["total"] == 3, f"expected 3 media entries, got {summary}"
     assert summary["duplicate_paths"] == 1, f"album duplicate not detected: {summary}"
@@ -116,10 +132,20 @@ def check_takeout(tmp: str) -> None:
     assert job["errors"] == 0, f"import reported errors: {job}"
     print(f"takeout import: {job['message']}")
 
+    # Nothing the user already had may be touched — not overwritten, and not
+    # repaired in place either. An import that destroys originals and reports
+    # success is the worst failure this feature has, and it is silent.
+    with open(bystander, "rb") as f:
+        assert f.read() == BYSTANDER_BYTES, \
+            "the import overwrote a file that was already in the destination"
+    assert os.path.isfile(os.path.join(bystander_dir, "lonely (2).jpg")), \
+        "the export's photo was not written beside the file it collided with"
+    print("import left the user's own file in the destination alone — PASS")
+
     root = os.path.join(dest, "Google Photos")
     year = os.path.join(root, "Photos from 2021")
     album = os.path.join(root, "Goa Trip")
-    for path in (os.path.join(year, "lonely.jpg"), os.path.join(year, "shared.jpg"),
+    for path in (os.path.join(year, "lonely (2).jpg"), os.path.join(year, "shared.jpg"),
                  os.path.join(album, "shared.jpg")):
         assert os.path.isfile(path), f"missing after import: {path}"
     with open(os.path.join(year, "shared.jpg"), "rb") as a, open(os.path.join(album, "shared.jpg"), "rb") as b:
@@ -133,7 +159,7 @@ def check_takeout(tmp: str) -> None:
         ex = Image.open(path).getexif()
         return ex.get_ifd(0x8769).get(0x9003), ex.get_ifd(0x8825)
 
-    lonely_date, _ = taken(os.path.join(year, "lonely.jpg"))
+    lonely_date, _ = taken(os.path.join(year, "lonely (2).jpg"))
     shared_date, shared_gps = taken(os.path.join(year, "shared.jpg"))
     assert lonely_date and lonely_date.startswith("2011:"), f"cross-part metadata lost: {lonely_date}"
     assert shared_date and shared_date.startswith("2020:"), f"cross-folder metadata lost: {shared_date}"

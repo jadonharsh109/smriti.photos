@@ -12,6 +12,11 @@ if they are wrong:
     that is already on disk at its full size is left alone.
   * **Never a partial file.** Everything is written to a temporary name and
     renamed into place, so an interrupted import leaves whole files or nothing.
+  * **Never someone else's file.** The destination is a folder the user chose,
+    which may already hold photos of their own, and Takeout filenames collide
+    with a real photo folder routinely. Only a path `takeout_paths` says an
+    earlier run of this import wrote may be written over; everything else there
+    is worked around.
 
 The import stops once the bytes are on disk. It does not index anything and it
 does not touch the library: healing a Takeout export and deciding to live with
@@ -41,6 +46,21 @@ from .runner import manager
 SPACE_MARGIN = 1.02   # a little headroom for directory entries and rounding
 
 
+def _owned_paths(dest: Path) -> dict[str, tuple[int, int]]:
+    """What earlier runs of this import wrote into `dest`, path -> (crc, size).
+
+    Everything else in that folder is the user's, and the extractor must not
+    touch it. An empty result — a first import, or a folder no import has
+    written to — means exactly that: own nothing, overwrite nothing.
+    """
+    rows = db.query(
+        "SELECT p.rel_path, p.crc, p.size FROM takeout_paths p "
+        "JOIN takeout_imports i ON i.id = p.import_id WHERE i.dest_path = ?",
+        (str(dest),),
+    )
+    return {r["rel_path"]: (r["crc"], r["size"]) for r in rows}
+
+
 def _record(dest: Path, archives: list[str], plans: list[tk.Plan]) -> int:
     """Persist the import and its album membership before extraction starts.
 
@@ -61,6 +81,21 @@ def _record(dest: Path, archives: list[str], plans: list[tk.Plan]) -> int:
             "INSERT OR IGNORE INTO takeout_album_items (import_id, album_name, rel_path) "
             "VALUES (?,?,?)",
             rows,
+        )
+
+    # Claimed up front, like album membership and for the same reason: a run
+    # that dies has to be able to tell its own half-finished output from the
+    # user's files when it is resumed.
+    claims = []
+    for p in plans:
+        for path in (p.dest, *p.links):
+            claims.append((import_id, path.relative_to(dest).as_posix(),
+                           p.item.entry.crc, p.item.entry.size))
+    if claims:
+        db.executemany(
+            "INSERT OR IGNORE INTO takeout_paths (import_id, rel_path, crc, size) "
+            "VALUES (?,?,?,?)",
+            claims,
         )
     return import_id
 
@@ -105,6 +140,9 @@ def _extract(job_id: int, plans: list[tk.Plan], write_exif: bool) -> dict:
                 plan.dest.parent.mkdir(parents=True, exist_ok=True)
                 # Already there at full size? A repaired file is slightly larger
                 # than the archived one, never smaller, so this is safe to skip.
+                # Safe now only because planning guaranteed it: a dest that
+                # exists here is one an earlier run of this import wrote, never
+                # a file that was already in the user's folder.
                 fresh = True
                 if plan.dest.exists() and plan.dest.stat().st_size >= entry.size:
                     stats["skipped"] += 1
@@ -250,7 +288,8 @@ async def run_import(job_id: int, archives: list[str], destination: str,
                        f"and the disk has {free / 1e9:.1f} GB")
         return
 
-    plans = await asyncio.to_thread(tk.plan_extraction, man, dest_root)
+    owned = _owned_paths(dest_root)
+    plans = await asyncio.to_thread(tk.plan_extraction, man, dest_root, owned)
     import_id = _record(dest_root, archives, plans)
     manager.update(job_id, total=len(plans), done=0,
                    message=f"copying {len(plans):,} photos and videos…")

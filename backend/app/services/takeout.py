@@ -356,9 +356,36 @@ class Plan:
     album_paths: list[tuple[str, Path]] = field(default_factory=list)
 
 
-def plan_extraction(man: Manifest, root: Path) -> list[Plan]:
+def _may_write(dest: Path, root: Path, owned: dict[str, tuple[int, int]],
+               entry: Entry) -> bool:
+    """May the import put `entry` at `dest`?
+
+    Only if nothing is there, or an earlier run of this import put *this same
+    archive entry* there. Anything else on disk is the user's own file: the
+    destination is a folder they chose, and Takeout names like IMG_1234.jpg
+    collide with a real photo folder as a matter of course, not as an edge case.
+
+    Matching on (crc, size) rather than merely "we wrote this path once" also
+    keeps two different exports from overwriting each other when they happen to
+    share a filename.
+    """
+    previous = owned.get(dest.relative_to(root).as_posix())
+    if previous is not None and previous == (entry.crc, entry.size):
+        return True
+    return not dest.exists()
+
+
+def plan_extraction(man: Manifest, root: Path,
+                    owned: dict[str, tuple[int, int]] | None = None) -> list[Plan]:
     """Map the manifest onto real paths under `root`, mirroring the Takeout
-    folders and collapsing byte-identical copies onto one file."""
+    folders and collapsing byte-identical copies onto one file.
+
+    `owned` is what earlier runs of this import already wrote there, from
+    `takeout_paths`. It defaults to nothing, which is the safe reading: with no
+    record to go on, every file already in the folder is treated as the user's
+    and worked around rather than written over.
+    """
+    owned = owned or {}
     plans: dict[tuple[int, int], Plan] = {}
     taken: set[str] = set()
     order: list[Plan] = []
@@ -369,8 +396,8 @@ def plan_extraction(man: Manifest, root: Path) -> list[Plan]:
         folder = root / safe_component(item.entry.container or "Photos")
         dest = folder / safe_component(item.entry.basename)
         key = dest.as_posix().lower()
-        if key in taken:
-            dest = folder / _dedupe_name(folder, item.entry.basename, taken)
+        if key in taken or not _may_write(dest, root, owned, item.entry):
+            dest = folder / _dedupe_name(folder, item.entry.basename, taken, root, owned, item.entry)
         taken.add(dest.as_posix().lower())
 
         ck = (item.entry.crc, item.entry.size)
@@ -387,12 +414,15 @@ def plan_extraction(man: Manifest, root: Path) -> list[Plan]:
     return order
 
 
-def _dedupe_name(folder: Path, basename: str, taken: set[str]) -> str:
+def _dedupe_name(folder: Path, basename: str, taken: set[str], root: Path,
+                 owned: dict[str, tuple[int, int]], entry: Entry) -> str:
+    """A free name beside `basename` — free on disk as well as in this plan."""
     stem, ext = os.path.splitext(safe_component(basename))
     for n in range(2, 10000):
-        cand = f"{stem} ({n}){ext}"
-        if (folder / cand).as_posix().lower() not in taken:
-            return cand
+        cand = folder / f"{stem} ({n}){ext}"
+        if (cand.as_posix().lower() not in taken
+                and _may_write(cand, root, owned, entry)):
+            return cand.name
     return f"{stem} ({os.urandom(4).hex()}){ext}"
 
 
