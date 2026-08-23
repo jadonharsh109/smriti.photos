@@ -43,6 +43,10 @@ export default function JustifiedGrid({ items, width, onOpen, selected, onToggle
             <img
               src={`/api/thumb/${it.id}${thumbQS}`}
               loading="lazy"
+              /* Without this the browser may decode on the main thread as each
+                 thumb arrives, and a fast scroll through a big day lands dozens
+                 of decodes in the middle of the virtualizer's own work. */
+              decoding="async"
               alt=""
               ref={(el) => {
                 if (el && el.complete) el.classList.add("ld");

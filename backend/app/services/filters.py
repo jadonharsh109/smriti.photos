@@ -70,6 +70,20 @@ def build(person_id=None, country=None, city=None, album_id=None, event_id=None,
         where.append("ei.event_id = ?")
         params.append(event_id)
     if day is not None:
-        where.append("substr(m.taken_at, 1, 10) = ?")
-        params.append(day)
+        # A half-open range on the column itself, not substr() of it.
+        #
+        # The grid fetches one query per day section it scrolls into view, so
+        # this is the single hottest query in the app — and substr() has to be
+        # computed for every row in the library before it can be compared,
+        # which ruled out idx_meta_taken and left a full scan as the only plan.
+        # On a 400k-file library that was 112ms a section, ~1s for one scroll
+        # burst, all of it holding the DB lock.
+        #
+        # taken_at is 'YYYY-MM-DD' followed by a separator and a time, so the
+        # day is exactly the rows from the date up to the date + 'z': every
+        # character a timestamp can continue with (' ', 'T', or nothing) sorts
+        # below 'z', and the next day differs by then. Same rows, 9ms, and it
+        # holds for a bare date with no time at all.
+        where.append("m.taken_at >= ? AND m.taken_at < ?")
+        params.extend([day, day + "z"])
     return " ".join(joins), " AND ".join(where), params
