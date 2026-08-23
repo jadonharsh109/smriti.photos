@@ -23,6 +23,9 @@ export interface Item {
 export interface Filters {
   person_id?: number;
   country?: string;
+  /** Narrows a country to one of its states. Independent of `city`, so the
+   *  Places page's state heading opens on its own. */
+  state?: string;
   city?: string;
   album_id?: number;
   event_id?: number;
@@ -113,6 +116,7 @@ export function filterQS(f: Filters, extra: Record<string, string | number> = {}
   const p = new URLSearchParams();
   if (f.person_id != null) p.set("person_id", String(f.person_id));
   if (f.country != null) p.set("country", f.country);
+  if (f.state != null) p.set("state", f.state);
   if (f.city != null) p.set("city", f.city);
   if (f.album_id != null) p.set("album_id", String(f.album_id));
   if (f.event_id != null) p.set("event_id", String(f.event_id));

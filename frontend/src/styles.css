@@ -536,6 +536,26 @@ code {
 .update-progress { margin-top: 16px; display: grid; gap: 9px; }
 .update-progress .progress { height: 8px; }
 
+/* Places: the state sits between the country heading and its cities, and has
+   to read as subordinate to one and a heading for the other — so it is
+   quieter than the country in every way except that it is still a link. */
+.place-state { margin-bottom: 18px; }
+.place-state:last-child { margin-bottom: 0; }
+.place-state-head {
+  margin: 0 2px 8px;
+  gap: 10px;
+  align-items: baseline;
+}
+.place-state-head h3 {
+  font-size: 13.5px;
+  font-weight: 640;
+  letter-spacing: 0.2px;
+  color: var(--fg-dim);
+}
+.place-state-head h3 a { color: inherit; transition: color 0.18s ease; }
+.place-state-head h3 a:hover { color: var(--accent); }
+.place-state-head .muted { font-variant-numeric: tabular-nums; }
+
 /* main stage */
 .stage {
   flex: 1;

@@ -11,11 +11,18 @@ interface CityEntry {
   count: number;
   cover: number;
 }
+interface StateEntry {
+  /** null when the offline geocoder could not name one — those cities are
+   *  shown straight under the country, with no sub-heading. */
+  state: string | null;
+  count: number;
+  cities: CityEntry[];
+}
 interface CountryEntry {
   country: string;
   count: number;
   cover?: number;
-  cities: CityEntry[];
+  states: StateEntry[];
 }
 
 export default function PlacesPage() {
@@ -26,9 +33,10 @@ export default function PlacesPage() {
   });
   const [query, setQuery] = useState("");
 
-  /** A query can match a country or a city. Matching the country keeps all of
-   *  its cities (you asked for the country); matching only cities keeps the
-   *  country as their heading with just those cities under it. */
+  /** A query can match a country, a state or a city, and a match keeps
+   *  everything under it: the country keeps all its states, a state keeps all
+   *  its cities. A match further down keeps the headings above it, so a city
+   *  is never shown adrift of where it is. */
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return places ?? [];
@@ -38,14 +46,28 @@ export default function PlacesPage() {
         out.push(c);
         continue;
       }
-      const cities = c.cities.filter((ct) => ct.city.toLowerCase().includes(needle));
-      if (cities.length) out.push({ ...c, cities, count: cities.reduce((n, ct) => n + ct.count, 0) });
+      const states: StateEntry[] = [];
+      for (const st of c.states) {
+        if (st.state?.toLowerCase().includes(needle)) {
+          states.push(st);
+          continue;
+        }
+        const cities = st.cities.filter((ct) => ct.city.toLowerCase().includes(needle));
+        if (cities.length) {
+          states.push({ ...st, cities, count: cities.reduce((n, ct) => n + ct.count, 0) });
+        }
+      }
+      if (states.length) {
+        out.push({ ...c, states, count: states.reduce((n, st) => n + st.count, 0) });
+      }
     }
     return out;
   }, [places, query]);
   const searching = query.trim().length > 0;
-  const cityCount = (places ?? []).reduce((n, c) => n + c.cities.length, 0);
-  const shownCities = shown.reduce((n, c) => n + c.cities.length, 0);
+  const countCities = (list: CountryEntry[]) =>
+    list.reduce((n, c) => n + c.states.reduce((m, st) => m + st.cities.length, 0), 0);
+  const cityCount = countCities(places ?? []);
+  const shownCities = countCities(shown);
 
   const geocode = useMutation({
     mutationFn: () => api.post("/api/places/geocode"),
@@ -99,22 +121,40 @@ export default function PlacesPage() {
               </h2>
               <span className="chip">{c.count} photos</span>
             </div>
-            <div className="card-grid">
-              {c.cities.map((city, i) => (
-                <Link
-                  key={city.city}
-                  className="card"
-                  style={cardDelay(i)}
-                  to={`/places/view?country=${encodeURIComponent(c.country)}&city=${encodeURIComponent(city.city)}`}
-                >
-                  <img className="cover wide" src={`/api/thumb/${city.cover}`} loading="lazy" alt="" />
-                  <div className="meta">
-                    <div className="name">{city.city}</div>
-                    <div className="sub">{city.count} photos</div>
+            {c.states.map((st) => {
+              const q = `country=${encodeURIComponent(c.country)}`;
+              // Carried into the city link too, so two places of the same name
+              // in one country stay two places.
+              const withState = st.state ? `${q}&state=${encodeURIComponent(st.state)}` : q;
+              return (
+                <div key={st.state ?? "\u2014"} className="place-state">
+                  {st.state && (
+                    <div className="row place-state-head">
+                      <h3>
+                        <Link to={`/places/view?${withState}`}>{st.state}</Link>
+                      </h3>
+                      <span className="muted small">{st.count} photos</span>
+                    </div>
+                  )}
+                  <div className="card-grid">
+                    {st.cities.map((city, i) => (
+                      <Link
+                        key={city.city}
+                        className="card"
+                        style={cardDelay(i)}
+                        to={`/places/view?${withState}&city=${encodeURIComponent(city.city)}`}
+                      >
+                        <img className="cover wide" src={`/api/thumb/${city.cover}`} loading="lazy" alt="" />
+                        <div className="meta">
+                          <div className="name">{city.city}</div>
+                          <div className="sub">{city.count} photos</div>
+                        </div>
+                      </Link>
+                    ))}
                   </div>
-                </Link>
-              ))}
-            </div>
+                </div>
+              );
+            })}
           </div>
         ))
       )}

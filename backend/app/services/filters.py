@@ -15,7 +15,7 @@ _IS_LIVE = "f.id IN (SELECT file_id FROM file_motion)"
 
 
 def build(person_id=None, country=None, city=None, album_id=None, event_id=None, day=None, solo=False,
-          media_type=None, kind=None, live=False):
+          media_type=None, kind=None, live=False, state=None):
     joins = ["JOIN metadata m ON m.file_id = f.id"]
     # locked-section files are invisible to every grid
     where = ["f.status = 'active'", "m.taken_at IS NOT NULL",
@@ -58,6 +58,13 @@ def build(person_id=None, country=None, city=None, album_id=None, event_id=None,
         joins.append("JOIN file_places pl ON pl.file_id = f.id")
         where.append("pl.country = ?")
         params.append(country)
+        # Narrowed independently: a state on its own is the Places page's own
+        # sub-heading opening, and a state with a city is the same city as
+        # before — two places of the same name in one country are then no
+        # longer one grid.
+        if state is not None:
+            where.append("pl.state = ?")
+            params.append(state)
         if city is not None:
             where.append("pl.city = ?")
             params.append(city)
