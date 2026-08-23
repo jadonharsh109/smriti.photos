@@ -20,6 +20,24 @@ vercel --cwd website --prod     # production
 Or point a Vercel project at this repo and set **Root Directory** to `website`.
 There is no framework and no build command — Vercel serves `index.html` as-is.
 
+## The share card
+
+`og.png` is the 1200x630 image Slack, X, WhatsApp and LinkedIn show. Regenerate
+it after a wording change:
+
+```bash
+python scripts/make_og_image.py
+```
+
+It is Latin-only on purpose — see the note at the top of that script.
+
+## The domain
+
+Live at <https://smriti.jadonharsh.in>. That host is written into `canonical`,
+`og:url`, `twitter:image`, the JSON-LD and `sitemap.xml`. If it ever moves,
+change it in all five or search engines will be told the real page is somewhere
+it isn't.
+
 ## Keeping it honest
 
 The copy is drawn from the root `README.md`. When a feature lands or changes,

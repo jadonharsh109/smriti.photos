@@ -3,16 +3,28 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Smriti · स्मृति — a photo library that never leaves your machine</title>
-<meta name="description" content="Smriti turns the photo folders already on your Mac or PC into a proper library — timeline, people, places, trips, duplicates — with everything computed on your own machine. No cloud, no account, nothing uploaded." />
+<title>Smriti — a private photo library for your Mac or PC</title>
+<meta name="description" content="Turn the photo folders on your Mac or PC into a real library — timeline, faces, places and trips — all computed on your own machine. No cloud, no account." />
 <meta name="theme-color" content="#070a14" />
-<link rel="canonical" href="https://smriti.photos/" />
+<meta name="robots" content="index, follow, max-image-preview:large" />
+<link rel="canonical" href="https://smriti.jadonharsh.in/" />
 
 <meta property="og:type" content="website" />
-<meta property="og:title" content="Smriti · स्मृति — every memory, lovingly kept" />
+<meta property="og:site_name" content="Smriti" />
+<meta property="og:locale" content="en_IN" />
+<meta property="og:title" content="Smriti — every memory, lovingly kept" />
 <meta property="og:description" content="A local-first photo library for your own drives. Timeline, faces, places, trips and duplicates — all computed on your machine, none of it leaving it." />
-<meta property="og:url" content="https://smriti.photos/" />
+<meta property="og:url" content="https://smriti.jadonharsh.in/" />
+<meta property="og:image" content="https://smriti.jadonharsh.in/og.png" />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Smriti — a photo library that never leaves your machine" />
 <meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Smriti — every memory, lovingly kept" />
+<meta name="twitter:description" content="A local-first photo library for your own drives. Timeline, faces, places, trips and duplicates — computed on your machine, none of it leaving it." />
+<meta name="twitter:image" content="https://smriti.jadonharsh.in/og.png" />
+<meta name="twitter:image:alt" content="Smriti — a photo library that never leaves your machine" />
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23FFB25E'/%3E%3Cstop offset='.5' stop-color='%23FF7B9C'/%3E%3Cstop offset='1' stop-color='%23B96BFF'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='2' y='2' width='28' height='28' rx='10' fill='url(%23g)'/%3E%3Cpath d='M16 6.6c2.6 3.3 2.6 7.4 0 10.2-2.6-2.8-2.6-6.9 0-10.2z' fill='white'/%3E%3Cpath d='M9.2 10.6c3.5.5 6.1 2.9 6.7 6.3-3.5-.3-6.2-2.8-6.7-6.3z' fill='white' opacity='.82'/%3E%3Cpath d='M22.8 10.6c-3.5.5-6.1 2.9-6.7 6.3 3.5-.3 6.2-2.8 6.7-6.3z' fill='white' opacity='.82'/%3E%3Cpath d='M9 19.2c2 2 4.4 3 7 3s5-1 7-3' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round'/%3E%3C/svg%3E" />
 
@@ -90,10 +102,12 @@ header.nav{position:sticky; top:0; z-index:20; backdrop-filter:blur(18px) satura
 
 /* ---------- hero */
 .hero{padding:92px 0 78px; text-align:center}
-.hero h1{font-size:clamp(44px,7.4vw,86px); font-family:var(--dev-font); font-weight:700; margin:26px 0 0;
+.hero h1{margin:26px 0 0; font-weight:700}
+.hero h1 .dev{display:block; font-size:clamp(44px,7.4vw,86px); font-family:var(--dev-font); line-height:1.12;
   background:linear-gradient(135deg,#ffd9a8,var(--pink) 46%,var(--violet));
-  -webkit-background-clip:text; background-clip:text; color:transparent; line-height:1.12}
-.hero .en{font-family:var(--serif); font-style:italic; font-size:clamp(19px,2.4vw,26px); color:var(--fg); margin-top:14px}
+  -webkit-background-clip:text; background-clip:text; color:transparent}
+.hero h1 .en{display:block; font-family:var(--serif); font-style:italic; font-weight:400; letter-spacing:0;
+  font-size:clamp(19px,2.4vw,26px); line-height:1.4; color:var(--fg); margin:16px auto 0; max-width:34ch}
 .hero .lede{max-width:660px; margin:18px auto 0; color:var(--fg-dim); font-size:17.5px}
 .hero .lede .dev{color:var(--saffron)}
 .cta{display:flex; gap:14px; justify-content:center; flex-wrap:wrap; margin-top:34px}
@@ -210,6 +224,42 @@ footer{padding:54px 0 44px; border-top:1px solid var(--stroke); margin-top:40px}
   *,*::before,*::after{transition-duration:.01ms !important; animation-duration:.01ms !important}
 }
 </style>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Smriti",
+  "alternateName": "\u0938\u094d\u092e\u0943\u0924\u093f",
+  "applicationCategory": "MultimediaApplication",
+  "applicationSubCategory": "Photo library",
+  "operatingSystem": "macOS 14+, Windows 10, Windows 11",
+  "url": "https://smriti.jadonharsh.in/",
+  "image": "https://smriti.jadonharsh.in/og.png",
+  "downloadUrl": "https://github.com/jadonharsh109/smriti.photos/releases/latest",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "description": "Smriti turns the photo folders already on your Mac or PC into a proper library \u2014 timeline, people, places, trips and duplicates \u2014 with everything computed on your own machine and nothing uploaded.",
+  "featureList": [
+    "Date-grouped timeline, virtualized for six-figure libraries",
+    "On-device face recognition, clustered into people you can name",
+    "Offline reverse geocoding and a tile-server-free globe",
+    "Trips detected automatically from gaps in your timeline",
+    "Albums layered over your existing folders",
+    "Exact and near-duplicate detection, with cleanup to the system Trash",
+    "Google Takeout repair that restores dates and GPS",
+    "Export originals as a .zip",
+    "Passcode-protected Locked section",
+    "Video indexing with poster frames and range-request scrubbing"
+  ],
+  "author": {
+    "@type": "Person",
+    "name": "Harsh Vardhan Singh Jadon",
+    "url": "https://github.com/jadonharsh109"
+  },
+  "sameAs": ["https://github.com/jadonharsh109/smriti.photos"]
+}
+</script>
 </head>
 <body>
 <div class="aurora"><i></i><i></i><i></i><i></i></div>
@@ -221,7 +271,7 @@ footer{padding:54px 0 44px; border-top:1px solid var(--stroke); margin-top:40px}
   <div class="wrap nav-in">
     <a class="brand" href="#top">
       <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFB25E"/><stop offset=".5" stop-color="#FF7B9C"/><stop offset="1" stop-color="#B96BFF"/></linearGradient></defs><rect x="2" y="2" width="28" height="28" rx="10" fill="url(#lg)"/><path d="M16 6.6c2.6 3.3 2.6 7.4 0 10.2-2.6-2.8-2.6-6.9 0-10.2z" fill="#fff"/><path d="M9.2 10.6c3.5.5 6.1 2.9 6.7 6.3-3.5-.3-6.2-2.8-6.7-6.3z" fill="#fff" opacity=".82"/><path d="M22.8 10.6c-3.5.5-6.1 2.9-6.7 6.3 3.5-.3 6.2-2.8 6.7-6.3z" fill="#fff" opacity=".82"/><path d="M9 19.2c2 2 4.4 3 7 3s5-1 7-3" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round"/></svg>
-      Smriti <span class="dev">स्मृति</span>
+      Smriti <span class="dev" lang="sa">स्मृति</span>
     </a>
     <nav class="nav-links">
       <a href="#features">Features</a>
@@ -238,12 +288,14 @@ footer{padding:54px 0 44px; border-top:1px solid var(--stroke); margin-top:40px}
 
   <!-- ============ hero ============ -->
   <div class="wrap hero">
-    <span class="eyebrow"><span class="dot"></span><span class="dev">स्मृति</span> · smṛti — Sanskrit for “that which is remembered”</span>
-    <h1>हर याद,<br>संजोई हुई।</h1>
-    <p class="en">Every memory, lovingly kept.</p>
+    <span class="eyebrow"><span class="dot"></span><span class="dev" lang="sa">स्मृति</span> · smṛti — Sanskrit for “that which is remembered”</span>
+    <h1>
+      <span class="dev" lang="hi">हर याद,<br>संजोई हुई।</span>
+      <span class="en">Every memory, lovingly kept — a photo library that never leaves your machine.</span>
+    </h1>
     <p class="lede">
       Smriti turns the photo folders already sitting on your Mac or PC into a proper
-      library — <span class="dev">यादें</span>, <span class="dev">लोग</span>, <span class="dev">जगहें</span> —
+      library — <span class="dev" lang="hi">यादें</span>, <span class="dev" lang="hi">लोग</span>, <span class="dev" lang="hi">जगहें</span> —
       with everything computed on your own machine, and none of it leaving it.
       No cloud. No account. Your original files are never moved or modified.
     </p>
@@ -597,7 +649,7 @@ uv run python scripts/fetch_models.py
 
 <footer>
   <div class="wrap foot">
-    <p>Made with ♥ in India · <span class="dev">स्मृति</span> — every memory, lovingly kept.</p>
+    <p>Made with ♥ in India · <span class="dev" lang="sa">स्मृति</span> — every memory, lovingly kept.</p>
     <nav class="foot-links">
       <a href="#features">Features</a>
       <a href="#download">Download</a>
