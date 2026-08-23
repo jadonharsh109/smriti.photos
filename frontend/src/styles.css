@@ -320,6 +320,38 @@ code {
   padding-top: 22px;
 }
 
+/* ---- desktop app: fewer moving parts ----
+   The app renders in the system webview — WKWebView on macOS, WebView2 on
+   Windows — not in Chrome, and neither composites as generously. An animation
+   that never ends is therefore a tax on every frame the app will ever draw,
+   including the frames someone is waiting on. So the app keeps the look and
+   gives up the motion nobody can perceive. A browser still gets all of it. */
+
+/* The aurora drifts across 26–38 seconds. Nobody can see a blob blurred by
+   90px move that slowly — but to do it the compositor re-blurs three
+   full-viewport layers forever, whatever page you are on. Freeze them and the
+   GPU goes back to being free for the photos. `will-change` goes too: with
+   nothing animating it only pins three large layers in GPU memory. */
+[data-smriti-desktop] .aurora i {
+  animation: none;
+  will-change: auto;
+}
+
+/* Every visible place on the map wears a pulsing ring, and an SVG transform
+   animation repaints rather than composites — so a well-travelled library
+   repaints the whole globe forever. Keep the halo, drop the pulse. */
+[data-smriti-desktop] .pin .ring {
+  animation: none;
+  opacity: 0.35;
+}
+
+/* The entry animations stay — they are what stops a page appearing from
+   nowhere — but at a length that reads as "already there" rather than
+   "arriving". Most of what felt slow about navigating inside the app was this:
+   the work had finished and the page was still fading in. */
+[data-smriti-desktop] .page { animation-duration: 0.2s; }
+[data-smriti-desktop] .card { animation-duration: 0.26s; }
+
 .rail {
   width: 232px;
   flex: none;
@@ -1143,17 +1175,25 @@ code {
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(188px, 1fr)); gap: 16px; }
 .card {
   position: relative;
+  /* The one piece of glass that does NOT blur its backdrop.
+     A card is the only surface the app draws by the hundred — People runs to
+     253 of them on a 12k-photo library — and each blurred one is a compositing
+     layer the engine has to re-sample the backdrop through on every frame the
+     grid animates. Chrome absorbs that; WKWebView and WebView2, the engines the
+     desktop app actually runs on, do not, which is why returning to People
+     stalled for seconds in the app and felt instant in a browser. What sits
+     behind a card is the aurora and the grain, both near-uniform at card size,
+     so the blur was costing all of that and showing nothing.
+     `will-change` is gone with it: it pinned all 253 layers in GPU memory for
+     a hover transform that promotes itself anyway. */
   background: var(--glass);
   border-radius: var(--r-card);
   overflow: hidden;
   cursor: pointer;
   border: 1px solid var(--stroke);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
   box-shadow: var(--edge-lit), 0 4px 16px rgba(2, 4, 10, 0.25);
   transition: transform 0.26s var(--ease), box-shadow 0.26s ease, border-color 0.22s ease;
   animation: rise 0.5s var(--ease) backwards;
-  will-change: transform;
 }
 /* stagger comes from an inline animation-delay set per card index (see cardDelay in api/client.ts) */
 .card:hover {

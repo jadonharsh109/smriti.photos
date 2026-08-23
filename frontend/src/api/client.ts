@@ -1,3 +1,5 @@
+import { isDesktop } from "../lib/desktop";
+
 export interface Bucket {
   day: string;
   count: number;
@@ -173,9 +175,25 @@ export async function fetchAllItems(f: Filters, day?: string): Promise<Item[]> {
 }
 
 /** Staggered entry delay for the nth card in a grid, capped so long grids
- * don't keep late cards invisible (the animation uses `backwards` fill). */
-export function cardDelay(i: number): { animationDelay: string } {
-  return { animationDelay: `${Math.min(i * 45, 450)}ms` };
+ * don't keep late cards invisible (the animation uses `backwards` fill).
+ *
+ * Halved inside the desktop app, alongside the shorter `rise` there: a grid
+ * that is still staggering itself in half a second after the data landed reads
+ * as the app being slow, which is the opposite of what the stagger is for.
+ *
+ * Past the first screenful the card doesn't animate at all. Not a visual
+ * decision — nothing down there is on screen to see it — but a cost one: each
+ * animating card is a compositing layer for the half-second it runs, and
+ * People on a large library has 253 of them starting at once. Chrome shrugs
+ * that off, which is why this only ever looked broken inside the desktop app.
+ */
+const snappy = isDesktop();
+const STAGGER_STEP = snappy ? 22 : 45;
+const STAGGER_CAP = snappy ? 220 : 450;
+
+export function cardDelay(i: number): { animationDelay: string } | { animation: string } {
+  if (i >= 40) return { animation: "none" };
+  return { animationDelay: `${Math.min(i * STAGGER_STEP, STAGGER_CAP)}ms` };
 }
 
 export function fmtDay(day: string): string {

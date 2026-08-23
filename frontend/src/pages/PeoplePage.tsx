@@ -152,7 +152,16 @@ export default function PeoplePage() {
             <Link key={p.id} to={`/people/${p.id}`} className="card" style={cardDelay(i)}>
               <div className="face-wrap">
                 {p.cover_face_id ? (
-                  <img className="face-cover" src={`/api/faces/${p.cover_face_id}/thumb`} alt="" />
+                  <img
+                    className="face-cover"
+                    src={`/api/faces/${p.cover_face_id}/thumb`}
+                    /* Every other card grid already loads its covers lazily; this one
+                       did not, so opening People fetched and decoded one thumbnail per
+                       person — 253 of them — before the dozen you can actually see. */
+                    loading="lazy"
+                    decoding="async"
+                    alt=""
+                  />
                 ) : (
                   <div className="face-cover" />
                 )}
