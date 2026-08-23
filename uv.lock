@@ -715,7 +715,7 @@ wheels = [
 
 [[package]]
 name = "smriti-photos"
-version = "0.1.27"
+version = "1.0.0"
 source = { virtual = "." }
 dependencies = [
     { name = "fastapi" },
