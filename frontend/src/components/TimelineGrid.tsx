@@ -130,7 +130,7 @@ export default function TimelineGrid({ filters, emptyText = "Nothing here yet", 
   const itemsFor = (day: string) =>
     qc.fetchQuery({
       queryKey: ["items", filterKey, day],
-      queryFn: () => api.get<Item[]>(`/api/timeline/items${filterQS(filters, { day })}`),
+      queryFn: () => fetchAllItems(filters, day),
       staleTime: 300_000,
     });
 
@@ -278,7 +278,7 @@ function DaySection(props: {
 }) {
   const { data: items } = useQuery({
     queryKey: ["items", props.filterKey, props.day],
-    queryFn: () => api.get<Item[]>(`/api/timeline/items${filterQS(props.filters, { day: props.day })}`),
+    queryFn: () => fetchAllItems(props.filters, props.day),
     staleTime: 300_000,
   });
 

@@ -142,12 +142,23 @@ export function fmtDuration(s: number | null): string {
   return `${m}:${String(sec).padStart(2, "0")}`;
 }
 
-/** Every item matching a filter, paging past the server's 2000-row cap. */
-export async function fetchAllItems(f: Filters): Promise<Item[]> {
+/** Every item matching a filter, paging past the server's 2000-row cap.
+ *
+ * `day` narrows it to one day section. That is not a convenience: the grid used
+ * to fetch a day with a bare request and take whatever came back, which is the
+ * endpoint's default of 1000 rows. A day holding more than that — a camera
+ * dump, a wedding, a bulk import — rendered short with no error, and the
+ * photos past the first 1000 were indexed, thumbnailed and unreachable. Worse,
+ * "select this day" then covered only the ones that had arrived, so add-to-album
+ * and Move to Trash quietly acted on part of a day that looked whole.
+ */
+export async function fetchAllItems(f: Filters, day?: string): Promise<Item[]> {
   const LIMIT = 2000;
   const out: Item[] = [];
   for (let offset = 0; ; offset += LIMIT) {
-    const page = await api.get<Item[]>(`/api/timeline/items${filterQS(f, { limit: LIMIT, offset })}`);
+    const extra: Record<string, string | number> = { limit: LIMIT, offset };
+    if (day != null) extra.day = day;
+    const page = await api.get<Item[]>(`/api/timeline/items${filterQS(f, extra)}`);
     out.push(...page);
     if (page.length < LIMIT) break;
   }
