@@ -10,7 +10,7 @@
 # Homebrew resolves by the --cask / --formula flag, and defaults to the formula
 # (printing a hint about --cask) when neither is given.
 cask "smriti" do
-  version "0.1.23"
+  version "0.1.24"
   sha256 "48eb3250a7c6168325a2a9424b2ccb788eec8118a71909220b3e654e61016a53"
 
   url "https://github.com/jadonharsh109/smriti.photos/releases/download/v#{version}/Smriti-#{version}-aarch64.zip"
