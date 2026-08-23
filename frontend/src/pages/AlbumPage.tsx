@@ -79,7 +79,20 @@ export default function AlbumPage() {
   });
   const delAlbum = useMutation({
     mutationFn: () => api.del(`/api/albums/${albumId}`),
-    onSuccess: () => nav("/albums"),
+    onSuccess: () => {
+      /* Nothing about deleting an album is slow — the server does it in a
+         fraction of a millisecond, empty or not. What looked like a long
+         delete was this: Albums is cached for 30 seconds and we have just
+         come from it, so react-query answered the next render from that
+         cache, which still listed the album. It sat there looking undeleted
+         until the cache went stale AND something happened to refetch it.
+         Drop the detail outright — that album has no server left to fetch
+         from — and mark the list stale so the page we are about to open
+         fetches instead of remembering. */
+      qc.removeQueries({ queryKey: ["album", albumId] });
+      qc.invalidateQueries({ queryKey: ["albums"] });
+      nav("/albums");
+    },
   });
 
   if (!album)

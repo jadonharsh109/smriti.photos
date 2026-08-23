@@ -47,6 +47,17 @@ Python packages installed into that runtime keep their own licences; each ships
 its `*.dist-info/` metadata inside the bundle (the build deliberately does not
 prune those).
 
+## Place names (GeoNames)
+
+Offline reverse geocoding comes from the `reverse_geocoder` Python package
+(MIT), whose bundled coordinate table is derived from **GeoNames**
+(<https://www.geonames.org/>), licensed **CC BY 4.0**. Attribution is required
+and this is it; the data is redistributed unmodified inside that package, whose
+`*.dist-info/` ships in the app bundle alongside every other dependency's.
+
+No network call is made to GeoNames or anywhere else — the table is consulted
+locally, which is the whole reason Smriti can name a place with the cable out.
+
 ## Face-recognition models
 
 The InsightFace `buffalo_l` models (`det_10g.onnx`, `w600k_r50.onnx`) are **not
