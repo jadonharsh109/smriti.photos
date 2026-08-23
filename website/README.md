@@ -62,24 +62,28 @@ It is Latin-only on purpose — see the note at the top of that script.
 ## The download counter
 
 The footer carries a live count of installer downloads, read from the GitHub
-releases API in the visitor's browser. Two things about it are deliberate:
+releases API in the visitor's browser.
 
-- **It counts only installers** — `.dmg`, `-aarch64.zip`, `setup.exe`. The other
-  release assets are the app talking to itself: `latest.json` is the updater
-  checking on every launch, `Smriti.app.tar.gz` is the payload it then pulls.
-  Those numbers are much larger and measure existing installs, not new people.
-- **It stays hidden below `SHOW_FROM`** (100). A counter reading "15 downloads"
-  argues against the thing it is attached to. It appears on its own once there
-  is something worth showing; nothing needs changing when that happens.
+It counts **installers only** — `.dmg`, `-aarch64.zip`, `setup.exe`. The other
+release assets are the app talking to itself: `latest.json` is the updater
+checking on every launch, `Smriti.app.tar.gz` is the payload it then pulls.
+Those run several times higher and measure installs that already exist, so
+counting them would flatter the number rather than report it. At the time of
+writing that is 15 people against 171 of updater traffic.
 
-Cached in `localStorage` for six hours. GitHub allows 60 unauthenticated
-requests an hour per IP — per visitor — so it cannot exhaust anyone's budget,
-and it fails silently when it does hit a limit.
+It hides itself only when the count is zero or the request failed — "0
+downloads" would report a rate limit or an offline visitor as a fact about the
+app. Cached in `localStorage` for six hours. GitHub allows 60 unauthenticated
+requests an hour per IP, which is per visitor, so it cannot exhaust anyone's
+budget.
 
-Worth knowing: this is the one request the page makes to anyone else. It is
-sent with no referrer, and it is on the marketing site rather than in the app —
-but if you would rather the page talk to nobody at all, bake the number in at
-deploy time instead and drop the script.
+`python scripts/downloads.py --by-tag` reports the same figures from a
+terminal, with updater traffic broken out separately.
+
+Worth knowing: this is the one request the page makes to anybody else. It is
+sent with no referrer, and it is the marketing site rather than the app — but
+if you would rather the page talk to nobody at all, bake the number in at
+deploy time and drop the script.
 
 ## The domain
 

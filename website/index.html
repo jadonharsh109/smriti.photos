@@ -516,9 +516,9 @@ footer{padding:44px 0 40px; border-top:1px solid var(--stroke); margin-top:30px}
  * numbers and they measure existing installs, not new people, so counting them
  * would be flattering and false.
  *
- * Stays hidden below SHOW_FROM. A counter reading "15 downloads" argues
- * against the thing it is attached to; one that appears on its own once there
- * is something to show does not. Nothing to change later — it simply turns up.
+ * Shown whenever there is a real number to show. Hidden only when the count is
+ * zero or the request failed, since "0 downloads" would report a rate limit or
+ * an offline visitor as a fact about the app.
  *
  * Unauthenticated and cached for six hours: GitHub allows 60 requests an hour
  * per IP, which is per visitor, so this cannot run anyone out of budget. Sent
@@ -526,15 +526,14 @@ footer{padding:44px 0 40px; border-top:1px solid var(--stroke); margin-top:30px}
  * just sees the footer it would have seen anyway.
  */
 (function () {
-  var SHOW_FROM = 100;
   var CACHE_KEY = "smriti.downloads";
   var MAX_AGE = 6 * 60 * 60 * 1000;
   var el = document.getElementById("dl-count");
   if (!el) return;
 
   function paint(n) {
-    if (!n || n < SHOW_FROM) return;
-    el.textContent = "· " + n.toLocaleString() + " downloads";
+    if (!n) return;
+    el.textContent = "· " + n.toLocaleString() + (n === 1 ? " download" : " downloads");
     el.hidden = false;
   }
 
