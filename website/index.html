@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Smriti · स्मृति — a photo library that never leaves your machine</title>
+<meta name="description" content="Smriti turns the photo folders already on your Mac or PC into a proper library — timeline, people, places, trips, duplicates — with everything computed on your own machine. No cloud, no account, nothing uploaded." />
+<meta name="theme-color" content="#070a14" />
+<link rel="canonical" href="https://smriti.photos/" />
+
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Smriti · स्मृति — every memory, lovingly kept" />
+<meta property="og:description" content="A local-first photo library for your own drives. Timeline, faces, places, trips and duplicates — all computed on your machine, none of it leaving it." />
+<meta property="og:url" content="https://smriti.photos/" />
+<meta name="twitter:card" content="summary_large_image" />
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23FFB25E'/%3E%3Cstop offset='.5' stop-color='%23FF7B9C'/%3E%3Cstop offset='1' stop-color='%23B96BFF'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='2' y='2' width='28' height='28' rx='10' fill='url(%23g)'/%3E%3Cpath d='M16 6.6c2.6 3.3 2.6 7.4 0 10.2-2.6-2.8-2.6-6.9 0-10.2z' fill='white'/%3E%3Cpath d='M9.2 10.6c3.5.5 6.1 2.9 6.7 6.3-3.5-.3-6.2-2.8-6.7-6.3z' fill='white' opacity='.82'/%3E%3Cpath d='M22.8 10.6c-3.5.5-6.1 2.9-6.7 6.3 3.5-.3 6.2-2.8 6.7-6.3z' fill='white' opacity='.82'/%3E%3Cpath d='M9 19.2c2 2 4.4 3 7 3s5-1 7-3' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round'/%3E%3C/svg%3E" />
+
+<style>
+:root{
+  --bg:#070a14; --fg:#f4f6fd; --fg-dim:#a7aec6; --fg-dimmer:#7d86a3;
+  --glass:rgba(255,255,255,.055); --glass-2:rgba(255,255,255,.085);
+  --stroke:rgba(255,255,255,.10); --stroke-2:rgba(255,255,255,.16);
+  --saffron:#ffb25e; --pink:#ff7b9c; --violet:#b96bff;
+  --blue:#6e7bff; --sky:#7cc4ff; --teal:#4fe0c6; --ok:#6fe3a5;
+  --r-card:20px; --r-sm:12px;
+  --ease:cubic-bezier(.22,.9,.28,1);
+  --edge-lit:inset 0 1px 0 rgba(255,255,255,.16), inset 0 -1px 0 rgba(0,0,0,.18);
+  --shadow:0 18px 50px rgba(2,4,10,.5);
+  --dev-font:"Kohinoor Devanagari","ITF Devanagari","Devanagari MT","Noto Sans Devanagari",sans-serif;
+  --serif:ui-serif,"New York",Georgia,serif;
+  --maxw:1120px;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font:16px/1.65 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased; overflow-x:hidden;
+}
+h1,h2,h3{line-height:1.15; margin:0; letter-spacing:-.02em}
+p{margin:0}
+a{color:inherit}
+.dev{font-family:var(--dev-font)}
+
+/* ---------- wallpaper: static, so it costs one paint and never a frame again */
+.aurora{position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none;
+  background:
+    radial-gradient(1100px 700px at 110% -12%, rgba(110,123,255,.16), transparent 62%),
+    radial-gradient(900px 640px at -8% 108%, rgba(79,224,198,.10), transparent 60%),
+    var(--bg);}
+.aurora i{position:absolute; border-radius:50%; filter:blur(90px); opacity:.5}
+.aurora i:nth-child(1){width:560px;height:560px;left:-140px;top:-180px;background:radial-gradient(circle at 35% 35%,#2f6bff,transparent 65%)}
+.aurora i:nth-child(2){width:640px;height:640px;right:-180px;top:6%;background:radial-gradient(circle at 60% 40%,#8a4bff,transparent 65%)}
+.aurora i:nth-child(3){width:520px;height:520px;left:26%;top:52%;background:radial-gradient(circle at 50% 50%,#0f7f8c,transparent 65%)}
+.aurora i:nth-child(4){width:520px;height:520px;right:12%;bottom:-160px;background:radial-gradient(circle at 50% 45%,#c65b1e,transparent 65%);opacity:.4}
+.grain{position:fixed; inset:0; z-index:1; pointer-events:none; opacity:.05;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E")}
+.page{position:relative; z-index:2}
+
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+.eyebrow{display:inline-flex; align-items:center; gap:10px; font-size:13px; color:var(--fg-dim);
+  background:var(--glass); border:1px solid var(--stroke); border-radius:999px; padding:7px 15px}
+.eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 10px rgba(111,227,165,.8)}
+
+/* ---------- nav */
+header.nav{position:sticky; top:0; z-index:20; backdrop-filter:blur(18px) saturate(1.6);
+  -webkit-backdrop-filter:blur(18px) saturate(1.6);
+  background:rgba(7,10,20,.72); border-bottom:1px solid var(--stroke)}
+.nav-in{display:flex; align-items:center; gap:18px; height:64px}
+.brand{display:flex; align-items:center; gap:11px; font-weight:700; font-size:18px; text-decoration:none; letter-spacing:-.01em}
+.brand svg{border-radius:9px; box-shadow:0 4px 14px rgba(185,107,255,.35)}
+.brand .dev{color:var(--saffron); font-size:15px; font-weight:600; opacity:.9}
+.nav-links{display:flex; gap:4px; margin-left:auto}
+.nav-links a{text-decoration:none; color:var(--fg-dim); font-size:14.5px; padding:8px 12px; border-radius:10px; transition:color .18s, background .18s}
+.nav-links a:hover{color:var(--fg); background:var(--glass)}
+
+.btn{display:inline-flex; align-items:center; justify-content:center; gap:9px; cursor:pointer;
+  font:inherit; font-size:14.5px; font-weight:600; text-decoration:none;
+  padding:11px 20px; border-radius:13px; border:1px solid var(--stroke-2);
+  background:var(--glass-2); color:var(--fg); box-shadow:var(--edge-lit);
+  transition:transform .2s var(--ease), box-shadow .2s ease, border-color .2s ease, background .2s ease}
+.btn:hover{transform:translateY(-2px); border-color:rgba(148,190,255,.45); background:rgba(255,255,255,.12)}
+.btn.primary{border-color:transparent; color:#150a20;
+  background:linear-gradient(135deg,var(--saffron),var(--pink) 52%,var(--violet));
+  box-shadow:0 10px 30px rgba(185,107,255,.35), var(--edge-lit)}
+.btn.primary:hover{box-shadow:0 14px 40px rgba(185,107,255,.5), var(--edge-lit)}
+.btn.big{font-size:16px; padding:15px 28px; border-radius:15px}
+.btn .sub{font-weight:500; opacity:.72; font-size:12.5px}
+
+/* ---------- hero */
+.hero{padding:92px 0 78px; text-align:center}
+.hero h1{font-size:clamp(44px,7.4vw,86px); font-family:var(--dev-font); font-weight:700; margin:26px 0 0;
+  background:linear-gradient(135deg,#ffd9a8,var(--pink) 46%,var(--violet));
+  -webkit-background-clip:text; background-clip:text; color:transparent; line-height:1.12}
+.hero .en{font-family:var(--serif); font-style:italic; font-size:clamp(19px,2.4vw,26px); color:var(--fg); margin-top:14px}
+.hero .lede{max-width:660px; margin:18px auto 0; color:var(--fg-dim); font-size:17.5px}
+.hero .lede .dev{color:var(--saffron)}
+.cta{display:flex; gap:14px; justify-content:center; flex-wrap:wrap; margin-top:34px}
+.trust{display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:30px}
+.chip{display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--fg-dim);
+  background:var(--glass); border:1px solid var(--stroke); border-radius:999px; padding:7px 14px}
+.chip svg{flex:none}
+
+/* ---------- sections */
+section{padding:76px 0; position:relative}
+.sec-head{max-width:660px; margin:0 auto 46px; text-align:center}
+.sec-head h2{font-size:clamp(29px,3.9vw,42px)}
+.sec-head p{color:var(--fg-dim); margin-top:14px; font-size:16.5px}
+.rule{height:1px; background:linear-gradient(90deg,transparent,var(--stroke),transparent)}
+
+/* ---------- privacy band */
+.band{background:var(--glass); border:1px solid var(--stroke); border-radius:var(--r-card);
+  padding:34px 30px; box-shadow:var(--edge-lit); text-align:center}
+.band h2{font-size:clamp(23px,3vw,32px)}
+.band p{color:var(--fg-dim); max-width:640px; margin:14px auto 0}
+.band strong{color:var(--fg)}
+
+/* ---------- feature cards */
+.grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(290px,1fr)); gap:18px}
+.card{background:var(--glass); border:1px solid var(--stroke); border-radius:var(--r-card);
+  padding:26px 24px; box-shadow:var(--edge-lit), 0 4px 16px rgba(2,4,10,.25);
+  transition:transform .26s var(--ease), border-color .22s ease, box-shadow .26s ease}
+.card:hover{transform:translateY(-5px); border-color:rgba(148,190,255,.4); box-shadow:var(--shadow), var(--edge-lit)}
+.card h3{font-size:18.5px; margin-bottom:9px}
+.card p{color:var(--fg-dim); font-size:15px}
+.ico{width:42px; height:42px; border-radius:12px; display:grid; place-items:center; margin-bottom:15px;
+  background:linear-gradient(140deg,rgba(255,178,94,.22),rgba(185,107,255,.22));
+  border:1px solid var(--stroke-2); color:var(--fg)}
+
+/* ---------- steps */
+.steps{display:grid; grid-template-columns:repeat(auto-fit,minmax(268px,1fr)); gap:18px; counter-reset:s}
+.step{background:var(--glass); border:1px solid var(--stroke); border-radius:var(--r-card); padding:26px 24px; box-shadow:var(--edge-lit)}
+.step h3{font-size:17.5px; margin:14px 0 8px}
+.step p{color:var(--fg-dim); font-size:15px}
+.step .n{counter-increment:s; width:34px;height:34px;border-radius:11px; display:grid;place-items:center;
+  font-weight:700; font-size:15px; color:#150a20;
+  background:linear-gradient(135deg,var(--saffron),var(--pink) 55%,var(--violet))}
+.step .n::before{content:counter(s)}
+
+/* ---------- download */
+.dl{display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:18px}
+.dl-card{background:var(--glass); border:1px solid var(--stroke); border-radius:var(--r-card);
+  padding:28px 26px; box-shadow:var(--edge-lit); display:flex; flex-direction:column; gap:8px}
+.dl-card h3{font-size:20px; display:flex; align-items:center; gap:11px}
+.dl-card .req{color:var(--fg-dimmer); font-size:14px}
+.dl-card .btn{margin-top:14px; align-self:flex-start}
+.dl-card.is-you{border-color:rgba(185,107,255,.5); box-shadow:0 0 0 1px rgba(185,107,255,.18), var(--edge-lit)}
+.you-tag{font-size:11.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--violet); background:rgba(185,107,255,.14); border:1px solid rgba(185,107,255,.3);
+  border-radius:999px; padding:3px 9px; margin-left:auto}
+
+/* ---------- note / callout */
+.note{background:rgba(255,178,94,.07); border:1px solid rgba(255,178,94,.28); border-radius:var(--r-sm);
+  padding:18px 20px; color:var(--fg-dim); font-size:15px; margin-top:20px}
+.note strong{color:var(--saffron)}
+.note ul{margin:10px 0 0; padding-left:20px}
+.note li{margin:5px 0}
+
+/* ---------- code */
+pre{background:rgba(2,4,10,.55); border:1px solid var(--stroke); border-radius:var(--r-sm);
+  padding:18px 20px; overflow-x:auto; margin:0;
+  font:13.5px/1.75 ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace; color:#d7dcf0}
+pre .c{color:var(--fg-dimmer)}
+pre .k{color:var(--teal)}
+code.inl{background:rgba(2,4,10,.5); border:1px solid var(--stroke); border-radius:6px;
+  padding:2px 6px; font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--sky)}
+
+/* ---------- table */
+.tbl{width:100%; border-collapse:collapse; font-size:15px; overflow:hidden;
+  border:1px solid var(--stroke); border-radius:var(--r-sm)}
+.tbl td,.tbl th{padding:13px 16px; text-align:left; border-bottom:1px solid var(--stroke)}
+.tbl tr:last-child td{border-bottom:none}
+.tbl th{color:var(--fg); font-weight:650; background:var(--glass)}
+.tbl td{color:var(--fg-dim)}
+.tbl td:first-child{color:var(--fg); white-space:nowrap}
+.scroll-x{overflow-x:auto}
+
+/* ---------- two-column */
+.two{display:grid; grid-template-columns:1fr 1fr; gap:34px; align-items:start}
+@media(max-width:860px){.two{grid-template-columns:1fr}}
+.two h3{font-size:20px; margin-bottom:12px}
+.two p{color:var(--fg-dim); margin-bottom:14px}
+.ticks{list-style:none; margin:0; padding:0}
+.ticks li{position:relative; padding-left:28px; margin:11px 0; color:var(--fg-dim); font-size:15px}
+.ticks li::before{content:""; position:absolute; left:2px; top:8px; width:9px; height:9px; border-radius:50%;
+  background:linear-gradient(135deg,var(--saffron),var(--violet))}
+.ticks strong{color:var(--fg)}
+
+/* ---------- footer */
+footer{padding:54px 0 44px; border-top:1px solid var(--stroke); margin-top:40px}
+.foot{display:flex; gap:20px; flex-wrap:wrap; align-items:center; justify-content:space-between}
+.foot p{color:var(--fg-dimmer); font-size:14px}
+.foot .dev{color:var(--saffron)}
+.foot-links{display:flex; gap:18px; flex-wrap:wrap}
+.foot-links a{color:var(--fg-dim); text-decoration:none; font-size:14px}
+.foot-links a:hover{color:var(--fg)}
+
+:focus-visible{outline:2px solid var(--sky); outline-offset:3px; border-radius:8px}
+@media(max-width:720px){
+  /* the links carried the auto margin that pushed Download to the right edge,
+     so it has to take it over when they go */
+  .nav-links{display:none}
+  .nav-in > .btn{margin-left:auto}
+  .hero{padding:64px 0 54px}
+  section{padding:58px 0}
+}
+@media(prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{transition-duration:.01ms !important; animation-duration:.01ms !important}
+}
+</style>
+</head>
+<body>
+<div class="aurora"><i></i><i></i><i></i><i></i></div>
+<div class="grain"></div>
+
+<div class="page">
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="#top">
+      <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFB25E"/><stop offset=".5" stop-color="#FF7B9C"/><stop offset="1" stop-color="#B96BFF"/></linearGradient></defs><rect x="2" y="2" width="28" height="28" rx="10" fill="url(#lg)"/><path d="M16 6.6c2.6 3.3 2.6 7.4 0 10.2-2.6-2.8-2.6-6.9 0-10.2z" fill="#fff"/><path d="M9.2 10.6c3.5.5 6.1 2.9 6.7 6.3-3.5-.3-6.2-2.8-6.7-6.3z" fill="#fff" opacity=".82"/><path d="M22.8 10.6c-3.5.5-6.1 2.9-6.7 6.3 3.5-.3 6.2-2.8 6.7-6.3z" fill="#fff" opacity=".82"/><path d="M9 19.2c2 2 4.4 3 7 3s5-1 7-3" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round"/></svg>
+      Smriti <span class="dev">स्मृति</span>
+    </a>
+    <nav class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#takeout">Google Photos</a>
+      <a href="#start">Get started</a>
+      <a href="#cli">Command line</a>
+      <a href="#code">Source</a>
+    </nav>
+    <a class="btn primary" href="#download">Download</a>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ============ hero ============ -->
+  <div class="wrap hero">
+    <span class="eyebrow"><span class="dot"></span><span class="dev">स्मृति</span> · smṛti — Sanskrit for “that which is remembered”</span>
+    <h1>हर याद,<br>संजोई हुई।</h1>
+    <p class="en">Every memory, lovingly kept.</p>
+    <p class="lede">
+      Smriti turns the photo folders already sitting on your Mac or PC into a proper
+      library — <span class="dev">यादें</span>, <span class="dev">लोग</span>, <span class="dev">जगहें</span> —
+      with everything computed on your own machine, and none of it leaving it.
+      No cloud. No account. Your original files are never moved or modified.
+    </p>
+    <div class="cta">
+      <a class="btn primary big" id="primary-dl" href="https://github.com/jadonharsh109/smriti.photos/releases/latest">
+        Download Smriti <span class="sub" id="primary-dl-os"></span>
+      </a>
+      <a class="btn big" href="https://github.com/jadonharsh109/smriti.photos">View the code</a>
+    </div>
+    <div class="trust">
+      <span class="chip">Nothing is uploaded, ever</span>
+      <span class="chip">Works with the network unplugged</span>
+      <span class="chip">Originals never moved or modified</span>
+      <span class="chip">Free and open source</span>
+    </div>
+  </div>
+
+  <!-- ============ privacy band ============ -->
+  <div class="wrap">
+    <div class="band">
+      <h2>Your photos never leave the room</h2>
+      <p>
+        Faces are recognised, places are named and trips are found <strong>on your own CPU</strong>.
+        Setting up a library downloads the face-recognition models once (about 280&nbsp;MB) — the
+        only download Smriti ever makes. After that you can pull the network cable out and
+        everything still works.
+      </p>
+    </div>
+  </div>
+
+  <!-- ============ features ============ -->
+  <section id="features">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>Every way through your photos</h2>
+        <p>One folder in, and a whole library out — organised the way you would have organised it yourself, if you'd had a spare decade.</p>
+      </div>
+      <div class="grid">
+
+        <article class="card">
+          <div class="ico"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg></div>
+          <h3>Timeline</h3>
+          <p>A date-grouped justified grid, virtualized for six-figure libraries, with a time-proportional year scrubber and a lightbox that zooms on double-click.</p>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.4"/><path d="M2.6 20c.6-3.5 3.3-5.4 6.4-5.4s5.8 1.9 6.4 5.4"/><circle cx="17.5" cy="9" r="2.6"/><path d="M17 14.8c2.3.2 4 1.9 4.4 5.2"/></svg></div>
+          <h3>People</h3>
+          <p>Face detection and recognition on your CPU — SCRFD and ArcFace via onnxruntime — clustered into people you can name, merge and hide. No face ever touches a server.</p>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg></div>
+          <h3>Places</h3>
+          <p>GPS read from EXIF and QuickTime, reverse-geocoded <strong>offline</strong> from a bundled GeoNames dataset, and shown on an interactive globe that fetches no map tiles.</p>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l2.1 5.4 5.9.4-4.5 3.8 1.4 5.7L12 15.2 7.1 18.3l1.4-5.7L4 8.8l5.9-.4z"/></svg></div>
+          <h3>Events</h3>
+          <p>Trips and moments found automatically from the gaps in your timeline, then titled by city and date. Nothing to tag, nothing to file.</p>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="13" height="13" rx="2.6"/><path d="M7.5 7V5.4A2.4 2.4 0 0 1 9.9 3h8.7A2.4 2.4 0 0 1 21 5.4v8.7a2.4 2.4 0 0 1-2.4 2.4H17"/></svg></div>
+          <h3>Albums</h3>
+          <p>Virtual collections layered over the folders you already have, so your directory structure stays exactly as you arranged it.</p>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h13M4 12h13M4 17h8"/><circle cx="19.5" cy="17" r="2.5"/></svg></div>
+          <h3>Duplicates &amp; cleanup</h3>
+          <p>Exact matches by BLAKE2 and near-duplicates by perceptual hash, with a keeper suggested for you. Cleanup moves files to the <strong>system Trash</strong> — always recoverable.</p>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2.6"/><path d="M3 9h18M9 13l2.2 2.2L15.5 11"/></svg></div>
+          <h3>Google Takeout repair</h3>
+          <p>Hand it the <code class="inl">.zip</code> parts of a Google Photos export and get back a folder of repaired photos, with the dates and GPS Google moved into sidecar files put back where they belong.</p>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12M8 11l4 4 4-4"/><path d="M4 17v2.4A1.6 1.6 0 0 0 5.6 21h12.8a1.6 1.6 0 0 0 1.6-1.6V17"/></svg></div>
+          <h3>Export</h3>
+          <p>Select anything at all — a person, a trip, a day, a search — and save the original files out as a <code class="inl">.zip</code>. The originals, not re-encodes.</p>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="11" rx="2.4"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
+          <h3>Locked</h3>
+          <p>A passcode-protected section. Anything you put in it vanishes from every other view — timeline, people, places, search — until you unlock it, and it re-locks itself when you walk away.</p>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2.5" y="5" width="14" height="14" rx="2.6"/><path d="M16.5 10.5l5-3v9l-5-3z"/></svg></div>
+          <h3>Videos</h3>
+          <p>Metadata from ffprobe, poster frames, and smooth scrubbing over HTTP range requests. The desktop app bundles its own ffmpeg — nothing to install.</p>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2.5" y="6" width="19" height="6" rx="2"/><rect x="2.5" y="14" width="19" height="5" rx="2"/><path d="M6.5 9h.01M6.5 16.5h.01"/></svg></div>
+          <h3>Drive-aware</h3>
+          <p>External drives are tracked by disk identity, so unplugging and replugging just works. Nothing is ever marked missing while a drive happens to be offline.</p>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/><circle cx="18.5" cy="18" r="2.6"/></svg></div>
+          <h3>Documents &amp; screenshots</h3>
+          <p>Screenshots, scans and receipts are recognised and kept out of your timeline by default — filed in their own place, so the memories stay memories.</p>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap"><div class="rule"></div></div>
+
+  <!-- ============ takeout ============ -->
+  <section id="takeout">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>Coming from Google Photos</h2>
+        <p>A Takeout export is a pile of numbered zips with the metadata torn out of the photos. Smriti puts it back.</p>
+      </div>
+      <div class="two">
+        <div>
+          <h3>What the repair fixes</h3>
+          <ul class="ticks">
+            <li><strong>Dates.</strong> Photos that lost their EXIF — Snapchat and WhatsApp images, anything renamed — get their capture time from Google's sidecar, written into the file itself so other apps see it too. A photo that still has its own date is never overwritten.</li>
+            <li><strong>Places.</strong> GPS from the sidecar, for the photos that lost it.</li>
+            <li><strong>Albums.</strong> Kept as folders, and turned into Smriti albums if you ever add the folder to your library.</li>
+            <li><strong>Duplicates.</strong> Takeout stores an album's photos twice, byte for byte. Both paths are recreated, but the second is a hardlink — the mirror is exact and the bytes exist once.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>And what it refuses to do</h3>
+          <p>
+            It stops at a folder, on purpose. Repairing an export and deciding to live with those
+            photos are two different decisions, so it makes only the first: you get an ordinary
+            folder you can open in Finder, copy to a drive, or ignore entirely.
+          </p>
+          <p>
+            <strong>Nothing is re-encoded.</strong> The capture date is spliced into the JPEG's
+            metadata segment, leaving every byte of image data untouched. Your <code class="inl">.zip</code>
+            files are only ever read.
+          </p>
+          <p>
+            Select every part you downloaded at once — Google routinely files a photo's metadata in
+            a <em>different part</em> from the photo itself, so the parts are paired against each
+            other before anything is unpacked. Smriti says up front what it found, and says so
+            plainly when the set looks incomplete.
+          </p>
+          <div class="note">
+            <strong>Space.</strong> The import copies photos out of the archives, so it needs
+            roughly as much free space as the export itself. Smriti checks before it starts, and an
+            interrupted repair picks up where it left off.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap"><div class="rule"></div></div>
+
+  <!-- ============ get started ============ -->
+  <section id="start">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>Three steps, one evening</h2>
+        <p>Point it at a folder and it does the rest.</p>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <div class="n"></div>
+          <h3>Install it</h3>
+          <p>Download for your platform below and open it. Python, ffmpeg and every dependency are already inside the app — there is nothing else to install.</p>
+        </div>
+        <div class="step">
+          <div class="n"></div>
+          <h3>Point it at a folder</h3>
+          <p>Add any folder of photos, on your disk or an external drive. The first one you add downloads the face-recognition models — about 280&nbsp;MB, once, and the only download Smriti ever makes.</p>
+        </div>
+        <div class="step">
+          <div class="n"></div>
+          <h3>Let it think</h3>
+          <p>It indexes, thumbnails, finds faces, places and trips in the background while you use it. Come back to a library that organised itself.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ download ============ -->
+  <section id="download">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>Download</h2>
+        <p>Free, open source, and the same build for everyone.</p>
+      </div>
+      <div class="dl">
+        <div class="dl-card" id="dl-mac">
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.7 12.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.2-2.8.9-3.5.9-.7 0-1.9-.8-3.1-.8-1.6 0-3.1.9-3.9 2.4-1.7 2.9-.4 7.2 1.2 9.5.8 1.2 1.7 2.4 3 2.4 1.2 0 1.6-.8 3.1-.8s1.9.8 3.1.7c1.3 0 2.1-1.1 2.9-2.3.9-1.3 1.3-2.6 1.3-2.7 0 0-2.5-.9-2.7-3.9zM14.4 5.9c.6-.8 1.1-1.9 1-3-1 0-2.2.6-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.9-1.5z"/></svg>
+            macOS <span class="you-tag" id="tag-mac" hidden>Your system</span>
+          </h3>
+          <p class="req">Apple Silicon · macOS 14 or newer</p>
+          <p class="req">Drag <strong>Smriti.dmg</strong> to Applications.</p>
+          <a class="btn primary" href="https://github.com/jadonharsh109/smriti.photos/releases/latest">Download for macOS</a>
+        </div>
+        <div class="dl-card" id="dl-win">
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.6l7.4-1v7.1H3zM11.6 4.4L21 3v8.7h-9.4zM3 12.9h7.4V20L3 18.7zM11.6 12.9H21V21l-9.4-1.3z"/></svg>
+            Windows <span class="you-tag" id="tag-win" hidden>Your system</span>
+          </h3>
+          <p class="req">Windows 10 / 11 · 64-bit</p>
+          <p class="req"><strong>Smriti-setup.exe</strong> installs per-user — no admin needed.</p>
+          <a class="btn primary" href="https://github.com/jadonharsh109/smriti.photos/releases/latest">Download for Windows</a>
+        </div>
+      </div>
+
+      <div class="note">
+        <strong>The first launch will warn you.</strong> The app isn't code-signed yet — that needs
+        a paid developer certificate. You only have to do this once; updates after that are handled
+        inside the app.
+        <ul>
+          <li><strong>macOS</strong> — launch it, get blocked, then go to System&nbsp;Settings → Privacy&nbsp;&amp;&nbsp;Security → scroll down → <em>Open Anyway</em>, and launch again.</li>
+          <li><strong>Windows</strong> — choose <em>More info</em> → <em>Run anyway</em>.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap"><div class="rule"></div></div>
+
+  <!-- ============ cli ============ -->
+  <section id="cli">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>Or run it headless</h2>
+        <p>For an always-on machine, or to reach your library from other devices on the LAN.</p>
+      </div>
+      <div class="two">
+        <div>
+          <h3>Install</h3>
+<pre><span class="c"># macOS</span>
+brew install jadonharsh109/tap/smriti
+
+<span class="c"># any platform, Python 3.12+ —</span>
+<span class="c"># grab the .whl from the latest release</span>
+pip install ./smriti_photos-*-py3-none-any.whl</pre>
+          <div class="note">
+            <strong>Don't run both.</strong> The desktop app and a headless server would write the
+            same database. Pick one.
+          </div>
+        </div>
+        <div>
+          <h3>Use</h3>
+<pre>smriti              <span class="c"># serve at :6969</span>
+smriti start        <span class="c"># …or in the background</span>
+smriti status       <span class="c"># is it running?</span>
+smriti logs -f      <span class="c"># follow the server log</span>
+smriti stop         <span class="c"># stop it</span>
+smriti models       <span class="c"># face models (~280 MB)</span>
+
+<span class="c"># keep it running at login</span>
+brew services start smriti</pre>
+          <p style="margin-top:14px">
+            <code class="inl">ffmpeg</code> is optional here and enables video indexing.
+            The desktop app bundles its own.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap"><div class="rule"></div></div>
+
+  <!-- ============ data + source ============ -->
+  <section id="code">
+    <div class="wrap">
+      <div class="two">
+        <div>
+          <h3>Where your data lives</h3>
+          <p>One folder, and you can read every part of it.</p>
+          <div class="scroll-x">
+            <table class="tbl">
+              <tr><th>Path</th><th>What</th></tr>
+              <tr><td>library.db</td><td>SQLite index (WAL)</td></tr>
+              <tr><td>thumbs/</td><td>Grid thumbnails, precomputed WebP</td></tr>
+              <tr><td>previews/</td><td>1600px lightbox previews, lazy, ~10 GB cap</td></tr>
+              <tr><td>models/</td><td>Face-recognition ONNX models</td></tr>
+              <tr><td>desktop.log</td><td>Server log — the first place to look</td></tr>
+            </table>
+          </div>
+          <p style="margin-top:16px">
+            That's <code class="inl">~/.smriti</code>, or
+            <code class="inl">~/Library/Application&nbsp;Support/Smriti</code> for a fresh macOS
+            install and <code class="inl">%LOCALAPPDATA%\Smriti</code> on Windows. Override it with
+            <code class="inl">SMRITI_DATA_DIR</code>. Deleting the folder fully resets Smriti —
+            <strong style="color:var(--fg)">your photos are untouched</strong>, because they are only ever read.
+          </p>
+        </div>
+        <div>
+          <h3>Read the whole thing</h3>
+          <p>
+            Smriti is open source, and the interesting parts are worth a look: an embedded
+            relocatable CPython inside a Tauri shell, raw ONNX face recognition with no framework
+            underneath it, offline reverse geocoding, and a timeline that stays smooth at six
+            figures.
+          </p>
+          <p>
+            Building it needs <code class="inl">uv</code>, Node&nbsp;20+ and ffmpeg on PATH — plus
+            Rust&nbsp;1.85+ for the desktop shell. Every build input is pinned by sha256.
+          </p>
+<pre>git clone https://github.com/jadonharsh109/smriti.photos
+cd smriti.photos
+
+uv sync                        <span class="c"># backend</span>
+(cd frontend &amp;&amp; npm install)    <span class="c"># frontend</span>
+uv run python scripts/fetch_models.py
+
+./scripts/start.sh             <span class="c"># serve :6969</span>
+./scripts/dev.sh               <span class="c"># hot reload</span></pre>
+          <div class="cta" style="justify-content:flex-start; margin-top:22px">
+            <a class="btn primary" href="https://github.com/jadonharsh109/smriti.photos">Browse the source</a>
+            <a class="btn" href="https://github.com/jadonharsh109/smriti.photos/issues">Report a bug</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ closing ============ -->
+  <section>
+    <div class="wrap">
+      <div class="band">
+        <h2>Smriti is in early development</h2>
+        <p>
+          And bug reports are genuinely welcome. If something breaks,
+          <code class="inl">desktop.log</code> in the data folder usually says exactly why —
+          please include it.
+        </p>
+        <div class="cta" style="margin-top:24px">
+          <a class="btn primary big" href="https://github.com/jadonharsh109/smriti.photos/releases/latest">Download Smriti</a>
+          <a class="btn big" href="https://github.com/jadonharsh109/smriti.photos">Star it on GitHub</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <p>Made with ♥ in India · <span class="dev">स्मृति</span> — every memory, lovingly kept.</p>
+    <nav class="foot-links">
+      <a href="#features">Features</a>
+      <a href="#download">Download</a>
+      <a href="https://github.com/jadonharsh109/smriti.photos">Source</a>
+      <a href="https://github.com/jadonharsh109/smriti.photos/releases">Releases</a>
+      <a href="https://github.com/jadonharsh109/smriti.photos/issues">Issues</a>
+    </nav>
+  </div>
+</footer>
+
+</div>
+
+<script>
+// Point the hero button at the platform the visitor is actually on, and mark
+// the matching download card. Purely a convenience — both cards stay visible
+// and the link works whatever this guesses.
+(function () {
+  var ua = navigator.userAgent || "";
+  var isWin = /Windows|Win64|Win32/i.test(ua);
+  var isMac = /Macintosh|Mac OS X/i.test(ua) && !/iPhone|iPad/i.test(ua);
+  var label = document.getElementById("primary-dl-os");
+  if (isWin) {
+    label.textContent = "for Windows";
+    document.getElementById("dl-win").classList.add("is-you");
+    document.getElementById("tag-win").hidden = false;
+  } else if (isMac) {
+    label.textContent = "for macOS";
+    document.getElementById("dl-mac").classList.add("is-you");
+    document.getElementById("tag-mac").hidden = false;
+  } else {
+    label.textContent = "— macOS & Windows";
+  }
+})();
+</script>
+</body>
+</html>
