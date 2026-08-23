@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api, cardDelay } from "../api/client";
 import { ArtEvents } from "../components/Illustrations";
 import { CardGridSkeleton } from "../components/Skeletons";
+import CardGrid from "../components/CardGrid";
 
 interface Event {
   id: number;
@@ -45,7 +46,7 @@ export default function EventsPage() {
           <p>No events yet — index some photos and press "Rebuild events".</p>
         </div>
       ) : (
-        <div className="card-grid">
+        <CardGrid>
           {events!.map((e, i) => (
             <Link key={e.id} to={`/events/${e.id}`} className="card" style={cardDelay(i)}>
               {e.cover_file_id ? (
@@ -59,7 +60,7 @@ export default function EventsPage() {
               </div>
             </Link>
           ))}
-        </div>
+        </CardGrid>
       )}
     </div>
   );

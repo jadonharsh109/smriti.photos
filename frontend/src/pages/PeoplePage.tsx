@@ -5,6 +5,7 @@ import { api, cardDelay, type Person } from "../api/client";
 import { ArtPeople } from "../components/Illustrations";
 import SearchBox from "../components/SearchBox";
 import { PeopleGridSkeleton } from "../components/Skeletons";
+import CardGrid from "../components/CardGrid";
 
 export default function PeoplePage() {
   const [showHidden, setShowHidden] = useState(false);
@@ -147,7 +148,7 @@ export default function PeoplePage() {
           )}
         </div>
       ) : (
-        <div className="card-grid">
+        <CardGrid>
           {shown.map((p, i) => (
             <Link key={p.id} to={`/people/${p.id}`} className="card" style={cardDelay(i)}>
               <div className="face-wrap">
@@ -187,7 +188,7 @@ export default function PeoplePage() {
               </div>
             </Link>
           ))}
-        </div>
+        </CardGrid>
       )}
     </div>
   );

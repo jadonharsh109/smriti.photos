@@ -5,6 +5,7 @@ import { api, cardDelay } from "../api/client";
 import { ArtPlaces } from "../components/Illustrations";
 import SearchBox from "../components/SearchBox";
 import { CardGridSkeleton } from "../components/Skeletons";
+import CardGrid from "../components/CardGrid";
 
 interface CityEntry {
   city: string;
@@ -136,7 +137,7 @@ export default function PlacesPage() {
                       <span className="muted small">{st.count} photos</span>
                     </div>
                   )}
-                  <div className="card-grid">
+                  <CardGrid>
                     {st.cities.map((city, i) => (
                       <Link
                         key={city.city}
@@ -151,7 +152,7 @@ export default function PlacesPage() {
                         </div>
                       </Link>
                     ))}
-                  </div>
+                  </CardGrid>
                 </div>
               );
             })}

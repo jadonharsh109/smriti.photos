@@ -5,6 +5,7 @@ import { api, cardDelay } from "../api/client";
 import { TextDialog } from "../components/Dialogs";
 import { ArtAlbums } from "../components/Illustrations";
 import { CardGridSkeleton } from "../components/Skeletons";
+import CardGrid from "../components/CardGrid";
 
 interface Album {
   id: number;
@@ -49,7 +50,7 @@ export default function AlbumsPage() {
           <p>No albums yet. Select photos in the timeline and choose "Add to album".</p>
         </div>
       ) : (
-        <div className="card-grid">
+        <CardGrid>
           {albums!.map((a, i) => (
             <Link key={a.id} to={`/albums/${a.id}`} className="card" style={cardDelay(i)}>
               {a.cover ? <img className="cover" src={`/api/thumb/${a.cover}`} loading="lazy" alt="" /> : <div className="cover" />}
@@ -59,7 +60,7 @@ export default function AlbumsPage() {
               </div>
             </Link>
           ))}
-        </div>
+        </CardGrid>
       )}
       {creating && (
         <TextDialog

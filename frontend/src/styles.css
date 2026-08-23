@@ -1194,6 +1194,13 @@ code {
   box-shadow: var(--edge-lit), 0 4px 16px rgba(2, 4, 10, 0.25);
   transition: transform 0.26s var(--ease), box-shadow 0.26s ease, border-color 0.22s ease;
   animation: rise 0.5s var(--ease) backwards;
+  /* Skip cards that are off screen — no layout, no paint, no cover decoded
+     until one comes near. --card-h is a real card measured by CardGrid; the
+     300px is only what stands in for the first frame, before there is a card
+     to measure. `auto` keeps each card's own height once it has been seen, so
+     scrolling back up lands exactly where it left. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto var(--card-h, 300px);
 }
 /* stagger comes from an inline animation-delay set per card index (see cardDelay in api/client.ts) */
 .card:hover {
