@@ -20,6 +20,9 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 
 const MAX_ZOOM = 24;
 const DETAIL_ZOOM = 4; // past this, swap in the high-res 50m coastlines
+/** How close a pin click settles the globe when it is further out than this.
+ *  A floor, never a target to be pulled back to. */
+const FOCUS_ZOOM = 3.1;
 
 interface View {
   lambda: number;
@@ -299,7 +302,16 @@ export default function MapPage() {
         queryFn: () => api.get<Bucket[]>(`/api/timeline/buckets${filterQS(filters)}`),
       });
     }
-    flyTo({ lambda: -p.lon, phi: -p.lat, scale: 3.1 });
+    flyTo({
+      lambda: -p.lon,
+      phi: -p.lat,
+      // Bring the place to the middle, and close in only if we are further out
+      // than FOCUS_ZOOM. This used to fly to that level outright, so clicking a
+      // pin while zoomed in threw the zoom away in the same gesture that asked
+      // to look at something — and the closer you had got, the more it took.
+      // Zooming out is what the reset control is for, and only when asked.
+      scale: Math.max(viewRef.current.scale, FOCUS_ZOOM),
+    });
   };
 
   const resetView = () => {
