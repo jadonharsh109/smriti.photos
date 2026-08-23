@@ -8,6 +8,16 @@ No cloud. No account. Nothing uploaded, ever — and your original files are nev
 modified. Setting up a library downloads the face-recognition models once (~280 MB); after that
 Smriti works with the network unplugged.
 
+<p align="center">
+  <img src="website/demo.gif" width="900"
+       alt="Smriti: a date-grouped timeline, places resolved offline, an interactive globe, and trips detected automatically." />
+</p>
+
+<p align="center"><sub>
+  Timeline, Places, the offline globe, and trips found on their own. Recorded against a demo
+  library built from public-domain photographs — not anyone's real one.
+</sub></p>
+
 ---
 
 ## Download

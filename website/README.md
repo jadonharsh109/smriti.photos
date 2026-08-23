@@ -32,6 +32,22 @@ When there are screenshots worth publishing, drop them in beside `og.png` and
 replace the `<svg>` inside each `<figure class="shot">` with an `<img>`. The
 figure, caption and framing already fit.
 
+## The demo footage
+
+`demo.mp4` / `demo.webm` play in the hero; `demo-poster.jpg` holds the first frame
+until they do; `demo.gif` is the same tour for the repo README, where video does
+not embed reliably.
+
+All four were recorded from the real app driven through Timeline → Places → Map
+→ Events, then crossfaded and encoded locally with ffmpeg. Nothing was uploaded
+to a hosted recorder — which would be a strange thing to do for an app whose
+argument is that nothing leaves your machine.
+
+The library on screen is **not a real one**. It was built from public-domain and
+CC0 photographs fetched from Wikimedia Commons and stamped with plausible dates
+and GPS, so the timeline, places and trips have something true to group. A real
+library would mean publishing real faces.
+
 ## The share card
 
 `og.png` is the 1200x630 image Slack, X, WhatsApp and LinkedIn show. Regenerate
