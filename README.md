@@ -192,6 +192,30 @@ delete, or keep for experimenting.
 
 ---
 
+## Licence
+
+[GNU AGPL v3](LICENSE). Use it, run it, change it, share it — and if you
+distribute a modified version, or run one as a service other people can reach,
+those people get the source to your version too.
+
+That is the whole intent: Smriti should stay something anyone can use for free,
+and stay impossible to fork into a closed product or a paid hosted service that
+gives nothing back. Selling it is not forbidden — no free-software licence
+forbids that — but whoever sells it still has to hand over the source under the
+same terms, which removes most of the reason to try.
+
+Two things this does not cover:
+
+- The bundled **FFmpeg** binary is GPL v3 and is redistributed unmodified.
+  Smriti runs it as a separate process and never links against it. See
+  [desktop/THIRD_PARTY_LICENSES.md](desktop/THIRD_PARTY_LICENSES.md).
+- The **InsightFace models** that power People are not bundled — they are
+  downloaded on request, and their authors licence them for **non-commercial
+  research use**. That restriction is theirs and it follows the models, not this
+  repository.
+
+---
+
 Smriti is in early development and I'd genuinely like your bug reports. If something breaks,
 `desktop.log` in the data folder above usually says exactly why — please include it.
 

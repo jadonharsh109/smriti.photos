@@ -3,7 +3,16 @@ name = "smriti-photos"
 version = "0.1.27"
 description = "स्मृति Smriti — fully-offline, Google-Photos-style library for your local photos"
 readme = "README.md"
+license = "AGPL-3.0-only"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
+classifiers = [
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Environment :: Web Environment",
+    "Intended Audience :: End Users/Desktop",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Graphics :: Viewers",
+]
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
@@ -20,7 +29,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jadonharsh109/smriti.photos"
+Homepage = "https://smriti.jadonharsh.in"
+Source = "https://github.com/jadonharsh109/smriti.photos"
+Issues = "https://github.com/jadonharsh109/smriti.photos/issues"
 
 [project.scripts]
 smriti = "smriti_server.cli:main"
