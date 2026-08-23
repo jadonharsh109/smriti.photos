@@ -167,26 +167,62 @@ export default function Lightbox({ item, onClose, onPrev, onNext, qs = "", onTog
   }, []);
 
   const m = detail?.metadata;
+  /** `is-video` drops the scrim's blur, because a playing video repaints
+   *  constantly and flips the blurred backdrop back and forth (see styles.css).
+   *  An unplugged drive puts a still on screen instead, so that reasoning — and
+   *  the different-looking background that comes with it — does not apply. */
+  const showingVideo = item.media_type === "video" && !offline && !mediaError;
+
+  /** The still. Shown for a photo, and for anything at all whose drive is
+   *  unplugged — `/api/preview` hands back the cached frame for a video and
+   *  degrades to the thumbnail for a photo whose full preview was never made,
+   *  so one element covers both. A drive being out is one state, and it should
+   *  not look like two different problems depending on what you clicked. */
+  const still = (
+    <img
+      key={item.id}
+      ref={imgRef}
+      className="lb-media"
+      src={`/api/preview/${item.id}${qs}`}
+      alt=""
+      draggable={false}
+      style={{
+        transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+        transition: panning ? "none" : "transform 0.35s var(--ease)",
+        cursor: zoom > 1 ? (panning ? "grabbing" : "grab") : "zoom-in",
+        animation: entranceDone ? "none" : undefined,
+      }}
+      title={zoom > 1 ? "Double-click to fit" : "Double-click to zoom"}
+      onAnimationEnd={() => setEntranceDone(true)}
+      onDoubleClick={onDblClick}
+      onPointerDown={onPanStart}
+      onPointerMove={onPanMove}
+      onPointerUp={onPanEnd}
+      onPointerCancel={onPanEnd}
+    />
+  );
+
   return (
     <Portal>
     <div
-      className={`lightbox${showInfo ? " with-info" : ""}${item.media_type === "video" ? " is-video" : ""}`}
+      className={`lightbox${showInfo ? " with-info" : ""}${showingVideo ? " is-video" : ""}`}
       onClick={onClose}
     >
       <div className="lb-stage" onClick={(e) => e.stopPropagation()}>
-        {item.media_type === "video" && (offline || mediaError) ? (
+        {/* Only a genuinely unreadable file gets a screen of its own. An
+            unplugged drive is not that: there is a cached image either way, so
+            it is shown, and the chip below says why it is the cached one. */}
+        {item.media_type === "video" && mediaError && !offline ? (
           <div className="lb-unavailable">
             <img src={`/api/thumb/${item.id}${qs}`} alt="" className="lb-unavail-poster" />
             <div className="lb-unavail-body">
               <span className="lb-unavail-icon">🗄</span>
-              <strong>{offline ? "Drive not connected" : "Video unavailable"}</strong>
-              <p>
-                {offline
-                  ? `This video lives on “${driveLabel}”, which isn't connected. Plug it in and it will play right here.`
-                  : "The original file couldn't be read — it may have been moved or renamed outside Smriti."}
-              </p>
+              <strong>Video unavailable</strong>
+              <p>The original file couldn&rsquo;t be read — it may have been moved or renamed outside Smriti.</p>
             </div>
           </div>
+        ) : offline ? (
+          still
         ) : item.media_type === "video" ? (
           <video
             key={item.id}
@@ -212,32 +248,13 @@ export default function Lightbox({ item, onClose, onPrev, onNext, qs = "", onTog
             onError={() => setPlayingLive(false)}
           />
         ) : (
-          <img
-            key={item.id}
-            ref={imgRef}
-            className="lb-media"
-            src={`/api/preview/${item.id}${qs}`}
-            alt=""
-            draggable={false}
-            style={{
-              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-              transition: panning ? "none" : "transform 0.35s var(--ease)",
-              cursor: zoom > 1 ? (panning ? "grabbing" : "grab") : "zoom-in",
-              animation: entranceDone ? "none" : undefined,
-            }}
-            title={zoom > 1 ? "Double-click to fit" : "Double-click to zoom"}
-            onAnimationEnd={() => setEntranceDone(true)}
-            onDoubleClick={onDblClick}
-            onPointerDown={onPanStart}
-            onPointerMove={onPanMove}
-            onPointerUp={onPanEnd}
-            onPointerCancel={onPanEnd}
-          />
+          still
         )}
-        {item.media_type === "photo" && offline && (
+        {offline && (
           <div className="lb-offline-chip">
             <span className="dot" />
-            Original on “{driveLabel}” (offline) — showing cached preview
+            Original on “{driveLabel}” (offline) — showing a cached{" "}
+            {item.media_type === "video" ? "frame" : "preview"}
           </div>
         )}
       </div>
