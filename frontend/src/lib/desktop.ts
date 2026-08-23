@@ -88,6 +88,11 @@ export async function openInMaps(lat: number, lon: number, label?: string): Prom
 export const pickFolder = (title?: string) =>
   invoke("pick_folder", { title }) as Promise<string | null>;
 
+/** Raise the system file chooser, filtered to .zip, and resolve to what the
+ *  user picked. Empty means they cancelled. Desktop only. */
+export const pickZipFiles = (title?: string) =>
+  invoke("pick_zip_files", { title }) as Promise<string[]>;
+
 /* ------------------------------------------------------------------ updates */
 
 /** A newer build, as the shell describes it. */

@@ -67,6 +67,30 @@ async fn pick_folder(app: tauri::AppHandle, title: Option<String>) -> Option<Str
         .map(|path| path.to_string_lossy().into_owned())
 }
 
+/// Ask the operating system for one or more .zip files.
+///
+/// Same reasoning as `pick_folder`, and the same deliberate narrowness: the
+/// filter is fixed here rather than passed in, so this can only ever ask for
+/// zips. Google hands an export out as numbered parts and a photo's metadata
+/// routinely sits in a different part from the photo, so it is multi-select.
+///
+/// An empty list means the user cancelled — which is an answer, not an error.
+#[tauri::command]
+async fn pick_zip_files(app: tauri::AppHandle, title: Option<String>) -> Vec<String> {
+    use tauri_plugin_dialog::DialogExt;
+    let mut dialog = app.dialog().file().add_filter("Zip archives", &["zip"]);
+    if let Some(title) = title {
+        dialog = dialog.set_title(title);
+    }
+    dialog
+        .blocking_pick_files()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|picked| picked.into_path().ok())
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect()
+}
+
 /// The user's Downloads folder, falling back to home then the temp dir.
 fn downloads_dir() -> std::path::PathBuf {
     let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
@@ -149,6 +173,7 @@ fn main() {
             reveal_log,
             quit_app,
             pick_folder,
+            pick_zip_files,
             updates::check_updates_now,
             updates::pending_update,
             updates::install_update,

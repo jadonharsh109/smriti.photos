@@ -8,3 +8,8 @@
 identifier = "allow-pick-folder"
 description = "Allows the folder buttons to open the system folder chooser."
 commands.allow = ["pick_folder"]
+
+[[permission]]
+identifier = "allow-pick-zip-files"
+description = "Allows the Takeout import to open the system file chooser, filtered to .zip."
+commands.allow = ["pick_zip_files"]

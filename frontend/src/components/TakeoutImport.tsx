@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, fmtBytes } from "../api/client";
 import FolderPicker, { type FsList } from "./FolderPicker";
+import { isDesktop, pickZipFiles } from "../lib/desktop";
 import { IconClose } from "./Icons";
 import Portal from "./Portal";
 
@@ -26,7 +27,14 @@ interface Analysis {
  * Google hands out an export as numbered parts, and a photo's metadata
  * routinely sits in a different part from the photo itself — so this is
  * deliberately multi-select, and the summary afterwards says plainly when the
- * set looks incomplete. */
+ * set looks incomplete.
+ *
+ * In the desktop app the system chooser does the picking, the same way
+ * FolderPicker defers to it; the list below is the browser's fallback. What
+ * that costs is real and worth naming: this list sorts the takeout-looking
+ * files to the top, shows their sizes, and offers "select all". Finder does
+ * none of that. It does, though, know where the user actually keeps their
+ * downloads, and the analysis step already refuses a set that is not a Takeout. */
 function ZipPicker({
   chosen,
   onDone,
@@ -36,6 +44,7 @@ function ZipPicker({
   onDone: (paths: string[]) => void;
   onClose: () => void;
 }) {
+  const [native] = useState(isDesktop);
   const [path, setPath] = useState("");
   const [sel, setSel] = useState<Record<string, number>>(
     Object.fromEntries(chosen.map((c) => [c, 0]))
@@ -43,7 +52,26 @@ function ZipPicker({
   const { data } = useQuery({
     queryKey: ["fs-zip", path],
     queryFn: () => api.get<FsList>(`/api/fs/list?include=zip&path=${encodeURIComponent(path)}`),
+    enabled: !native,
   });
+
+  // Once per mount, and the answer always lands — see FolderPicker for why an
+  // unmount guard would be wrong here rather than merely unnecessary.
+  const asked = useRef(false);
+  useEffect(() => {
+    if (!native || asked.current) return;
+    asked.current = true;
+    pickZipFiles("Choose your Takeout .zip files").then(
+      (picked) =>
+        // Merged, not replaced: the list below hands back everything already
+        // chosen along with the new, and reopening to add a part from another
+        // folder has to keep working the same way.
+        picked.length ? onDone([...new Set([...chosen, ...picked])]) : onClose(),
+      onClose
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [native]);
+
   const looksLikeTakeout = (n: string) => /takeout|google/i.test(n);
   const files = [...(data?.files ?? [])].sort(
     (a, b) => Number(looksLikeTakeout(b.name)) - Number(looksLikeTakeout(a.name))
@@ -57,6 +85,8 @@ function ZipPicker({
       return next;
     });
   const count = Object.keys(sel).length;
+
+  if (native) return null; // the system chooser is up instead
 
   return (
     <Portal>
