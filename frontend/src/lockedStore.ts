@@ -1,5 +1,9 @@
-/** In-memory unlock token for the Locked section (never persisted — closing
- * the tab or the 15-min server expiry re-locks), plus thin API helpers. */
+/** In-memory unlock token for the Locked section, plus thin API helpers.
+ *
+ * Never persisted: closing the tab re-locks. The server re-locks too, on two
+ * clocks — 15 minutes idle, and an hour whatever you do — and reports the
+ * shorter of them as `expires_in` so the page can lock on the second rather
+ * than whenever its next poll happens to land. */
 
 let token: string | null = null;
 
@@ -16,6 +20,8 @@ export interface LockedStatus {
   unlocked: boolean;
   count?: number;
   codes_remaining?: number;
+  /** Seconds until the session locks itself. Present only while unlocked. */
+  expires_in?: number;
 }
 
 async function req<T>(url: string, init?: RequestInit): Promise<T> {

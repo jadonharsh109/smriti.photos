@@ -205,12 +205,23 @@ fn main() {
                         // a filename. It used to be an opaque token, which
                         // saved every export as an extension-less blob that
                         // would not open.
+                        // A blob: URL carries no filename in its path — the name lives
+                        // in the anchor's `download` attribute, and reaches us only as
+                        // the destination the webview has already suggested. The Locked
+                        // section's backup codes are saved exactly that way, so fall back
+                        // to the suggestion before giving up and naming it ourselves.
+                        let suggested = destination
+                            .file_name()
+                            .and_then(|s| s.to_str())
+                            .filter(|s| s.contains('.') && !s.starts_with('.'))
+                            .map(|s| s.to_string());
                         let name = url
                             .path_segments()
                             .and_then(|s| s.last())
                             .filter(|s| !s.is_empty())
                             .map(|s| percent_decode(s))
                             .filter(|s| s.contains('.') && !s.starts_with('.'))
+                            .or(suggested)
                             .unwrap_or_else(|| "smriti-download".into());
                         *destination = downloads_dir().join(unique_in_dir(&downloads_dir(), &name));
                         println!("smriti: saving download to {}", destination.display());

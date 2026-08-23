@@ -11,6 +11,34 @@ import { getLockedToken, lockedApi, lockedQS, setLockedToken } from "../lockedSt
 /** Backup codes, shown exactly once after setup or a passcode change. */
 function BackupCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
   const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  /* A file, because the clipboard is the wrong place to leave the only copy of
+     something shown once — the next thing you copy destroys it, and it is gone
+     without ever having said so. In the desktop app the shell catches this and
+     writes it to Downloads; in a browser it is an ordinary download. */
+  const download = () => {
+    const body = [
+      "Smriti — backup codes for the Locked section",
+      `Saved ${new Date().toLocaleString()}`,
+      "",
+      "Each code unlocks the Locked section once, if you forget your passcode.",
+      "Keep this file somewhere only you can reach.",
+      "",
+      ...codes,
+      "",
+    ].join("\n");
+    const url = URL.createObjectURL(new Blob([body], { type: "text/plain" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "smriti-backup-codes.txt";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    setSaved(true);
+  };
+
   return (
     <div className="lock-card wide">
       <span className="lock-icon"><IconLock size={30} /></span>
@@ -25,7 +53,9 @@ function BackupCodes({ codes, onDone }: { codes: string[]; onDone: () => void })
         ))}
       </div>
       <div className="row" style={{ justifyContent: "center", marginTop: 18 }}>
+        <button onClick={download}>{saved ? "✓ Downloaded" : "Download codes"}</button>
         <button
+          className="ghost"
           onClick={() => {
             navigator.clipboard.writeText(codes.join("\n")).then(() => setCopied(true));
           }}
@@ -208,6 +238,32 @@ export default function LockedPage() {
     refetchInterval: 60_000, // notice server-side expiry
   });
   const unlocked = status?.unlocked && !!getLockedToken();
+
+  /* Re-lock the moment the session expires.
+     The timer only asks the server again — it never locks on its own say-so.
+     `expires_in` is a snapshot, and using this section renews the idle clock
+     without the page hearing about it, so a client-side countdown would throw
+     somebody out mid-scroll. The server is the one that knows. */
+  const expiresIn = status?.expires_in;
+  useEffect(() => {
+    if (!unlocked || expiresIn == null) return;
+    const t = window.setTimeout(
+      () => qc.invalidateQueries({ queryKey: ["locked", "status"] }),
+      Math.max(0, expiresIn) * 1000 + 750
+    );
+    return () => window.clearTimeout(t);
+  }, [unlocked, expiresIn, qc]);
+
+  /* The server has locked us out — drop the token rather than keep sending a
+     dead one on every thumbnail URL. */
+  useEffect(() => {
+    if (status && !status.unlocked && getLockedToken()) {
+      setLockedToken(null);
+      setSelected(new Set());
+      setLightboxIdx(null);
+      qc.invalidateQueries({ queryKey: ["locked"] });
+    }
+  }, [status, qc]);
 
   const { data: items } = useQuery({
     queryKey: ["locked", "items"],

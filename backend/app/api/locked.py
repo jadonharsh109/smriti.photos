@@ -41,11 +41,15 @@ def _check_throttle() -> None:
 
 @router.get("/locked/status")
 def status(x_locked_token: str | None = Header(default=None)):
-    unlocked = lock.check_token(x_locked_token)
+    # renew=False: this endpoint is polled on a timer, and a poll is not
+    # somebody using the section. Renewing here meant the idle clock could
+    # never run out while the page was open — see lock.check_token.
+    unlocked = lock.check_token(x_locked_token, renew=False)
     out = {"configured": lock.is_configured(), "unlocked": unlocked}
     if unlocked:
         out["count"] = db.query_one("SELECT COUNT(*) n FROM locked_items")["n"]
         out["codes_remaining"] = lock.codes_remaining()
+        out["expires_in"] = lock.token_expires_in(x_locked_token)
     return out
 
 

@@ -12,7 +12,12 @@ import time
 from .. import db
 
 PBKDF2_ITERS = 240_000
-TOKEN_TTL_S = 15 * 60          # sliding expiry
+# Two clocks, because one is not enough. TTL is idle time — it slides while you
+# are actually looking at locked photos, and only then. MAX_LIFE is the ceiling
+# no amount of sliding can push past, so a session that started this morning is
+# not still open this evening.
+TOKEN_TTL_S = 15 * 60          # idle expiry, renewed by real use
+TOKEN_MAX_LIFE_S = 60 * 60     # absolute ceiling from the moment it was issued
 BACKUP_CODE_COUNT = 8
 MAX_FAILS = 5
 COOLDOWN_S = 30
@@ -20,6 +25,7 @@ COOLDOWN_S = 30
 # in-memory state: one local user, resets on server restart (locks the section)
 _token: str | None = None
 _token_expiry: float = 0.0
+_token_deadline: float = 0.0
 _fails = 0
 _last_fail: float = 0.0
 
@@ -106,21 +112,44 @@ def codes_remaining() -> int:
 # ---- unlock token -----------------------------------------------------------
 
 def issue_token() -> str:
-    global _token, _token_expiry, _fails
+    global _token, _token_expiry, _token_deadline, _fails
+    now = time.monotonic()
     _token = secrets.token_urlsafe(32)
-    _token_expiry = time.monotonic() + TOKEN_TTL_S
+    _token_expiry = now + TOKEN_TTL_S
+    _token_deadline = now + TOKEN_MAX_LIFE_S
     _fails = 0
     return _token
 
 
-def check_token(token: str | None) -> bool:
+def check_token(token: str | None, renew: bool = True) -> bool:
+    """Is this token still good — and, unless told otherwise, keep it alive.
+
+    `renew=False` is for callers that run on a timer rather than because
+    somebody did something. The status endpoint polls once a minute, and while
+    it renewed the token the idle expiry could never be reached: leaving the
+    Locked section open on screen kept it unlocked indefinitely, which is the
+    one thing an idle timeout exists to prevent.
+    """
     global _token_expiry
-    if not token or _token is None or time.monotonic() > _token_expiry:
+    now = time.monotonic()
+    if not token or _token is None:
+        return False
+    if now > _token_expiry or now > _token_deadline:
         return False
     if not secrets.compare_digest(token, _token):
         return False
-    _token_expiry = time.monotonic() + TOKEN_TTL_S  # sliding renewal
+    if renew:
+        _token_expiry = min(now + TOKEN_TTL_S, _token_deadline)
     return True
+
+
+def token_expires_in(token: str | None) -> int:
+    """Seconds until this token dies of either clock, 0 if it already has.
+    Lets the client re-lock the moment the session ends rather than whenever
+    its next poll happens to land."""
+    if not check_token(token, renew=False):
+        return 0
+    return max(0, int(min(_token_expiry, _token_deadline) - time.monotonic()))
 
 
 def drop_token() -> None:
