@@ -163,6 +163,9 @@ footer{padding:44px 0 40px; border-top:1px solid var(--stroke); margin-top:30px}
 .foot-links{display:flex; gap:16px; flex-wrap:wrap}
 .foot-links a{color:var(--fg-dim); text-decoration:none; font-size:13.5px}
 .foot-links a:hover{color:var(--fg)}
+.dl-count{display:inline-block; margin-left:10px; color:var(--fg-dimmer); font-size:13px;
+  text-decoration:none; border-bottom:1px dotted rgba(255,255,255,.18)}
+.dl-count:hover{color:var(--fg-dim)}
 
 :focus-visible{outline:2px solid var(--sky); outline-offset:3px; border-radius:8px}
 @media(max-width:720px){
@@ -416,7 +419,11 @@ footer{padding:44px 0 40px; border-top:1px solid var(--stroke); margin-top:30px}
 
 <footer>
   <div class="wrap foot">
-    <p>Made with ♥ in India · <span class="dev" lang="sa">स्मृति</span> — every memory, lovingly kept.</p>
+    <p>
+      Made with ♥ in India · <span class="dev" lang="sa">स्मृति</span> — every memory, lovingly kept.
+      <a id="dl-count" class="dl-count" hidden
+         href="https://github.com/jadonharsh109/smriti.photos/releases"></a>
+    </p>
     <nav class="foot-links">
       <a href="#features">Features</a>
       <a href="#download">Download</a>
@@ -497,6 +504,65 @@ footer{padding:44px 0 40px; border-top:1px solid var(--stroke); margin-top:30px}
   },
   "sameAs": ["https://github.com/jadonharsh109/smriti.photos"]
 }
+</script>
+
+<script>
+/* Downloads of the actual installers, straight from the GitHub releases API.
+ *
+ * Counts only what a person clicks — the .dmg, the .zip and the Windows
+ * setup.exe. Everything else in a release is the app talking to itself:
+ * latest.json is the updater checking for a new version on every launch, and
+ * Smriti.app.tar.gz is the payload it then downloads. Those are far larger
+ * numbers and they measure existing installs, not new people, so counting them
+ * would be flattering and false.
+ *
+ * Stays hidden below SHOW_FROM. A counter reading "15 downloads" argues
+ * against the thing it is attached to; one that appears on its own once there
+ * is something to show does not. Nothing to change later — it simply turns up.
+ *
+ * Unauthenticated and cached for six hours: GitHub allows 60 requests an hour
+ * per IP, which is per visitor, so this cannot run anyone out of budget. Sent
+ * with no referrer, and it fails silently — a rate limit or an offline visitor
+ * just sees the footer it would have seen anyway.
+ */
+(function () {
+  var SHOW_FROM = 100;
+  var CACHE_KEY = "smriti.downloads";
+  var MAX_AGE = 6 * 60 * 60 * 1000;
+  var el = document.getElementById("dl-count");
+  if (!el) return;
+
+  function paint(n) {
+    if (!n || n < SHOW_FROM) return;
+    el.textContent = "· " + n.toLocaleString() + " downloads";
+    el.hidden = false;
+  }
+
+  function isInstaller(name) {
+    return /\.dmg$/.test(name) || /-aarch64\.zip$/.test(name) || /setup\.exe$/.test(name);
+  }
+
+  try {
+    var hit = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
+    if (hit && Date.now() - hit.at < MAX_AGE) { paint(hit.n); return; }
+  } catch (e) { /* private window, or storage refused — just fetch */ }
+
+  fetch("https://api.github.com/repos/jadonharsh109/smriti.photos/releases?per_page=100",
+        { referrerPolicy: "no-referrer" })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (releases) {
+      if (!Array.isArray(releases)) return;
+      var n = 0;
+      releases.forEach(function (rel) {
+        (rel.assets || []).forEach(function (a) {
+          if (isInstaller(a.name)) n += a.download_count || 0;
+        });
+      });
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ n: n, at: Date.now() })); } catch (e) {}
+      paint(n);
+    })
+    .catch(function () { /* offline, blocked or rate-limited — stay quiet */ });
+})();
 </script>
 </body>
 </html>
