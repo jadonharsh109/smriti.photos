@@ -38,6 +38,35 @@ fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+/// Ask the operating system for a folder — Finder on macOS, Explorer on
+/// Windows.
+///
+/// The app carries its own folder browser and always will: in a plain browser
+/// there is no way to learn a real path, and every path this app deals in is
+/// one the Python process has to be able to open. But that is a reason for it
+/// to exist, not a reason to use it where something better is available. Inside
+/// the desktop app the system chooser is the one the user already knows, with
+/// their sidebar, their recent places and their network volumes in it.
+///
+/// `blocking_` is correct here rather than dangerous: an async command runs on
+/// Tauri's runtime and not the main thread, which is exactly where the blocking
+/// form is meant to be called from. It marshals the dialog onto the main thread
+/// itself and waits for the person to answer.
+#[tauri::command]
+async fn pick_folder(app: tauri::AppHandle, title: Option<String>) -> Option<String> {
+    use tauri_plugin_dialog::DialogExt;
+    let mut dialog = app.dialog().file();
+    if let Some(title) = title {
+        dialog = dialog.set_title(title);
+    }
+    dialog
+        .blocking_pick_folder()
+        // A real filesystem path, not a URI: it is handed straight to a Python
+        // process that has to open it.
+        .and_then(|picked| picked.into_path().ok())
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
 /// The user's Downloads folder, falling back to home then the temp dir.
 fn downloads_dir() -> std::path::PathBuf {
     let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
@@ -119,6 +148,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             reveal_log,
             quit_app,
+            pick_folder,
             updates::check_updates_now,
             updates::pending_update,
             updates::install_update,

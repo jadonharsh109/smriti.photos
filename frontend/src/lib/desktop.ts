@@ -83,6 +83,11 @@ export async function openInMaps(lat: number, lon: number, label?: string): Prom
   await openExternal(url);
 }
 
+/** Raise the system folder chooser and resolve to what the user picked, or
+ *  null if they cancelled. Desktop only — see FolderPicker for the browser. */
+export const pickFolder = (title?: string) =>
+  invoke("pick_folder", { title }) as Promise<string | null>;
+
 /* ------------------------------------------------------------------ updates */
 
 /** A newer build, as the shell describes it. */

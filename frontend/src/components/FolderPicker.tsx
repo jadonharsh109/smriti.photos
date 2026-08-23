@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
+import { isDesktop, pickFolder } from "../lib/desktop";
 import Portal from "./Portal";
 
 export interface FsList {
@@ -21,9 +22,18 @@ interface Props {
   hint?: React.ReactNode;
 }
 
-/** Server-side folder browser. It has to be server-side: a browser can hand us
- *  a file's contents but never its absolute path, and every path this app deals
- *  in is one the Python process must be able to open. */
+/** Choose a folder.
+ *
+ *  In the desktop app that means the system chooser — Finder, or Explorer on
+ *  Windows — which already knows the user's sidebar, their recent places and
+ *  their network volumes. This component then renders nothing and exists only
+ *  to raise it, so the two call sites do not each need to know which world they
+ *  are in.
+ *
+ *  In a plain browser it is the server-side browser below, and that has to be
+ *  server-side: a browser can hand us a file's contents but never its absolute
+ *  path, and every path this app deals in is one the Python process must be
+ *  able to open. It is the fallback, not the preference. */
 export default function FolderPicker({
   onPick,
   onClose,
@@ -31,12 +41,38 @@ export default function FolderPicker({
   submitLabel = "Use this folder",
   hint,
 }: Props) {
+  // Decided once per mount: a component that changed which kind of picker it
+  // was halfway through would be a very strange thing to be looking at.
+  const [native] = useState(isDesktop);
   // "" = the platform's natural starting point (macOS: /Volumes, Windows: drive list)
   const [path, setPath] = useState("");
   const { data } = useQuery({
     queryKey: ["fs", path],
     queryFn: () => api.get<FsList>(`/api/fs/list?path=${encodeURIComponent(path)}`),
+    enabled: !native,
   });
+
+  // Exactly once per mount, and the answer always lands.
+  //
+  // StrictMode runs effects twice in development. Raising the chooser twice
+  // would put two Finder windows over the app, so a ref — which survives the
+  // remount where a state flag would not — keeps it to one. But an unmount
+  // guard cannot then be used to ignore a late reply: the cleanup that runs
+  // between the two passes belongs to the call that is still open, and it would
+  // throw away the only answer we are going to get. There is nothing to guard
+  // against anyway. The chooser is modal, the reply is the user's, and both
+  // handlers do to the parent exactly what its own Cancel button does.
+  const asked = useRef(false);
+  useEffect(() => {
+    if (!native || asked.current) return;
+    asked.current = true;
+    // Cancelling is a real answer, not a failure.
+    pickFolder(title).then((picked) => (picked ? onPick(picked) : onClose()), onClose);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [native]);
+
+  if (native) return null;
+
   const atSyntheticRoot = data?.path === "This PC";
   const subfolders = data?.dirs.length ?? 0;
   return (

@@ -1,0 +1,10 @@
+# The SPA is a remote origin, so an app-level command needs a manifest before it
+# can be granted. Deliberately its own command rather than `dialog:allow-open`:
+# that would let the page raise any file dialog it liked, where this one can
+# only ever ask for a folder and hand back the path the user chose.
+"$schema" = "schemas/schema.json"
+
+[[permission]]
+identifier = "allow-pick-folder"
+description = "Allows the folder buttons to open the system folder chooser."
+commands.allow = ["pick_folder"]
