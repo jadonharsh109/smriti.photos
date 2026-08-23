@@ -6,7 +6,7 @@ import JustifiedGrid from "../components/JustifiedGrid";
 import Lightbox from "../components/Lightbox";
 import Portal from "../components/Portal";
 import { Loading } from "../components/Skeletons";
-import { getLockedToken, lockedApi, lockedQS, setLockedToken } from "../lockedStore";
+import { getLockedToken, lockedApi, lockedQS, setLockedToken, useLockedSession, useLockedToken } from "../lockedStore";
 
 /** Backup codes, shown exactly once after setup or a passcode change. */
 function BackupCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
@@ -232,12 +232,18 @@ export default function LockedPage() {
   const [freshCodes, setFreshCodes] = useState<string[] | null>(null);
   const [changing, setChanging] = useState(false);
 
+  // Both from the store rather than read straight off the module, so this
+  // component re-renders the instant the token changes and the key below can
+  // never lag behind the request that is about to be sent.
+  const token = useLockedToken();
+  const session = useLockedSession();
+
   const { data: status } = useQuery({
-    queryKey: ["locked", "status", !!getLockedToken()],
+    queryKey: ["locked", "status", session],
     queryFn: () => lockedApi.status(),
     refetchInterval: 60_000, // notice server-side expiry
   });
-  const unlocked = status?.unlocked && !!getLockedToken();
+  const unlocked = !!status?.unlocked && !!token;
 
   /* Re-lock the moment the session expires.
      The timer only asks the server again — it never locks on its own say-so.
@@ -257,13 +263,15 @@ export default function LockedPage() {
   /* The server has locked us out — drop the token rather than keep sending a
      dead one on every thumbnail URL. */
   useEffect(() => {
-    if (status && !status.unlocked && getLockedToken()) {
+    // Safe to believe now: `status` is keyed on the session, so it can only
+    // ever be an answer fetched with the token we are still holding.
+    if (status && !status.unlocked && token) {
       setLockedToken(null);
       setSelected(new Set());
       setLightboxIdx(null);
       qc.invalidateQueries({ queryKey: ["locked"] });
     }
-  }, [status, qc]);
+  }, [status, token, qc]);
 
   const { data: items } = useQuery({
     queryKey: ["locked", "items"],
