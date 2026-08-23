@@ -29,6 +29,13 @@ EXPORTS_DIR = DATA_DIR / "exports"
 FRONTEND_DIST = (PROJECT_ROOT / "frontend" / "dist") if _IS_REPO else (_PKG_DIR / "webui")
 
 THUMB_MAX_DIM = 512          # grid thumbs (2x DPR for ~250px rows)
+# Face crops are drawn as the round cover on a People card, which is ~300 CSS px
+# at a wide window — 600 device px on a Retina screen. They were capped at 256
+# and visibly soft because of it. `FACE_CROP_VER` is part of the filename, so
+# raising either one leaves existing crops in place and regenerates on demand.
+FACE_CROP_DIM = 512
+FACE_CROP_WEBP_QUALITY = 86
+FACE_CROP_VER = 2
 PREVIEW_MAX_DIM = 1600       # lightbox previews, generated lazily
 THUMB_WEBP_QUALITY = 75
 PREVIEW_WEBP_QUALITY = 82
