@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { api, fmtBytes, type Item } from "../api/client";
 import { ConfirmDialog } from "./Dialogs";
-import { IconChevronL, IconChevronR, IconClose, IconDownload, IconInfo, IconTrash } from "./Icons";
+import { IconChevronL, IconChevronR, IconClose, IconDownload, IconHeart, IconInfo, IconTrash } from "./Icons";
 import PlaceInset from "./PlaceInset";
 import Portal from "./Portal";
 import { openInMaps } from "../lib/desktop";
@@ -39,14 +39,22 @@ interface Props {
   onClose: () => void;
   onPrev?: () => void;
   onNext?: () => void;
+  /** Omit to leave the heart off — Locked has no use for it. */
+  onToggleFav?: (id: number, on: boolean) => void;
   /** appended to media/detail URLs (e.g. the locked-section token) */
   qs?: string;
 }
 
 const ZOOM = 2.5;
 
-export default function Lightbox({ item, onClose, onPrev, onNext, qs = "" }: Props) {
+export default function Lightbox({ item, onClose, onPrev, onNext, qs = "", onToggleFav }: Props) {
   const [showInfo, setShowInfo] = useState(false);
+  // Held here as well as in the grid: the grid hands the viewer a snapshot of
+  // the item, so without this the heart would not fill until the viewer was
+  // closed and reopened. Re-seeded per photo, since stepping keeps the viewer
+  // mounted and only swaps which item it is showing.
+  const [fav, setFav] = useState(!!item.fav);
+  useEffect(() => setFav(!!item.fav), [item.id, item.fav]);
   const [playingLive, setPlayingLive] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const qc = useQueryClient();
@@ -242,6 +250,20 @@ export default function Lightbox({ item, onClose, onPrev, onNext, qs = "" }: Pro
             onClick={() => setPlayingLive((p) => !p)}
           >
             LIVE
+          </button>
+        )}
+        {onToggleFav && (
+          <button
+            className={`icon-btn fav-btn${fav ? " on" : ""}`}
+            title={fav ? "Remove from Favourites" : "Add to Favourites"}
+            aria-pressed={fav}
+            onClick={() => {
+              const next = !fav;
+              setFav(next);
+              onToggleFav(item.id, next);
+            }}
+          >
+            <IconHeart filled={fav} />
           </button>
         )}
         <button

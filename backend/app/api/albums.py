@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from .. import db
+from ..services import favourites
 
 router = APIRouter()
 
@@ -36,7 +37,8 @@ def list_albums():
         " (SELECT ai.file_id FROM album_items ai WHERE ai.album_id=a.id "
         "  AND ai.file_id NOT IN (SELECT file_id FROM locked_items) "
         "  ORDER BY ai.position LIMIT 1)) AS cover "
-        "FROM albums a ORDER BY a.created_at DESC",
+        # system albums first (Favourites), then the user's newest
+        "FROM albums a ORDER BY (a.system IS NULL), a.created_at DESC",
     )]
 
 
@@ -52,7 +54,9 @@ def album_detail(album_id: int):
     if not row:
         raise HTTPException(404, "no such album")
     items = db.query(
-        "SELECT f.id, f.media_type, m.width, m.height, m.duration_s, ai.position "
+        "SELECT f.id, f.media_type, m.width, m.height, m.duration_s, ai.position, "
+        f"EXISTS (SELECT 1 FROM album_items af WHERE af.file_id = f.id "
+        f"        AND af.album_id = {favourites.album_id()}) AS fav "
         "FROM album_items ai JOIN files f ON f.id=ai.file_id "
         "LEFT JOIN metadata m ON m.file_id=f.id "
         "WHERE ai.album_id=? AND f.status='active' "
@@ -62,9 +66,19 @@ def album_detail(album_id: int):
     return {**dict(row), "items": [dict(i) for i in items]}
 
 
+def _reject_if_system(album_id: int, what: str) -> None:
+    """Favourites is the app's, not the user's. Renaming it would strand the
+    heart on an album nobody recognises; deleting it would take every photo
+    they had hearted with it."""
+    row = db.query_one("SELECT name, system FROM albums WHERE id=?", (album_id,))
+    if row is not None and row["system"]:
+        raise HTTPException(400, f"{row['name']} cannot be {what}")
+
+
 @router.patch("/albums/{album_id}")
 def patch_album(album_id: int, body: AlbumPatch):
     if body.name is not None:
+        _reject_if_system(album_id, "renamed")
         db.execute("UPDATE albums SET name=? WHERE id=?", (body.name, album_id))
     if body.cover_file_id is not None:
         db.execute("UPDATE albums SET cover_file_id=? WHERE id=?", (body.cover_file_id, album_id))
@@ -73,6 +87,7 @@ def patch_album(album_id: int, body: AlbumPatch):
 
 @router.delete("/albums/{album_id}")
 def delete_album(album_id: int):
+    _reject_if_system(album_id, "deleted")
     db.execute("DELETE FROM albums WHERE id=?", (album_id,))
     return {"ok": True}
 
@@ -104,3 +119,23 @@ def reorder(album_id: int, body: ItemsIn):
         for i, fid in enumerate(body.file_ids):
             conn.execute("UPDATE album_items SET position=? WHERE album_id=? AND file_id=?", (i, album_id, fid))
     return {"ok": True}
+
+
+class FavIn(BaseModel):
+    file_ids: list[int]
+    on: bool
+
+
+@router.post("/favourites")
+def set_favourite(body: FavIn):
+    """The heart, for one photo or a whole selection.
+
+    Deliberately a set-to-state rather than a toggle: the grid already knows
+    which way the heart is pointing, and a toggle would flip the wrong way if
+    two views of the same photo were a moment out of step."""
+    album_id = favourites.album_id()
+    if body.on:
+        add_items(album_id, ItemsIn(file_ids=body.file_ids))
+    else:
+        remove_items(album_id, ItemsIn(file_ids=body.file_ids))
+    return {"ok": True, "album_id": album_id}

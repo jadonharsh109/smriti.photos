@@ -15,6 +15,9 @@ export interface Item {
   day: string;
   /** 1 when this still has a motion clip attached (a Live Photo). */
   live?: number;
+  /** 1 when this is in the Favourites album. Carried on the item rather than
+   *  fetched per grid, so the heart is drawn right the first time. */
+  fav?: number;
 }
 
 export interface Filters {
@@ -179,4 +182,25 @@ export function fmtDay(day: string): string {
       ? { weekday: "short", month: "short", day: "numeric" }
       : { weekday: "short", month: "short", day: "numeric", year: "numeric" };
   return d.toLocaleDateString(undefined, opts);
+}
+
+/** Heart or unheart, optimistically.
+ *
+ * `patch` re-writes whatever list the photo is currently being shown in, so the
+ * heart fills under the cursor instead of after a round-trip, and is put back
+ * if the server disagrees. Every grid does the same thing with a different
+ * cache key, which is the only part it has to supply.
+ */
+export async function setFavourite(
+  id: number,
+  on: boolean,
+  patch: (fav: 0 | 1) => void
+): Promise<void> {
+  patch(on ? 1 : 0);
+  try {
+    await api.post("/api/favourites", { file_ids: [id], on });
+  } catch (e) {
+    patch(on ? 0 : 1);
+    throw e;
+  }
 }

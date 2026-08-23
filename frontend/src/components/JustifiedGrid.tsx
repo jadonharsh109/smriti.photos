@@ -1,6 +1,7 @@
 import justifiedLayout from "justified-layout";
 import { useMemo } from "react";
 import { fmtDuration, type Item } from "../api/client";
+import { IconHeart } from "./Icons";
 
 interface Props {
   items: Item[];
@@ -11,10 +12,12 @@ interface Props {
   targetRowHeight?: number;
   /** appended to thumb URLs (e.g. the locked-section token) */
   thumbQS?: string;
+  /** Omit to leave the heart off entirely — Locked has no use for it. */
+  onToggleFav?: (id: number, on: boolean) => void;
 }
 
 /** Flickr-style justified rows of thumbnails (pure layout, no virtualization). */
-export default function JustifiedGrid({ items, width, onOpen, selected, onToggleSelect, targetRowHeight = 220, thumbQS = "" }: Props) {
+export default function JustifiedGrid({ items, width, onOpen, selected, onToggleSelect, targetRowHeight = 220, thumbQS = "", onToggleFav }: Props) {
   const layout = useMemo(
     () =>
       justifiedLayout(
@@ -60,6 +63,19 @@ export default function JustifiedGrid({ items, width, onOpen, selected, onToggle
                 <span className="vid-badge">▶</span>
                 {it.duration_s != null && <span className="dur">{fmtDuration(it.duration_s)}</span>}
               </>
+            )}
+            {onToggleFav && (
+              <button
+                className={`tl-fav${it.fav ? " on" : ""}`}
+                title={it.fav ? "Remove from Favourites" : "Add to Favourites"}
+                aria-pressed={!!it.fav}
+                onClick={(e) => {
+                  e.stopPropagation();      // hearting is not opening
+                  onToggleFav(it.id, !it.fav);
+                }}
+              >
+                <IconHeart size={17} filled={!!it.fav} />
+              </button>
             )}
             {onToggleSelect && (
               <span

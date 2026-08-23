@@ -41,6 +41,7 @@
 
   /* Indian warm accents (landing + brand) */
   --saffron: #ffb25e;
+  --heart: #ff7a9e;
   --rani: #ff7b9c;
   --warm-grad: linear-gradient(115deg, #ffd9a0 0%, #ffb25e 32%, #ff7b9c 62%, #c9a0ff 100%);
   --dev-font: "Kohinoor Devanagari", "ITF Devanagari", "Devanagari MT", "Noto Sans Devanagari", sans-serif;
@@ -789,6 +790,50 @@ code {
   box-shadow: 0 0 12px rgba(110, 123, 255, 0.6);
 }
 .tl-item.selected { outline: 2px solid rgba(124, 196, 255, 0.9); outline-offset: -2px; }
+
+/* Favourites heart — bottom-left, the one corner no badge already uses.
+   Appears on hover like the selection tick, with one difference: once it is
+   filled it stays visible, because a filled heart is something the photo *is*
+   rather than a control you might reach for. */
+.tl-item .tl-fav {
+  position: absolute;
+  left: 7px;
+  bottom: 7px;
+  width: 29px;
+  height: 29px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #eef1fb;
+  background: rgba(8, 10, 18, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: none;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.15s ease, transform 0.22s var(--spring), color 0.15s ease,
+    border-color 0.15s ease;
+}
+.tl-item:hover .tl-fav { opacity: 1; transform: scale(1); }
+.tl-item .tl-fav.on {
+  opacity: 1;
+  transform: scale(1);
+  color: var(--heart);
+  border-color: rgba(255, 122, 158, 0.45);
+}
+.tl-item .tl-fav:hover { transform: scale(1.13); border-color: rgba(255, 255, 255, 0.34); }
+.tl-item .tl-fav.on:hover { transform: scale(1.13); border-color: rgba(255, 122, 158, 0.75); }
+
+/* the same control in the viewer's toolbar */
+.icon-btn.fav-btn.on {
+  color: var(--heart);
+  border-color: rgba(255, 122, 158, 0.5);
+  background: rgba(255, 122, 158, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 0 16px rgba(255, 122, 158, 0.22);
+}
 .tl-item.selected img { transform: scale(0.92); border-radius: 10px; }
 
 .skeleton {

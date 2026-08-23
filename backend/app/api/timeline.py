@@ -1,13 +1,18 @@
 from fastapi import APIRouter
 
 from .. import db
-from ..services import filters
+from ..services import favourites, filters
 
 router = APIRouter()
 
+# `fav` is the album id interpolated, not bound: it comes from our own row and
+# is an int, and inlining it lets SQLite see a constant so the EXISTS is a
+# primary-key probe per row rather than a subquery it has to re-plan.
 ITEM_SQL = ("SELECT f.id, f.media_type, m.width, m.height, m.duration_s, "
             "substr(m.taken_at, 1, 10) AS day, "
-            "EXISTS (SELECT 1 FROM file_motion mo WHERE mo.file_id = f.id) AS live "
+            "EXISTS (SELECT 1 FROM file_motion mo WHERE mo.file_id = f.id) AS live, "
+            "EXISTS (SELECT 1 FROM album_items af "
+            "        WHERE af.file_id = f.id AND af.album_id = {fav}) AS fav "
             "FROM files f {joins} WHERE {where} "
             "ORDER BY m.taken_at DESC, f.id DESC")
 
@@ -47,7 +52,7 @@ def items(day: str | None = None, limit: int = 1000, offset: int = 0,
     joins, where, params = filters.build(person_id, country, city, album_id, event_id, day, solo=bool(solo),
                                          media_type=media_type, kind=kind, live=bool(live))
     rows = db.query(
-        ITEM_SQL.format(joins=joins, where=where) + " LIMIT ? OFFSET ?",
+        ITEM_SQL.format(joins=joins, where=where, fav=favourites.album_id()) + " LIMIT ? OFFSET ?",
         (*params, min(limit, 2000), offset),
     )
     return [dict(r) for r in rows]

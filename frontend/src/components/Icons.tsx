@@ -154,3 +154,14 @@ export const IconDoc = (p: IconProps) => (
     <path d="M14 3.5V8h4.5M9 13h6M9 16.5h4" />
   </Svg>
 );
+
+/** Outline until it is filled — the whole point of the control is the moment
+ *  it changes state, so the shape stays put and only the fill moves. */
+export const IconHeart = ({ filled, ...p }: IconProps & { filled?: boolean }) => (
+  <Svg {...p}>
+    <path
+      d="M12 20.3 4.6 12.9a4.6 4.6 0 0 1 0-6.5 4.6 4.6 0 0 1 6.5 0l.9.9.9-.9a4.6 4.6 0 0 1 6.5 0 4.6 4.6 0 0 1 0 6.5z"
+      fill={filled ? "currentColor" : "none"}
+    />
+  </Svg>
+);

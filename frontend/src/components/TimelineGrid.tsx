@@ -2,7 +2,7 @@ import justifiedLayout from "justified-layout";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, fetchAllItems, filterQS, fmtDay, type Bucket, type Filters, type Item } from "../api/client";
+import { api, fetchAllItems, filterQS, fmtDay, setFavourite, type Bucket, type Filters, type Item } from "../api/client";
 import { ArtPhotos } from "./Illustrations";
 import JustifiedGrid from "./JustifiedGrid";
 import TimeScrubber from "./TimeScrubber";
@@ -127,6 +127,17 @@ export default function TimelineGrid({ filters, emptyText = "Nothing here yet", 
     scrollMargin,
   });
 
+  /** Heart a photo and re-write the day it is being shown in. Shared with the
+   *  viewer, which is opened from the top level and so cannot reach into the
+   *  section's own copy of this. */
+  const favInDay = (day: string) => (id: number, on: boolean) =>
+    setFavourite(id, on, (fav) =>
+      qc.setQueryData<Item[]>(["items", filterKey, day], (prev) =>
+        prev?.map((it) => (it.id === id ? { ...it, fav } : it)))
+    )
+      .then(() => qc.invalidateQueries({ queryKey: ["albums"] }))
+      .catch(() => {});
+
   const itemsFor = (day: string) =>
     qc.fetchQuery({
       queryKey: ["items", filterKey, day],
@@ -222,6 +233,7 @@ export default function TimelineGrid({ filters, emptyText = "Nothing here yet", 
               selected={selected}
               onToggleSelect={toggleSelect}
               onSelectMany={selectMany}
+              onToggleFav={favInDay(buckets[vi.index].day)}
             />
           </div>
         ))}
@@ -255,6 +267,7 @@ export default function TimelineGrid({ filters, emptyText = "Nothing here yet", 
       {lightbox && (
         <Lightbox
           item={lightbox.item}
+          onToggleFav={favInDay(buckets![lightbox.dayIdx].day)}
           onClose={() => setLightbox(null)}
           onPrev={() => step(-1)}
           onNext={() => step(1)}
@@ -275,6 +288,7 @@ function DaySection(props: {
   selected: Set<number>;
   onToggleSelect: (id: number) => void;
   onSelectMany: (ids: number[], on: boolean) => void;
+  onToggleFav: (id: number, on: boolean) => void;
 }) {
   const { data: items } = useQuery({
     queryKey: ["items", props.filterKey, props.day],
@@ -301,6 +315,7 @@ function DaySection(props: {
       </div>
       {items ? (
         <JustifiedGrid
+          onToggleFav={props.onToggleFav}
           items={items}
           width={props.width}
           onOpen={props.onOpen}
