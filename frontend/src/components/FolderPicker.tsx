@@ -43,7 +43,7 @@ export default function FolderPicker({
 }: Props) {
   // Decided once per mount: a component that changed which kind of picker it
   // was halfway through would be a very strange thing to be looking at.
-  const [native] = useState(isDesktop);
+  const [native, setNative] = useState(isDesktop);
   // "" = the platform's natural starting point (macOS: /Volumes, Windows: drive list)
   const [path, setPath] = useState("");
   const { data } = useQuery({
@@ -67,7 +67,14 @@ export default function FolderPicker({
     if (!native || asked.current) return;
     asked.current = true;
     // Cancelling is a real answer, not a failure.
-    pickFolder(title).then((picked) => (picked ? onPick(picked) : onClose()), onClose);
+    pickFolder(title).then(
+      (picked) => (picked ? onPick(picked) : onClose()),
+      // The shell could not raise it — a missing command, an ACL that does not
+      // grant it, a plugin that failed. Fall back to the browser we still have
+      // rather than close on someone who asked to choose something: this is the
+      // only route to adding a folder to the library, and a dead end there is a dead end for the feature.
+      () => setNative(false)
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [native]);
 

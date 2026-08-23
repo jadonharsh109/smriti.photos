@@ -44,7 +44,7 @@ function ZipPicker({
   onDone: (paths: string[]) => void;
   onClose: () => void;
 }) {
-  const [native] = useState(isDesktop);
+  const [native, setNative] = useState(isDesktop);
   const [path, setPath] = useState("");
   const [sel, setSel] = useState<Record<string, number>>(
     Object.fromEntries(chosen.map((c) => [c, 0]))
@@ -67,7 +67,11 @@ function ZipPicker({
         // chosen along with the new, and reopening to add a part from another
         // folder has to keep working the same way.
         picked.length ? onDone([...new Set([...chosen, ...picked])]) : onClose(),
-      onClose
+      // The shell could not raise it — a missing command, an ACL that does not
+      // grant it, a plugin that failed. Fall back to the browser we still have
+      // rather than close on someone who asked to choose something: this is the
+      // only route to choosing the archives, and a dead end there is a dead end for the feature.
+      () => setNative(false)
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [native]);
