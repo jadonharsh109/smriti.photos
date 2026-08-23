@@ -439,6 +439,10 @@ code {
   border-radius: 10px;
   transition: color 0.2s var(--ease), background 0.2s var(--ease), border-color 0.2s var(--ease);
 }
+/* Only when a card precedes it: the jobs card, a drive toast, or the update
+   notice. .rail-star carries no top margin of its own, so without this their
+   borders meet with nothing between them. */
+.jobs-card + .rail-star { margin-top: 10px; }
 .rail-star:hover {
   color: var(--saffron);
   background: rgba(255, 255, 255, 0.06);
@@ -460,7 +464,9 @@ code {
 
 /* jobs status card pinned to rail bottom */
 .jobs-card {
-  margin-top: 10px;
+  /* the same 2px inset .rail-star uses: these stack directly above it, and a
+     card 2px wider on each side than the button under it reads as misaligned */
+  margin: 10px 2px 0;
   border-radius: 18px;
   background: var(--glass-2);
   border: 1px solid var(--stroke);
@@ -507,7 +513,7 @@ code {
    never spent by dismissing something. */
 .update-card {
   display: block;
-  width: 100%;
+  width: auto; /* stretch to the rail minus .jobs-card's margins */
   text-align: left;
   font-weight: inherit;
   border-color: rgba(124, 196, 255, 0.32);
