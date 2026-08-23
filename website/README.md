@@ -59,6 +59,21 @@ python scripts/make_og_image.py
 
 It is Latin-only on purpose — see the note at the top of that script.
 
+## The Status cut
+
+`demo-status.mp4` is a 1080x1920 version for WhatsApp / Instagram Status —
+19 seconds, 1.4 MB, the tour looped twice. `demo-status.jpg` is its first frame,
+for anywhere that wants a still.
+
+It lives here rather than in a downloads folder so it can be fetched from a
+phone: open <https://smriti.jadonharsh.in/demo-status.mp4>, hold, save, post.
+
+    python scripts/make_status_video.py
+
+The footage is 2:1 because the app is, so this composes rather than crops —
+cropping to 9:16 would cut the sidebar, which is the part that shows there is a
+library here and not just a grid of photos.
+
 ## The download counter
 
 The footer carries a live count of installer downloads, read from the GitHub
