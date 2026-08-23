@@ -141,6 +141,22 @@ export const IconPlay = (p: IconProps) => (
   </Svg>
 );
 
+/** "Show in Finder / File Explorer" — a folder standing open, with the arrow
+ *  that every OS uses for *go to where this lives*. */
+export const IconFolderOpen = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3.5 18.5V6a1.8 1.8 0 0 1 1.8-1.8h3.6l2 2.4h5.8A1.8 1.8 0 0 1 18.5 8.4v1.6" />
+    <path d="M3.5 18.5l2.4-6.2a1.6 1.6 0 0 1 1.5-1h13a1 1 0 0 1 .95 1.35l-1.9 5a1.6 1.6 0 0 1-1.5 1.05H3.5z" />
+  </Svg>
+);
+
+/** Preview — the corners a viewfinder draws, meaning "look at this larger". */
+export const IconExpand = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M9 4.5H5.6a1.1 1.1 0 0 0-1.1 1.1V9M15 4.5h3.4a1.1 1.1 0 0 1 1.1 1.1V9M9 19.5H5.6a1.1 1.1 0 0 1-1.1-1.1V15M15 19.5h3.4a1.1 1.1 0 0 0 1.1-1.1V15" />
+  </Svg>
+);
+
 export const IconPencil = (p: IconProps) => (
   <Svg {...p}>
     <path d="M4 20h4l10.5-10.5a2.83 2.83 0 1 0-4-4L4 16v4z" />

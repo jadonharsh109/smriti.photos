@@ -1275,6 +1275,66 @@ code {
 .dupe-item.keeper img { outline: 2px solid var(--ok); outline-offset: 1px; box-shadow: 0 0 18px rgba(111, 227, 165, 0.2); }
 .dupe-item.discard img { outline: 2px solid var(--danger); outline-offset: 1px; opacity: 0.6; }
 .dupe-item .path { color: var(--fg-faint); word-break: break-all; margin-top: 4px; }
+.dupe-thumb { position: relative; }
+
+/* "Look closer" — sits on the card without becoming the card. The card's own
+   click marks the file for deletion, which is the page's business; this is the
+   second thought, so it stays out of the way until the pointer is on the card
+   (and is always there for a keyboard, which has no hover to offer). */
+.preview-btn {
+  position: absolute;
+  right: 7px;
+  top: 7px;
+  width: 29px;
+  height: 29px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(8, 10, 18, 0.55);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  color: rgba(255, 255, 255, 0.94);
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.15s ease, transform 0.22s var(--spring), background 0.15s ease;
+}
+.dupe-item:hover .preview-btn,
+.missing-row:hover .preview-btn,
+.preview-btn:focus-visible { opacity: 1; transform: scale(1); }
+.preview-btn:hover { background: rgba(24, 28, 46, 0.9); transform: scale(1.08); }
+
+/* Missing — a row you can pick, with the thumbnail that outlived the file */
+.missing-row { cursor: pointer; }
+.missing-row:hover { background: var(--glass-2); }
+.missing-row.picked strong { color: var(--danger); }
+.missing-thumb { position: relative; flex: none; }
+.missing-thumb img {
+  width: 62px;
+  height: 46px;
+  object-fit: cover;
+  border-radius: 9px;
+  display: block;
+  border: 1px solid var(--stroke);
+}
+.missing-row.picked .missing-thumb img { outline: 2px solid var(--danger); outline-offset: 1px; opacity: 0.6; }
+.missing-thumb .preview-btn { right: 3px; top: 3px; width: 23px; height: 23px; }
+.row-check {
+  flex: none;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  border: 1.5px solid var(--stroke-strong, rgba(255, 255, 255, 0.35));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: transparent;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.row-check.on { background: var(--danger); border-color: transparent; color: #1a1005; }
 
 .badge {
   display: inline-flex;
@@ -1611,6 +1671,15 @@ code {
   background: var(--saffron);
   box-shadow: 0 0 10px rgba(255, 178, 94, 0.7);
 }
+/* Something went wrong rather than something is merely absent — and unlike the
+   offline chip this one can be dismissed, so it has to accept a click. */
+.lb-offline-chip.bad {
+  border-color: rgba(255, 138, 128, 0.4);
+  pointer-events: auto;
+  white-space: normal;
+  max-width: min(560px, 80vw);
+}
+.lb-offline-chip.bad .dot { background: var(--danger); box-shadow: 0 0 10px rgba(255, 138, 128, 0.7); }
 
 .lb-btn {
   position: absolute;

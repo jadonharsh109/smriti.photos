@@ -70,7 +70,9 @@ def missing(limit: int = 300):
     disconnects mid-scan, so an unplugged drive can never fill this list.
     """
     rows = db.query(
-        "SELECT f.id, f.filename, f.rel_path, v.label AS volume "
+        # media_type rides along so the preview knows whether to reach for a
+        # video player or a still before it has fetched anything.
+        "SELECT f.id, f.filename, f.rel_path, f.media_type, v.label AS volume "
         "FROM files f JOIN volumes v ON v.id = f.volume_id "
         "WHERE f.status='missing' ORDER BY f.id LIMIT ?",
         (max(1, min(limit, 1000)),),
@@ -80,13 +82,21 @@ def missing(limit: int = 300):
 
 
 class ForgetIn(BaseModel):
-    file_ids: list[int] | None = None   # None = every missing file
+    file_ids: list[int] | None = None   # omitted entirely = every missing file
 
 
 @router.post("/cleanup/missing/forget")
 def forget_missing(body: ForgetIn):
-    """Drop rows for files that are already gone, and reclaim their caches."""
-    if body.file_ids:
+    """Drop rows for files that are already gone, and reclaim their caches.
+
+    An omitted `file_ids` means every missing file; a list means those and only
+    those — including an empty one, which means nothing. The distinction is the
+    whole point: now that the UI can forget a hand-picked few, "the selection
+    happened to be empty" must never fall through to "so forget all of them".
+    """
+    if body.file_ids is not None:
+        if not body.file_ids:
+            return {"forgotten": 0}
         marks = ",".join("?" * len(body.file_ids))
         rows = db.query(
             f"SELECT id FROM files WHERE status='missing' AND id IN ({marks})", body.file_ids

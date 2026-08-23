@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, fmtBytes } from "../api/client";
+import { api, fmtBytes, type Item } from "../api/client";
 import { ConfirmDialog } from "../components/Dialogs";
+import { IconExpand } from "../components/Icons";
 import { ArtDupes } from "../components/Illustrations";
+import Lightbox from "../components/Lightbox";
 import { Loading } from "../components/Skeletons";
 
 interface DupeItem {
@@ -27,8 +29,15 @@ interface Blurry {
   sensitivity: string;
   ceiling: number;
 }
+interface MissingItem {
+  id: number;
+  filename: string;
+  rel_path: string;
+  media_type: string;
+  volume: string;
+}
 interface Missing {
-  items: { id: number; filename: string; rel_path: string; volume: string }[];
+  items: MissingItem[];
   total: number;
 }
 
@@ -40,6 +49,48 @@ const SENSITIVITIES = [
   { key: "aggressive", label: "Catch more" },
 ] as const;
 
+/** What the viewer needs to open something, from a row that was never a
+ *  timeline item. Cleanup lists carry only what their own tab is about, so the
+ *  shape is filled in and the viewer fetches the rest by id, exactly as it does
+ *  for a photo opened from the grid. */
+const asItem = (r: {
+  id: number;
+  media_type?: string;
+  width?: number | null;
+  height?: number | null;
+}): Item => ({
+  id: r.id,
+  media_type: r.media_type === "video" ? "video" : "photo",
+  width: r.width ?? null,
+  height: r.height ?? null,
+  duration_s: null,
+  day: "",
+});
+
+/** The magnifier that sits on a card. Its own button so that clicking the card
+ *  still means "mark this one", which is the action the page is for — looking
+ *  closer is the second thought, not the first.
+ *
+ *  Declared out here rather than inside the page: a component defined during
+ *  render is a new type every render, and React would unmount and rebuild every
+ *  one of these — one per row, and Missing shows hundreds — each time a single
+ *  row was picked. */
+function PreviewButton({ id, label, onOpen }: { id: number; label: string; onOpen: (id: number) => void }) {
+  return (
+    <button
+      className="preview-btn"
+      title={label}
+      aria-label={label}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen(id);
+      }}
+    >
+      <IconExpand size={16} />
+    </button>
+  );
+}
+
 /** Everything worth deleting, in one place: exact copies, near-duplicates,
  *  blurry shots, and photos whose files are already gone. */
 export default function CleanupPage() {
@@ -50,6 +101,12 @@ export default function CleanupPage() {
   const [confirmingTrash, setConfirmingTrash] = useState(false);
   const [confirmingForget, setConfirmingForget] = useState(false);
   const [trashResult, setTrashResult] = useState<string | null>(null);
+  // Which list the viewer is stepping through, and where in it. Held as the
+  // list rather than a single item so ←/→ work here the way they do in the
+  // timeline — reviewing a pile of near-copies is exactly the job where you
+  // want to flick between them rather than open and close each one.
+  const [preview, setPreview] = useState<{ list: Item[]; idx: number } | null>(null);
+  const [missingSel, setMissingSel] = useState<Set<number>>(new Set());
   const qc = useQueryClient();
 
   const isDupeTab = tab === "exact" || tab === "near";
@@ -79,9 +136,18 @@ export default function CleanupPage() {
     onSettled: () => qc.invalidateQueries({ queryKey: ["blurry"] }),
   });
   const forget = useMutation({
-    mutationFn: () => api.post<{ forgotten: number }>("/api/cleanup/missing/forget", {}),
+    // undefined = every missing file; a list = exactly those. Never send an
+    // empty list dressed up as "all" — see the endpoint.
+    mutationFn: (ids?: number[]) =>
+      api.post<{ forgotten: number }>(
+        "/api/cleanup/missing/forget",
+        ids ? { file_ids: ids } : {}
+      ),
     onSuccess: (r) => {
-      setTrashResult(`Forgot ${r.forgotten.toLocaleString()} photos that were already gone`);
+      setTrashResult(
+        `Forgot ${r.forgotten.toLocaleString()} ${r.forgotten === 1 ? "entry" : "entries"} for files that were already gone`
+      );
+      setMissingSel(new Set());
       qc.invalidateQueries();
     },
   });
@@ -96,6 +162,35 @@ export default function CleanupPage() {
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
+    });
+
+  const toggleMissingSel = (id: number) =>
+    setMissingSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  /** Every card in the tab currently on screen, in the order it is drawn — so
+   *  the viewer's ←/→ walk the page rather than one group. */
+  const previewList = (): Item[] => {
+    if (isDupeTab) return (groups ?? []).flatMap((g) => g.items.map(asItem));
+    if (tab === "blurry") return (blurry?.items ?? []).map((it) => asItem({ ...it, media_type: "photo" }));
+    return (missing?.items ?? []).map(asItem);
+  };
+
+  const openPreview = (id: number) => {
+    const list = previewList();
+    const idx = list.findIndex((it) => it.id === id);
+    if (idx >= 0) setPreview({ list, idx });
+  };
+
+  const stepPreview = (dir: 1 | -1) =>
+    setPreview((p) => {
+      if (!p) return p;
+      const idx = p.idx + dir;
+      return idx < 0 || idx >= p.list.length ? p : { ...p, idx };
     });
 
   const checkNonKeepers = () => {
@@ -203,9 +298,19 @@ export default function CleanupPage() {
           </button>
         )}
         {tab === "missing" && (missing?.total ?? 0) > 0 && (
-          <button className="danger" onClick={() => setConfirmingForget(true)}>
-            Forget all {missing!.total.toLocaleString()}
-          </button>
+          <>
+            {missingSel.size > 0 && (
+              <>
+                <button onClick={() => setMissingSel(new Set())}>Clear ({missingSel.size})</button>
+                <button className="danger" onClick={() => forget.mutate([...missingSel])}>
+                  Forget selected ({missingSel.size})
+                </button>
+              </>
+            )}
+            <button className="danger" onClick={() => setConfirmingForget(true)}>
+              Forget all {missing!.total.toLocaleString()}
+            </button>
+          </>
         )}
       </div>
 
@@ -250,7 +355,10 @@ export default function CleanupPage() {
                     className={`dupe-item ${discards.has(it.id) ? "discard" : it.is_suggested_keeper ? "keeper" : ""}`}
                     onClick={() => toggleDiscard(it.id)}
                   >
-                    <img src={`/api/thumb/${it.id}`} loading="lazy" alt="" />
+                    <div className="dupe-thumb">
+                      <img src={`/api/thumb/${it.id}`} loading="lazy" alt="" />
+                      <PreviewButton id={it.id} label={`Preview ${it.filename}`} onOpen={openPreview} />
+                    </div>
                     <div style={{ margin: "5px 0 2px" }}>
                       {it.is_suggested_keeper && <span className="badge green">keep</span>}{" "}
                       {discards.has(it.id) && <span className="badge red">discard</span>}
@@ -302,7 +410,10 @@ export default function CleanupPage() {
                   className={`dupe-item ${discards.has(it.id) ? "discard" : ""}`}
                   onClick={() => toggleDiscard(it.id)}
                 >
-                  <img src={`/api/thumb/${it.id}`} loading="lazy" alt="" />
+                  <div className="dupe-thumb">
+                    <img src={`/api/thumb/${it.id}`} loading="lazy" alt="" />
+                    <PreviewButton id={it.id} label={`Preview ${it.filename}`} onOpen={openPreview} />
+                  </div>
                   <div style={{ margin: "5px 0 2px" }}>
                     {discards.has(it.id) && <span className="badge red">discard</span>}
                   </div>
@@ -330,10 +441,25 @@ export default function CleanupPage() {
             </p>
             <p className="muted small" style={{ marginBottom: 14 }}>
               A disconnected drive never appears here: an interrupted scan deliberately marks
-              nothing as missing, so unplugging a drive can&rsquo;t cost you anything.
+              nothing as missing, so unplugging a drive can&rsquo;t cost you anything. Click a row
+              to pick it, or open the preview to see what the thumbnail still remembers of it.
             </p>
             {missing.items.map((it) => (
-              <div className="list-row" key={it.id}>
+              <div
+                className={`list-row missing-row${missingSel.has(it.id) ? " picked" : ""}`}
+                key={it.id}
+                onClick={() => toggleMissingSel(it.id)}
+              >
+                <span className={`row-check${missingSel.has(it.id) ? " on" : ""}`} aria-hidden="true">
+                  ✓
+                </span>
+                {/* The thumbnail outlives the original — it is the only picture
+                    of this photo left, and the whole reason to look before you
+                    forget it. */}
+                <div className="missing-thumb">
+                  <img src={`/api/thumb/${it.id}`} loading="lazy" alt="" />
+                  <PreviewButton id={it.id} label={`Preview ${it.filename}`} onOpen={openPreview} />
+                </div>
                 <strong style={{ wordBreak: "break-word" }}>{it.filename}</strong>
                 <span className="muted small">{it.volume}</span>
                 <span className="spacer" />
@@ -348,6 +474,32 @@ export default function CleanupPage() {
             )}
           </div>
         ))}
+
+      {preview && (
+        <Lightbox
+          item={preview.list[preview.idx]}
+          onClose={() => setPreview(null)}
+          onPrev={preview.idx > 0 ? () => stepPreview(-1) : undefined}
+          onNext={preview.idx < preview.list.length - 1 ? () => stepPreview(1) : undefined}
+          // On Missing there is no original left to send to the Trash — the
+          // only thing still here is the row, so that is what the button offers.
+          deleteAction={
+            tab === "missing"
+              ? {
+                  tooltip: "Forget this entry",
+                  title: "Forget this entry?",
+                  body: "The file itself is already gone from your disk. This clears the entry Smriti is still holding for it, and its thumbnail.",
+                  confirmLabel: "Forget it",
+                  run: async () => {
+                    await api.post("/api/cleanup/missing/forget", {
+                      file_ids: [preview.list[preview.idx].id],
+                    });
+                  },
+                }
+              : undefined
+          }
+        />
+      )}
 
       {confirmingTrash && (
         <ConfirmDialog
@@ -376,7 +528,7 @@ export default function CleanupPage() {
           }
           confirmLabel="Forget them"
           danger
-          onConfirm={() => forget.mutate()}
+          onConfirm={() => forget.mutate(undefined)}
           onClose={() => setConfirmingForget(false)}
         />
       )}

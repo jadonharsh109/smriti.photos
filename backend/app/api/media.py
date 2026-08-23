@@ -1,15 +1,14 @@
 import os
-import re
 import secrets
 import time
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from send2trash import send2trash
 
 from .. import db
-from ..services import lock, thumbs, zipstream
+from ..services import lock, reveal, thumbs, zipstream
 from ..services import volumes as vol_svc
 
 router = APIRouter()
@@ -65,7 +64,7 @@ def preview(file_id: int, lt: str | None = None):
 # /api/media/123 would save as an extension-less "123". Ignored server-side.
 @router.get("/media/{file_id}/{filename}")
 @router.get("/media/{file_id}")
-def media(file_id: int, request: Request, lt: str | None = None, dl: int = 0,
+def media(file_id: int, lt: str | None = None, dl: int = 0,
           filename: str | None = None):
     _guard_locked(file_id, lt)
     row = _file_or_404(file_id)
@@ -74,10 +73,25 @@ def media(file_id: int, request: Request, lt: str | None = None, dl: int = 0,
         raise HTTPException(404, "original not available (drive offline?)")
     ext = os.path.splitext(abs_path)[1].lower()
     if row["media_type"] == "video":
+        # Byte ranges are FileResponse's job, not ours.
+        #
+        # This used to be a hand-rolled range handler, and it read "bytes=-N"
+        # as "up to byte N" instead of "the last N bytes". A suffix range is
+        # exactly how a player reaches the moov atom of a QuickTime/MP4 that
+        # was not written with faststart — iPhone .MOV, DJI, Snapchat, anything
+        # straight off a camera, because a recorder cannot know the file's
+        # shape until it stops. They got the file's first N bytes back under a
+        # Content-Range claiming to be the tail, found no metadata where the
+        # file said it was, and gave up — which the viewer then reported as the
+        # original being unreadable, on a file that was sitting right there.
+        #
+        # Starlette implements the whole of RFC 7233 here, multi-range and
+        # If-Range included, and adds ETag/Last-Modified on the way.
+        #
         # dl=1: the lightbox's download button. Without an explicit attachment
         # disposition a video just navigates and plays instead of saving.
-        return _range_response(abs_path, request, VIDEO_TYPES.get(ext, "application/octet-stream"),
-                               filename=row["filename"] if dl else None)
+        return FileResponse(abs_path, media_type=VIDEO_TYPES.get(ext, "application/octet-stream"),
+                            filename=row["filename"] if dl else None)
     mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "gif": "image/gif",
             "webp": "image/webp", "heic": "image/heic", "heif": "image/heif",
             "tif": "image/tiff", "tiff": "image/tiff", "bmp": "image/bmp",
@@ -85,39 +99,30 @@ def media(file_id: int, request: Request, lt: str | None = None, dl: int = 0,
     return FileResponse(abs_path, media_type=mime, filename=row["filename"])
 
 
-def _range_response(path: str, request: Request, content_type: str, filename: str | None = None):
-    file_size = os.path.getsize(path)
-    disposition = {"Content-Disposition": f'attachment; filename="{filename}"'} if filename else {}
-    range_header = request.headers.get("range")
-    if not range_header:
-        return FileResponse(path, media_type=content_type,
-                            headers={"Accept-Ranges": "bytes", **disposition})
-    m = re.match(r"bytes=(\d*)-(\d*)", range_header)
-    if not m:
-        raise HTTPException(416, "bad range")
-    start = int(m.group(1)) if m.group(1) else 0
-    end = int(m.group(2)) if m.group(2) else file_size - 1
-    end = min(end, file_size - 1)
-    if start > end or start >= file_size:
-        raise HTTPException(416, "range out of bounds")
+@router.post("/files/{file_id}/reveal")
+def reveal_file(file_id: int, lt: str | None = None):
+    """Open the original's folder in Finder/Explorer, with it selected.
 
-    def iterfile(chunk=1024 * 256):
-        remaining = end - start + 1
-        with open(path, "rb") as f:
-            f.seek(start)
-            while remaining > 0:
-                data = f.read(min(chunk, remaining))
-                if not data:
-                    break
-                remaining -= len(data)
-                yield data
-
-    return StreamingResponse(
-        iterfile(), status_code=206, media_type=content_type,
-        headers={"Content-Range": f"bytes {start}-{end}/{file_size}",
-                 "Accept-Ranges": "bytes", "Content-Length": str(end - start + 1),
-                 **disposition},
-    )
+    Deliberately a POST: it has a side effect out in the world (a window opens),
+    and nothing about it should be repeated by a prefetch or a reload."""
+    _guard_locked(file_id, lt)
+    row = _file_or_404(file_id)
+    abs_path = vol_svc.abs_path_for_file(row)
+    if abs_path is None or not os.path.exists(abs_path):
+        # Two different problems that both end here, and telling someone to
+        # plug in a drive that is already plugged in helps nobody: a null path
+        # means the volume is not mounted, a path that simply isn't there means
+        # the file was deleted or moved out from under us.
+        vol = db.query_one("SELECT label FROM volumes WHERE id=?", (row["volume_id"],))
+        where = f"“{vol['label']}”" if vol else "its drive"
+        raise HTTPException(404, f"connect {where} to show this file" if abs_path is None
+                            else f"{row['filename']} is no longer at that path — "
+                                 "it was moved or deleted outside Smriti")
+    try:
+        reveal.reveal(abs_path)
+    except reveal.RevealError as e:
+        raise HTTPException(500, f"couldn’t open {reveal.manager_name()}: {e}") from e
+    return {"ok": True, "path": abs_path}
 
 
 class DeleteIn(BaseModel):

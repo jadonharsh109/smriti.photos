@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from .. import config, db
+from ..services import reveal
 
 router = APIRouter()
 
@@ -91,7 +92,10 @@ _VERSION = _app_version()
 
 @router.get("/health")
 def health():
-    return {"ok": True, "version": _VERSION}
+    # `file_manager` is what the host OS calls the thing "Show in …" opens, so
+    # the button can name it rather than guessing from the browser's UA — the
+    # window opens wherever the server is, not wherever the tab is.
+    return {"ok": True, "version": _VERSION, "file_manager": reveal.manager_name()}
 
 
 def _dir_size(path) -> int:

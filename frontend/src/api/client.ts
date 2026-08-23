@@ -114,6 +114,23 @@ export const api = {
   del: <T>(url: string) => req<T>(url, { method: "DELETE" }),
 };
 
+/** Can "Show in Finder" mean anything from here?
+ *
+ * The window opens on whatever machine is serving the library, so the button is
+ * only honest when that is also the machine in front of you. The desktop app is
+ * always that; a browser is when it is talking to a loopback address. Anyone
+ * who has deliberately bound the server to their LAN and opened it from a
+ * different room simply doesn't see the button, rather than clicking it and
+ * having a Finder window open somewhere they can't see. */
+export const canRevealFiles = () =>
+  isDesktop() ||
+  (typeof location !== "undefined" &&
+    ["localhost", "127.0.0.1", "::1", "[::1]"].includes(location.hostname));
+
+/** Ask the server to select this original in Finder / File Explorer. */
+export const revealFile = (id: number, qs = "") =>
+  api.post<{ ok: boolean; path: string }>(`/api/files/${id}/reveal${qs}`);
+
 export function filterQS(f: Filters, extra: Record<string, string | number> = {}): string {
   const p = new URLSearchParams();
   if (f.person_id != null) p.set("person_id", String(f.person_id));
