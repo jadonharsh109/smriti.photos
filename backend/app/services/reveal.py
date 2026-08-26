@@ -39,13 +39,83 @@ def reveal(abs_path: str) -> None:
     if sys.platform == "darwin":
         _run(["open", "-R", abs_path])
     elif sys.platform == "win32":
-        # No space after the comma, and the path unquoted in the argument: this
-        # is explorer's own syntax, not a shell one. It also exits non-zero on
-        # success often enough that its return code says nothing, so _run is
-        # told to ignore it and we trust the window to have opened.
-        _run(["explorer", f"/select,{abs_path}"], check=False)
+        _reveal_windows(abs_path)
     else:
         _reveal_linux(abs_path)
+
+
+def _reveal_windows(abs_path: str) -> None:
+    r"""Select the file in an Explorer window.
+
+    Asked for twice, and the first way is the one that cannot be misread. The
+    shell takes the path as data — no command line, no quoting, nothing to
+    parse — which is how Explorer itself, and every native app that offers this
+    button, does it.
+
+    The command-line form is only a fallback, because it is fussy in a way that
+    is easy to get wrong and impossible to detect: the comma has no space after
+    it, and the quotes go around the *path* alone. Handing subprocess a list
+    here would produce `explorer "/select,C:\My Photos\a.jpg"` the moment the
+    path held a space — the switch swallowed into the quoted string, and an
+    Explorer window opening on whatever it opens when it was given no folder it
+    understood. So the command line is built here, in one piece, deliberately.
+    """
+    try:
+        _shell_select(abs_path)
+        return
+    except OSError:
+        # Nothing here is worth failing over while a second way remains: the
+        # shell call needs COM and a running desktop, and if it could not get
+        # them the command line is no worse off.
+        pass
+    # explorer exits non-zero on success often enough that its return code says
+    # nothing, so _run is told to ignore it and we trust the window to open.
+    _run(f'explorer.exe /select,"{abs_path}"', check=False)
+
+
+def _shell_select(abs_path: str) -> None:
+    """SHOpenFolderAndSelectItems, which is what the /select switch is a thin
+    and lossy wrapper around anyway.
+
+    Raises OSError if the shell will not take it, so the caller can fall back.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    ole32 = ctypes.windll.ole32
+    shell32 = ctypes.windll.shell32
+    # Both return pointers, and a pointer truncated to the default 32-bit int
+    # would be a crash rather than an error — so say so explicitly.
+    shell32.ILCreateFromPathW.argtypes = [wintypes.LPCWSTR]
+    shell32.ILCreateFromPathW.restype = ctypes.c_void_p
+    shell32.ILFree.argtypes = [ctypes.c_void_p]
+    shell32.ILFree.restype = None
+    shell32.SHOpenFolderAndSelectItems.argtypes = [
+        ctypes.c_void_p, wintypes.UINT, ctypes.c_void_p, wintypes.DWORD,
+    ]
+
+    # S_OK and S_FALSE both leave this thread owing a CoUninitialize;
+    # RPC_E_CHANGED_MODE means the apartment is someone else's and not ours to
+    # tear down. Either way COM is up, which is all the shell call needs.
+    hr = ole32.CoInitialize(None)
+    owned = hr >= 0
+    try:
+        pidl = shell32.ILCreateFromPathW(abs_path)
+        if not pidl:
+            raise OSError(f"the shell does not recognise {abs_path}")
+        try:
+            # The item's own absolute id list, with no children named after it:
+            # that is the documented way to say "open the parent of this and
+            # put this one in it selected".
+            hr = shell32.SHOpenFolderAndSelectItems(pidl, 0, None, 0)
+            if hr < 0:
+                raise OSError(f"the shell refused to open the folder "
+                              f"(0x{hr & 0xFFFFFFFF:08X})")
+        finally:
+            shell32.ILFree(pidl)
+    finally:
+        if owned:
+            ole32.CoUninitialize()
 
 
 def _reveal_linux(abs_path: str) -> None:
@@ -75,15 +145,20 @@ def _quote_uri(path: str) -> str:
     return quote(path)
 
 
-def _run(cmd: list[str], check: bool = True) -> None:
+def _run(cmd: list[str] | str, check: bool = True) -> None:
+    # A string is a command line we built ourselves (Windows only, where
+    # subprocess hands it to CreateProcess verbatim); a list is the usual
+    # argv. Either way the first word is the program, which is all the error
+    # messages below need.
+    name = cmd.split(" ", 1)[0] if isinstance(cmd, str) else cmd[0]
     try:
         proc = subprocess.run(cmd, capture_output=True, timeout=_TIMEOUT, **_NO_WINDOW)
     except FileNotFoundError as e:
-        raise RevealError(f"{cmd[0]} is not available on this system") from e
+        raise RevealError(f"{name} is not available on this system") from e
     except subprocess.TimeoutExpired as e:
-        raise RevealError(f"{cmd[0]} did not respond") from e
+        raise RevealError(f"{name} did not respond") from e
     except OSError as e:
         raise RevealError(str(e)) from e
     if check and proc.returncode != 0:
         detail = (proc.stderr or b"").decode(errors="replace").strip()
-        raise RevealError(detail or f"{cmd[0]} exited with {proc.returncode}")
+        raise RevealError(detail or f"{name} exited with {proc.returncode}")
