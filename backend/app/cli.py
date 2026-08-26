@@ -6,7 +6,7 @@ Commands:
   smriti stop      stop the background server
   smriti status    is it running?
   smriti logs      show the log (-f to follow)
-  smriti models    one-time face-model download (~280 MB)
+  smriti models    one-time model download (faces by default, --search for search)
 """
 import argparse
 import os
@@ -227,7 +227,13 @@ def main() -> None:
     lp.add_argument("-f", "--follow", action="store_true", help="keep following new log lines")
     lp.add_argument("-n", "--lines", type=int, default=50, help="how many lines to show (default 50)")
     add_common(lp)
-    add_common(sub.add_parser("models", help="download the on-device face-recognition models (~280 MB, one-time)"))
+    mp = sub.add_parser("models", help="download the on-device models (one-time)")
+    # Two separate downloads because they are two separate features, and a
+    # library that only ever wants one should not pay 500 MB for both.
+    mp.add_argument("--search", action="store_true",
+                    help="the semantic-search model (~219 MB) instead of the face models (~280 MB)")
+    mp.add_argument("--all", action="store_true", help="both")
+    add_common(mp)
     args = p.parse_args()
 
     if args.data_dir:
@@ -236,9 +242,16 @@ def main() -> None:
     from . import config  # reads env at import time — import after env is set
 
     if args.cmd == "models":
-        from . import fetch_models
+        if args.search or args.all:
+            from . import fetch_clip
 
-        fetch_models.download()
+            fetch_clip.download()
+        if not args.search or args.all:
+            from . import fetch_models
+
+            fetch_models.download()
+        if args.search or args.all:
+            print("run `smriti` and open Search to index your photos (once)")
         return
     if args.cmd == "start":
         _start_daemon(config, args)
@@ -266,6 +279,11 @@ def main() -> None:
         print(f"⚠ ffmpeg not found — videos won't be indexed ({hint})")
     if not (config.FACE_MODEL_DIR / "det_10g.onnx").exists():
         print("ℹ People is off until the face models are downloaded — run `smriti models` once (~280 MB)")
+    from .fetch_clip import present as _clip_present
+
+    if not _clip_present():
+        print("ℹ Search by what a photo shows is off until its model is downloaded — "
+              "run `smriti models --search` once (~219 MB), or use the Search page")
 
     if _desktop():
         _start_parent_watchdog()

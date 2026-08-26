@@ -15,6 +15,8 @@ const LABEL: Record<string, string> = {
   faces: "Finding faces",
   recluster: "Grouping people",
   models: "Downloading models",
+  search_models: "Downloading search",
+  search_index: "Making photos searchable",
   classify: "Sorting documents",
   remove: "Removing a folder",
   blur: "Checking sharpness",
@@ -33,6 +35,8 @@ const SENTENCE: Record<string, string> = {
   faces: "Finding faces",
   recluster: "Grouping people",
   models: "Downloading the face models",
+  search_models: "Downloading the search model",
+  search_index: "Learning what your photos show",
   classify: "Sorting out screenshots and scans",
   remove: "Removing a folder from your library",
   blur: "Checking your photos for blur",
@@ -45,6 +49,8 @@ const SENTENCE: Record<string, string> = {
 const NOTE: Record<string, string> = {
   faces: "This one takes a while on a big library — you can keep browsing.",
   models: "About 280 MB, downloaded once.",
+  search_models: "About 219 MB, downloaded once. It then runs on this machine, like everything else here.",
+  search_index: "Read once per photo, from thumbnails — photos on a drive that isn't plugged in are indexed too.",
   takeout: "Your .zip files are only read, never changed. The repaired photos land in a folder — adding it to your library is up to you.",
 };
 
@@ -58,6 +64,7 @@ const UNIT: Record<string, string> = {
   remove: "photos removed",
   blur: "photos checked",
   motion: "photos checked",
+  search_index: "photos indexed",
   takeout: "photos and videos copied",
 };
 

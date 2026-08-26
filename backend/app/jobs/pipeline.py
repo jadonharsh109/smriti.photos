@@ -9,8 +9,10 @@ import asyncio
 import time
 
 from .. import config, db
+from ..fetch_clip import present as clip_present
 from ..services import volumes as vol_svc
 from . import classify as classify_job
+from . import clip as clip_job
 from . import dupes as dupes_job
 from . import events as events_job
 from . import faces as faces_job
@@ -45,6 +47,15 @@ async def run_post_scan() -> None:
     await _stage("geocode", lambda jid: geocode_job.run_geocode(jid, False))
     await _stage("events", lambda jid: events_job.run_events_rebuild(jid))
     await _stage("neardup", lambda jid: dupes_job.run_near_dupes(jid))
+    # Only once someone has opted into it by downloading the model — the same
+    # gate faces uses below. Placed before faces deliberately: this is about
+    # 20ms a photo where faces can run for hours, so a photo added this morning
+    # is searchable in seconds rather than after the slowest stage finishes.
+    if clip_present():
+        from ..services import search as search_svc
+
+        await _stage("search_index", lambda jid: clip_job.run_clip_scan(jid))
+        search_svc.invalidate()   # the cached matrix predates what just landed
     if (config.FACE_MODEL_DIR / "det_10g.onnx").exists():
         await _wait_idle("faces", "recluster")
         if await _stage("faces", lambda jid: faces_job.run_face_scan(jid)) == "done":
