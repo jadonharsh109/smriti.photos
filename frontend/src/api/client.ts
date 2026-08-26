@@ -141,9 +141,17 @@ export const canRevealFiles = () =>
 export const revealFile = (id: number, qs = "") =>
   api.post<{ ok: boolean; path: string }>(`/api/files/${id}/reveal${qs}`);
 
-/** A search hit: an ordinary grid item plus how well it answered the query. */
+/** A search hit: an ordinary grid item, plus how well it answered the query
+ *  when a model was involved in deciding. A hit found purely by name, place or
+ *  date has no score — it did not rank, it matched. */
 export interface SearchItem extends Item {
-  score: number;
+  score?: number;
+}
+
+/** One part of the query Smriti recognised exactly, rather than guessed at. */
+export interface SearchChip {
+  kind: "person" | "place" | "date" | "album" | "filter";
+  label: string;
 }
 
 export interface SearchStatus {
@@ -161,7 +169,7 @@ export const searchStatus = () => api.get<SearchStatus>("/api/search/status");
 /** Rank the library against a sentence. Runs entirely on the serving machine —
  *  the query is never sent anywhere. */
 export const searchLibrary = (q: string, limit = 200) =>
-  api.get<{ query: string; items: SearchItem[]; indexed: number }>(
+  api.get<{ query: string; items: SearchItem[]; chips: SearchChip[]; indexed: number }>(
     `/api/search?q=${encodeURIComponent(q)}&limit=${limit}`
   );
 

@@ -757,6 +757,35 @@ code {
 .cover-edit:hover .badge,
 .cover-edit:focus-visible .badge { opacity: 1; transform: none; color: var(--fg); }
 
+/* ---- what the search understood ----
+   Shown above the results rather than below, because it is the reason for them.
+   A query that quietly matched a person when you meant a word is otherwise a
+   result set with no explanation, and the first guess is that search is broken. */
+.q-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: -8px 0 16px;
+}
+.q-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 11px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 620;
+  border: 1px solid var(--stroke-2);
+  background: var(--glass-2);
+  color: var(--fg);
+}
+/* Each kind is a different sort of certainty, and worth telling apart at a
+   glance — a name is a face someone clustered, a place is a coordinate. */
+.q-chip.person { border-color: rgba(110, 123, 255, 0.5); background: rgba(110, 123, 255, 0.16); }
+.q-chip.place  { border-color: rgba(79, 224, 198, 0.45); background: rgba(79, 224, 198, 0.14); }
+.q-chip.date   { border-color: rgba(255, 178, 94, 0.45); background: rgba(255, 178, 94, 0.14); }
+.q-chip.album  { border-color: rgba(255, 122, 158, 0.45); background: rgba(255, 122, 158, 0.14); }
+
 /* ---- choosing among a person's faces ---- */
 .face-pick-grid {
   display: grid;

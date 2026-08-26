@@ -75,11 +75,24 @@ def invalidate() -> None:
         _cache, _stamp = None, None
 
 
-def rank(query: str, limit: int = 300, min_score: float | None = None) -> list[tuple[int, float]]:
-    """-> [(file_id, score)] best first, above the floor."""
+def rank(query: str, limit: int = 300, min_score: float | None = None,
+         allowed: set[int] | None = None) -> list[tuple[int, float]]:
+    """-> [(file_id, score)] best first, above the floor.
+
+    `allowed` narrows the ranking to a set decided elsewhere — the photos of one
+    person, in one place, in one year. Applied to the matrix before scoring, not
+    to the results after: the cutoff is relative to the best hit, and a best hit
+    that is about to be filtered out would drag the threshold to the wrong
+    place and take the real answers with it."""
     ids, mat = _matrix()
     if not ids or not query.strip():
         return []
+    if allowed is not None:
+        keep = np.array([i for i, fid in enumerate(ids) if fid in allowed], dtype=np.int64)
+        if keep.size == 0:
+            return []
+        ids = [ids[i] for i in keep]
+        mat = mat[keep]
     floor = config.CLIP_MIN_SCORE if min_score is None else min_score
     vecs = engine().encode_text([t.format(query.strip()) for t in _TEMPLATES])
     q = vecs.mean(axis=0)

@@ -7,6 +7,7 @@ import {
   searchLibrary,
   searchStatus,
   similarTo,
+  type SearchChip,
   type SearchItem,
 } from "../api/client";
 import { ArtPhotos } from "../components/Illustrations";
@@ -92,6 +93,8 @@ export default function SearchPage() {
     [similarId, like, data]
   );
   const busy = similarId ? findingLike : isFetching;
+  const chips: SearchChip[] = similarId ? [] : data?.chips ?? [];
+  const scored = items.some((it) => it.score != null);
 
   // ---- the two states before searching is possible at all -------------------
   if (status && !status.model_ready) {
@@ -200,6 +203,16 @@ export default function SearchPage() {
         )}
       </div>
 
+      {chips.length > 0 && (
+        <div className="q-chips">
+          <span className="muted small">Understood</span>
+          {chips.map((c, i) => (
+            <span key={`${c.kind}-${c.label}-${i}`} className={`q-chip ${c.kind}`}>
+              {c.label}
+            </span>
+          ))}
+        </div>
+      )}
       {!query && !similarId ? (
         <div className="empty">
           <p>
@@ -230,7 +243,8 @@ export default function SearchPage() {
       ) : (
         <>
           <p className="muted small" style={{ margin: "0 0 12px" }}>
-            {items.length} {items.length === 1 ? "photo" : "photos"}, closest first
+            {items.length} {items.length === 1 ? "photo" : "photos"}
+            {scored ? ", closest first" : ", newest first"}
           </p>
           <div ref={containerRef}>
             <JustifiedGrid items={items} width={width} onOpen={(i) => setLightboxIdx(i)} />

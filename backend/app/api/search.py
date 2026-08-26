@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from .. import config, db
 from ..fetch_clip import NEEDED, TOTAL_MB, present
 from ..jobs.runner import manager
-from ..services import favourites, search as search_svc
+from ..services import favourites, filters, query_parse, search as search_svc
 
 router = APIRouter()
 
@@ -31,29 +31,66 @@ _ITEM_SQL = (
 
 @router.get("/search")
 def search(q: str, limit: int = 200):
-    """Rank every indexed photo against `q` and return the best.
+    """Answer a query with whichever half of the library can answer it.
 
-    Locked photos are filtered after ranking rather than before: the ranking
-    is a matrix multiply over everything, and taking them out here is one
-    cheap clause instead of rebuilding the matrix per request. They never
-    reach the response either way."""
+    A sentence is usually more than one question. "solo photos of yash in goa
+    in 2024" names a person the library has clustered, a place it has geocoded
+    and a year it has recorded — all exact — and possibly also describes what
+    the picture looks like, which only the model can judge. So the query is
+    split: the exact parts become a filter, and only what is left goes to CLIP,
+    which ranks *within* what the filter returned.
+
+    That ordering matters both ways. Sending a name to CLIP returns strangers,
+    because it has never seen one. And filtering after ranking would let the
+    200-best-looking photos in the library decide which of this person's photos
+    you get to see."""
     q = (q or "").strip()
+    limit = max(1, min(limit, 500))
     if not q:
-        return {"query": "", "items": [], "indexed": search_svc.indexed_count()}
-    if not present():
-        raise HTTPException(400, "the search model isn’t downloaded yet")
-    ranked = search_svc.rank(q, limit=max(1, min(limit, 500)))
-    if not ranked:
-        return {"query": q, "items": [], "indexed": search_svc.indexed_count()}
+        return {"query": "", "items": [], "chips": [], "indexed": search_svc.indexed_count()}
 
-    order = {fid: i for i, (fid, _) in enumerate(ranked)}
-    scores = dict(ranked)
+    parsed = query_parse.parse(q)
+    # A query with nothing left over for the model needs no model at all —
+    # names, places and dates are answerable on a machine that never downloaded
+    # one, and refusing them for want of a 219 MB file would be absurd.
+    if parsed.text and not present():
+        if not parsed.has_filters:
+            raise HTTPException(400, "the search model isn’t downloaded yet")
+        raise HTTPException(
+            400, f"“{parsed.text}” needs the search model — download it, or search "
+                 "by name, place or date alone")
+
+    allowed = None
+    if parsed.has_filters:
+        joins, where, params = filters.build(**parsed.filter_kwargs())
+        allowed = {r["id"] for r in
+                   db.query(f"SELECT f.id FROM files f {joins} WHERE {where}", params)}
+        if not allowed:
+            return {"query": q, "items": [], "chips": parsed.chips,
+                    "indexed": search_svc.indexed_count()}
+
+    if parsed.text:
+        ranked = search_svc.rank(parsed.text, limit=limit, allowed=allowed)
+        order = {fid: i for i, (fid, _) in enumerate(ranked)}
+        scores = dict(ranked)
+    else:
+        # Nothing to rank by. The filter *is* the answer, so give it back the
+        # way every other grid does — newest first.
+        order, scores = {fid: 0 for fid in allowed}, {}
+    if not order:
+        return {"query": q, "items": [], "chips": parsed.chips,
+                "indexed": search_svc.indexed_count()}
+
     ids = ",".join(str(fid) for fid in order)   # our own row ids, never client text
     rows = db.query(_ITEM_SQL.format(fav=favourites.album_id(), ids=ids))
-    items = [dict(r) | {"score": round(scores[r["id"]], 4)} for r in rows]
-    # SQLite returned them in whatever order it liked; the ranking is the point.
-    items.sort(key=lambda it: order[it["id"]])
-    return {"query": q, "items": items, "indexed": search_svc.indexed_count()}
+    items = [dict(r) | ({"score": round(scores[r["id"]], 4)} if scores else {}) for r in rows]
+    if scores:
+        # SQLite returned them in whatever order it liked; the ranking is the point.
+        items.sort(key=lambda it: order[it["id"]])
+    else:
+        items.sort(key=lambda it: (it["day"] or "", it["id"]), reverse=True)
+    return {"query": q, "items": items[:limit], "chips": parsed.chips,
+            "indexed": search_svc.indexed_count()}
 
 
 @router.get("/search/status")

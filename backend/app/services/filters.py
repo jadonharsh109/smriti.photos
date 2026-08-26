@@ -15,7 +15,8 @@ _IS_LIVE = "f.id IN (SELECT file_id FROM file_motion)"
 
 
 def build(person_id=None, country=None, city=None, album_id=None, event_id=None, day=None, solo=False,
-          media_type=None, kind=None, live=False, state=None):
+          media_type=None, kind=None, live=False, state=None,
+          since=None, until=None, month=None, curated=False):
     joins = ["JOIN metadata m ON m.file_id = f.id"]
     # locked-section files are invisible to every grid
     where = ["f.status = 'active'", "m.taken_at IS NOT NULL",
@@ -25,7 +26,10 @@ def build(person_id=None, country=None, city=None, album_id=None, event_id=None,
     # Screenshots and scans are hidden from views the app generates, and kept
     # in views the user curated: putting a receipt in an album was deliberate,
     # and a face is a face whatever surface it was photographed on.
-    curated = album_id is not None or person_id is not None or country is not None
+    # `curated` is also passed in by search: asking for something by name is as
+    # deliberate as opening an album, so a search for "invoice" must be allowed
+    # to find the receipt that every generated view deliberately hides.
+    curated = curated or album_id is not None or person_id is not None or country is not None
     if kind == "any":
         where.append(_NOT_PHOTO)
     elif kind:
@@ -54,14 +58,20 @@ def build(person_id=None, country=None, city=None, album_id=None, event_id=None,
                 "AND fo.person_id IS NOT NULL AND fo.person_id != ?)"
             )
             params.append(person_id)
-    if country is not None:
+    if country is not None or state is not None or city is not None:
         joins.append("JOIN file_places pl ON pl.file_id = f.id")
-        where.append("pl.country = ?")
-        params.append(country)
-        # Narrowed independently: a state on its own is the Places page's own
-        # sub-heading opening, and a state with a city is the same city as
-        # before — two places of the same name in one country are then no
-        # longer one grid.
+        # Each narrows independently, and each is optional. Browsing always
+        # arrives here with a country — Places drills country, then state, then
+        # city — and for those callers this is the same query it always was.
+        # Search does not: "photos in Indore" names a city and no country, and
+        # while these clauses were nested inside the country the city was
+        # silently dropped and the search answered with the whole library.
+        if country is not None:
+            where.append("pl.country = ?")
+            params.append(country)
+        # A state on its own is the Places page's own sub-heading opening, and
+        # a state with a city is the same city as before — two places of the
+        # same name in one country are then no longer one grid.
         if state is not None:
             where.append("pl.state = ?")
             params.append(state)
@@ -93,4 +103,19 @@ def build(person_id=None, country=None, city=None, album_id=None, event_id=None,
         # holds for a bare date with no time at all.
         where.append("m.taken_at >= ? AND m.taken_at < ?")
         params.extend([day, day + "z"])
+    # A half-open range, the same shape and for the same reason as `day` above:
+    # compared against the column itself so idx_meta_taken can still be used.
+    # "in 2024" and "March 2024" are both just a range.
+    if since is not None:
+        where.append("m.taken_at >= ?")
+        params.append(since)
+    if until is not None:
+        where.append("m.taken_at < ?")
+        params.append(until)
+    if month is not None:
+        # A month with no year — "photos in December" means every December.
+        # No index can serve this one; it is a search-only filter and rare
+        # enough that a scan of the dated rows is the honest price.
+        where.append("CAST(strftime('%m', m.taken_at) AS INTEGER) = ?")
+        params.append(int(month))
     return " ".join(joins), " AND ".join(where), params
