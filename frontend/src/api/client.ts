@@ -46,7 +46,17 @@ export interface Person {
   name: string | null;
   is_hidden: number;
   cover_face_id: number | null;
+  /** "manual" once someone has chosen the cover themselves; null while Smriti picks. */
+  cover_src: string | null;
   photo_count: number;
+}
+
+/** One detected face belonging to a person — a candidate cover. */
+export interface PersonFace {
+  id: number;
+  file_id: number;
+  det_score: number;
+  assign_src: string | null;
 }
 
 export interface Job {
@@ -130,6 +140,17 @@ export const canRevealFiles = () =>
 /** Ask the server to select this original in Finder / File Explorer. */
 export const revealFile = (id: number, qs = "") =>
   api.post<{ ok: boolean; path: string }>(`/api/files/${id}/reveal${qs}`);
+
+/** Every face Smriti has of this person, best first — the covers to choose from. */
+export const personFaces = (personId: number, limit = 200) =>
+  api.get<PersonFace[]>(`/api/people/${personId}/faces?limit=${limit}`);
+
+/** Choose the face that stands for a person. `null` hands the choice back to Smriti. */
+export const setPersonCover = (personId: number, faceId: number | null) =>
+  api.post<{ ok: boolean; cover_face_id: number | null; cover_src: string | null }>(
+    `/api/people/${personId}/cover`,
+    { face_id: faceId }
+  );
 
 export function filterQS(f: Filters, extra: Record<string, string | number> = {}): string {
   const p = new URLSearchParams();

@@ -164,6 +164,13 @@ export const IconPencil = (p: IconProps) => (
   </Svg>
 );
 
+export const IconCamera = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4.5 8.5h2.7l1.3-2h7l1.3 2h2.7a1.5 1.5 0 0 1 1.5 1.5v7.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5V10a1.5 1.5 0 0 1 1.5-1.5z" />
+    <circle cx="12" cy="13.5" r="3.2" />
+  </Svg>
+);
+
 export const IconDoc = (p: IconProps) => (
   <Svg {...p}>
     <path d="M14 3.5H7.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8z" />

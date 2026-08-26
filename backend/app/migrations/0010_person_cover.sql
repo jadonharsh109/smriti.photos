@@ -1,0 +1,13 @@
+-- Choosing which face stands for a person.
+--
+-- The column holding the choice was here from the start; what was missing was
+-- any way to make one, and any way to keep one. `recompute_centroid` re-picks
+-- the cover every time a face is reassigned and again for every person after
+-- every recluster, so a chosen cover would have quietly reverted — usually
+-- days later, which is worse than never having been settable at all.
+--
+-- `cover_src` draws the same distinction `faces.assign_src` already draws:
+-- NULL means Smriti picked it and may pick again, 'manual' means someone said
+-- so and it stands until they say otherwise, or until that face stops being
+-- this person's — a face reassigned to someone else takes its claim with it.
+ALTER TABLE persons ADD COLUMN cover_src TEXT;

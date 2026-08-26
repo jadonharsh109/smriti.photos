@@ -700,6 +700,102 @@ code {
   font-weight: 700;
 }
 .name-edit.unnamed:hover h1 { color: var(--fg); }
+/* ---- the person's own face, as the control that changes it ----
+   Same idea as .name-edit above: the thing you want to change is the thing you
+   click. Full reset of the global button chrome, because this has to read as a
+   portrait and not as a control until you approach it. */
+.cover-edit {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  flex: none;
+  padding: 0;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  cursor: pointer;
+  transition: transform 0.28s var(--spring);
+}
+.cover-edit img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 24px rgba(2, 4, 10, 0.5), 0 0 20px rgba(110, 123, 255, 0.25);
+  transition: border-color 0.22s ease, box-shadow 0.28s ease;
+}
+.cover-edit:hover { transform: translateY(-1px); }
+.cover-edit:hover img,
+.cover-edit:focus-visible img {
+  border-color: rgba(148, 190, 255, 0.7);
+  box-shadow: 0 10px 30px rgba(2, 4, 10, 0.55), 0 0 26px rgba(110, 123, 255, 0.4);
+}
+/* the affordance, held back until it is wanted */
+.cover-edit .badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--glass-heavy);
+  border: 1px solid var(--stroke-2);
+  backdrop-filter: var(--blur-heavy);
+  -webkit-backdrop-filter: var(--blur-heavy);
+  color: var(--fg-dim);
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.18s ease, transform 0.22s var(--spring), color 0.18s ease;
+}
+.cover-edit:hover .badge,
+.cover-edit:focus-visible .badge { opacity: 1; transform: none; color: var(--fg); }
+
+/* ---- choosing among a person's faces ---- */
+.face-pick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 12px;
+  padding: 2px 0 6px;
+}
+.face-pick {
+  padding: 0;
+  border-radius: 50%;
+  aspect-ratio: 1;
+  background: none;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  cursor: pointer;
+  transition: transform 0.26s var(--spring);
+}
+.face-pick img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid transparent;
+  box-shadow: 0 4px 16px rgba(2, 4, 10, 0.4);
+  transition: border-color 0.2s ease, box-shadow 0.26s ease;
+}
+.face-pick:hover { transform: translateY(-2px) scale(1.04); }
+.face-pick:hover img,
+.face-pick:focus-visible img { border-color: rgba(148, 190, 255, 0.75); }
+/* the one in use: ringed, and it stays ringed while you hover the others */
+.face-pick.on img {
+  border-color: var(--accent);
+  box-shadow: 0 4px 16px rgba(2, 4, 10, 0.4), 0 0 0 3px rgba(110, 123, 255, 0.28);
+}
+.face-pick:disabled { cursor: default; opacity: 0.5; transform: none; }
+
 .page-head .actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-left: auto; }
 
 .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

@@ -25,27 +25,44 @@ class FaceAssign(BaseModel):
     person_id: int | None
 
 
+class CoverIn(BaseModel):
+    #: null is a real value here, not an omission: it means "you choose".
+    face_id: int | None = None
+
+
+# The cover a page should actually show, which is not always the one on record:
+# prefer the stored choice, but only while it is still this person's face and
+# still something we can display — never a face from a locked photo, a missing
+# original, or an unplugged drive. Otherwise fall back to the best face in
+# front of us, so a person is never a blank circle when they needn't be.
+#
+# Two subqueries rather than ORDER BY (fa.id = p.cover_face_id): SQLite before
+# 3.46 cannot resolve an outer column reference inside a subquery's ORDER BY
+# and raises "no such column", which 500s the endpoint on e.g. the python.org
+# 3.12 build (SQLite 3.45).
+_COVER_SQL = (
+    "COALESCE("
+    " (SELECT fa.id FROM faces fa JOIN files fv ON fv.id=fa.file_id "
+    "  WHERE fa.id = p.cover_face_id AND fa.person_id = p.id AND fv.status='active' "
+    "  AND fv.id NOT IN (SELECT file_id FROM locked_items)), "
+    " (SELECT fa.id FROM faces fa JOIN files fv ON fv.id=fa.file_id "
+    "  WHERE fa.person_id = p.id AND fv.status='active' "
+    "  AND fv.id NOT IN (SELECT file_id FROM locked_items) "
+    "  ORDER BY fa.det_score DESC LIMIT 1)) AS cover_face_id"
+)
+
+_COUNT_SQL = (
+    "(SELECT COUNT(DISTINCT fa.file_id) FROM faces fa JOIN files f ON f.id=fa.file_id "
+    " WHERE fa.person_id=p.id AND f.status='active' "
+    " AND f.id NOT IN (SELECT file_id FROM locked_items)) AS photo_count"
+)
+
+
 @router.get("/people")
 def list_people(include_hidden: bool = False):
     where = "" if include_hidden else "WHERE p.is_hidden=0"
     rows = db.query(
-        f"SELECT p.id, p.name, p.is_hidden, "
-        # Cover: prefer the stored one, but never a face from a locked photo.
-        # Two subqueries rather than ORDER BY (fa.id = p.cover_face_id): SQLite
-        # before 3.46 cannot resolve an outer column reference inside a
-        # subquery's ORDER BY and raises "no such column", which 500s this
-        # endpoint on e.g. the python.org 3.12 build (SQLite 3.45).
-        "COALESCE("
-        " (SELECT fa.id FROM faces fa JOIN files fv ON fv.id=fa.file_id "
-        "  WHERE fa.id = p.cover_face_id AND fa.person_id = p.id AND fv.status='active' "
-        "  AND fv.id NOT IN (SELECT file_id FROM locked_items)), "
-        " (SELECT fa.id FROM faces fa JOIN files fv ON fv.id=fa.file_id "
-        "  WHERE fa.person_id = p.id AND fv.status='active' "
-        "  AND fv.id NOT IN (SELECT file_id FROM locked_items) "
-        "  ORDER BY fa.det_score DESC LIMIT 1)) AS cover_face_id, "
-        "(SELECT COUNT(DISTINCT fa.file_id) FROM faces fa JOIN files f ON f.id=fa.file_id "
-        " WHERE fa.person_id=p.id AND f.status='active' "
-        " AND f.id NOT IN (SELECT file_id FROM locked_items)) AS photo_count "
+        f"SELECT p.id, p.name, p.is_hidden, p.cover_src, {_COVER_SQL}, {_COUNT_SQL} "
         f"FROM persons p {where} ORDER BY photo_count DESC",
     )
     return [dict(r) for r in rows if r["photo_count"] > 0]
@@ -53,7 +70,15 @@ def list_people(include_hidden: bool = False):
 
 @router.get("/people/{person_id}")
 def person_detail(person_id: int):
-    row = db.query_one("SELECT id, name, is_hidden, cover_face_id FROM persons WHERE id=?", (person_id,))
+    # The same cover and count the list computes, rather than the raw column:
+    # this page draws the same face in its header, and the two disagreeing —
+    # one showing a fallback, the other a broken image — is the sort of thing
+    # that reads as the library being wrong about who someone is.
+    row = db.query_one(
+        f"SELECT p.id, p.name, p.is_hidden, p.cover_src, {_COVER_SQL}, {_COUNT_SQL} "
+        "FROM persons p WHERE p.id=?",
+        (person_id,),
+    )
     if not row:
         raise HTTPException(404, "no such person")
     return dict(row)
@@ -66,6 +91,40 @@ def patch_person(person_id: int, body: PersonPatch):
     if body.is_hidden is not None:
         db.execute("UPDATE persons SET is_hidden=? WHERE id=?", (1 if body.is_hidden else 0, person_id))
     return {"ok": True}
+
+
+@router.post("/people/{person_id}/cover")
+def set_cover(person_id: int, body: CoverIn):
+    """Choose which of this person's faces represents them.
+
+    A face rather than a photo, because a face is what a cover *is* — every
+    place one is shown, it is shown as a crop. A group shot holds several, and
+    picking the photo would leave Smriti to guess which of the people in it the
+    user meant, which is the guess this feature exists to overrule.
+
+    `face_id: null` hands the choice back to Smriti."""
+    if not db.query_one("SELECT id FROM persons WHERE id=?", (person_id,)):
+        raise HTTPException(404, "no such person")
+    if body.face_id is None:
+        return {"ok": True, "cover_face_id": faces_job.repick_cover(person_id), "cover_src": None}
+    face = db.query_one(
+        "SELECT fa.person_id, f.status, "
+        "(SELECT 1 FROM locked_items WHERE file_id=f.id) AS locked "
+        "FROM faces fa JOIN files f ON f.id=fa.file_id WHERE fa.id=?",
+        (body.face_id,),
+    )
+    if not face:
+        raise HTTPException(404, "no such face")
+    # Only this person's own faces, and only ones that can be drawn. Both are
+    # reachable by racing the UI — reassigning a face, or locking its photo, in
+    # another tab while the picker is open.
+    if face["person_id"] != person_id:
+        raise HTTPException(400, "that face belongs to someone else now")
+    if face["status"] != "active" or face["locked"]:
+        raise HTTPException(400, "that photo isn\u2019t available to use as a cover")
+    db.execute("UPDATE persons SET cover_face_id=?, cover_src='manual' WHERE id=?",
+               (body.face_id, person_id))
+    return {"ok": True, "cover_face_id": body.face_id, "cover_src": "manual"}
 
 
 @router.post("/people/merge")

@@ -284,12 +284,7 @@ def _cluster(X: np.ndarray) -> np.ndarray:
 
 
 def recompute_centroid(person_id: int) -> None:
-    rows = db.query(
-        "SELECT fa.id, fa.embedding, fa.det_score, fa.w, fa.h, "
-        "(SELECT COUNT(*) FROM faces f2 WHERE f2.file_id=fa.file_id) AS nfaces "
-        "FROM faces fa WHERE fa.person_id=?",
-        (person_id,),
-    )
+    rows = db.query("SELECT fa.id, fa.embedding FROM faces fa WHERE fa.person_id=?", (person_id,))
     if not rows:
         db.execute("UPDATE persons SET centroid=NULL WHERE id=?", (person_id,))
         return
@@ -298,14 +293,43 @@ def recompute_centroid(person_id: int) -> None:
     norm = np.linalg.norm(c)
     if norm > 0:
         c = c / norm
+    db.execute("UPDATE persons SET centroid=? WHERE id=?",
+               (c.astype(np.float32).tobytes(), person_id))
+    # A cover someone chose by hand survives this — outliving a reshuffle is
+    # most of what choosing one is for. It only gives way when that face is no
+    # longer this person's, at which point it is not theirs to keep.
+    if not _manual_cover_holds(person_id, {r["id"] for r in rows}):
+        repick_cover(person_id)
 
-    # cover: a big, confident face — strongly preferring solo photos over
-    # someone in the background of a group shot
-    def cover_score(r) -> float:
-        area = max(float(r["w"] or 0) * float(r["h"] or 0), 1e-6)
-        solo_bonus = 1.5 if r["nfaces"] == 1 else 1.0
-        return (r["det_score"] or 0) * (area ** 0.5) * solo_bonus
 
-    best = max(rows, key=cover_score)
-    db.execute("UPDATE persons SET centroid=?, cover_face_id=? WHERE id=?",
-               (c.astype(np.float32).tobytes(), best["id"], person_id))
+def _manual_cover_holds(person_id: int, own_face_ids: set[int]) -> bool:
+    row = db.query_one("SELECT cover_face_id, cover_src FROM persons WHERE id=?", (person_id,))
+    return bool(row and row["cover_src"] == "manual" and row["cover_face_id"] in own_face_ids)
+
+
+def _cover_score(r) -> float:
+    """A big, confident face — strongly preferring solo photos over someone in
+    the background of a group shot."""
+    area = max(float(r["w"] or 0) * float(r["h"] or 0), 1e-6)
+    solo_bonus = 1.5 if r["nfaces"] == 1 else 1.0
+    return (r["det_score"] or 0) * (area ** 0.5) * solo_bonus
+
+
+def repick_cover(person_id: int) -> int | None:
+    """Pick this person's cover the way Smriti would, discarding any manual
+    choice. Returns the face it settled on, or None if it can see none.
+
+    Only faces that can actually be shown are candidates — an original that is
+    missing, or on a drive that is not plugged in, or behind the Locked
+    section, makes for a cover that renders as a hole on the People page."""
+    rows = db.query(
+        "SELECT fa.id, fa.det_score, fa.w, fa.h, "
+        "(SELECT COUNT(*) FROM faces f2 WHERE f2.file_id=fa.file_id) AS nfaces "
+        "FROM faces fa JOIN files f ON f.id=fa.file_id "
+        "WHERE fa.person_id=? AND f.status='active' "
+        "AND f.id NOT IN (SELECT file_id FROM locked_items)",
+        (person_id,),
+    )
+    best = max(rows, key=_cover_score)["id"] if rows else None
+    db.execute("UPDATE persons SET cover_face_id=?, cover_src=NULL WHERE id=?", (best, person_id))
+    return best

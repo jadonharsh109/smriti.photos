@@ -3,7 +3,8 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, type Person } from "../api/client";
 import AddAllToAlbum from "../components/AddAllToAlbum";
-import { IconPencil } from "../components/Icons";
+import { IconCamera, IconPencil } from "../components/Icons";
+import CoverPicker from "../components/CoverPicker";
 import BackLink from "../components/BackLink";
 import { PhotoGridSkeleton } from "../components/Skeletons";
 import TimelineGrid from "../components/TimelineGrid";
@@ -16,6 +17,7 @@ export default function PersonPage() {
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState("");
   const [merging, setMerging] = useState(false);
+  const [pickingCover, setPickingCover] = useState(false);
   const [soloOnly, setSoloOnly] = useState(false);
   const filters = { person_id: personId, solo: soloOnly || undefined };
 
@@ -79,19 +81,20 @@ export default function PersonPage() {
         <div>
           <BackLink to="/people" label="People" />
           <div className="row" style={{ gap: 16 }}>
+            {/* the face IS the control, the same way the name below it is —
+                clicking the thing you want to change is the obvious gesture,
+                and the badge is what makes it discoverable */}
             {person.cover_face_id && (
-              <img
-                src={`/api/faces/${person.cover_face_id}/thumb`}
-                style={{
-                  width: 72,
-                  height: 72,
-                  borderRadius: "50%",
-                  objectFit: "cover",
-                  border: "2px solid rgba(255,255,255,0.2)",
-                  boxShadow: "0 8px 24px rgba(2,4,10,0.5), 0 0 20px rgba(110,123,255,0.25)",
-                }}
-                alt=""
-              />
+              <button
+                className="cover-edit"
+                title={`Choose a different photo for ${person.name ?? "this person"}`}
+                onClick={() => setPickingCover(true)}
+              >
+                <img src={`/api/faces/${person.cover_face_id}/thumb`} alt="" />
+                <span className="badge">
+                  <IconCamera size={14} />
+                </span>
+              </button>
             )}
             {renaming ? (
               <div className="row">
@@ -141,6 +144,12 @@ export default function PersonPage() {
               </button>
             </div>
             <AddAllToAlbum filters={filters} />
+            <button
+              title="Pick which photo of this person is shown on the People page"
+              onClick={() => setPickingCover(true)}
+            >
+              Change photo
+            </button>
             <button onClick={() => setMerging((m) => !m)}>Merge into…</button>
             {person.is_hidden ? (
               <button
@@ -174,6 +183,7 @@ export default function PersonPage() {
             ))}
         </div>
       )}
+      {pickingCover && <CoverPicker person={person} onClose={() => setPickingCover(false)} />}
       <TimelineGrid
         filters={filters}
         emptyText={soloOnly ? "No solo photos of this person" : "No photos of this person"}
