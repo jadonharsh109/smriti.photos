@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config, db
 from .api import (albums, cleanup, dupes, events, jobs, kinds, locked, media, motion, people,
-                  places, roots, system, takeout, timeline, volumes)
+                  places, roots, search, system, takeout, timeline, volumes)
 
 
 @asynccontextmanager
@@ -30,7 +30,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Photos Organizer", lifespan=lifespan)
 
 for r in (system, volumes, roots, jobs, timeline, media, people, places, albums, events,
-          dupes, locked, kinds, cleanup, takeout, motion):
+          dupes, locked, kinds, cleanup, takeout, motion, search):
     app.include_router(r.router, prefix="/api")
 
 # Production: serve the built frontend (dev uses the Vite server + /api proxy)

@@ -69,6 +69,42 @@ FACE_MERGE_SIM = 0.55        # merge clusters this similar (same person split by
 FACE_MIN_CLUSTER_SIZE = 4
 FACE_MAX_WORKERS = 2
 
+# ---- semantic search (MobileCLIP-S0) ----------------------------------------
+# Apple's MobileCLIP rather than OpenAI's CLIP ViT-B/32: better zero-shot at
+# roughly an eighth of the vision compute, which is the number that matters
+# when every photo in a library gets encoded on a CPU. fp32 on purpose — the
+# CPU execution provider handles fp16 badly, and the model's own config pins
+# its vision tower to fp32.
+#
+# CLIP_MODEL is written into every row it produces, so changing the model here
+# invalidates old embeddings rather than silently comparing vectors from two
+# different spaces — which would not error, it would just quietly rank wrong.
+CLIP_MODEL = "mobileclip_s0"
+CLIP_MODEL_DIR = MODELS_DIR / CLIP_MODEL
+CLIP_DIM = 512
+# MobileCLIP resizes the short edge to 256 and centre-crops, and — unlike every
+# OpenAI CLIP — does NOT apply the CLIP mean/std afterwards. Its preprocessor
+# says do_normalize: false, so pixels reach it as plain 0..1. Normalising them
+# "correctly" here would cost most of the accuracy without failing anywhere.
+CLIP_IMAGE_SIZE = 256
+CLIP_CONTEXT_LEN = 77
+CLIP_MAX_WORKERS = 2
+# Where to stop calling something a result. CLIP scores everything, so without
+# a cutoff a search returns the whole library ranked — the first screen right
+# and the rest confidently wrong, which reads as the search being broken.
+#
+# Measured on a real library: genuine matches top out around 0.23-0.30 and
+# fall to noise by about rank 50, while the median photo sits near 0.10. A
+# query for something the library does not contain at all peaks below 0.20 —
+# so that is the floor, and it is what lets "nothing looks like that" be an
+# answer rather than 200 wrong photos.
+#
+# The proportional cutoff does the rest: a query only keeps what scores within
+# a fraction of its own best hit, so a strong, specific query stays tight and
+# a broad one ("a group of friends", true of a hundred photos) stays wide.
+CLIP_MIN_SCORE = 0.20
+CLIP_REL_CUTOFF = 0.80
+
 PHOTO_EXTS = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".avif"}
 VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".mts", ".m2ts", ".3gp", ".wmv"}
 

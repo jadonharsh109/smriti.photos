@@ -10,6 +10,7 @@ import {
   IconPeople,
   IconPhotos,
   IconPin,
+  IconSearch,
   IconSliders,
   IconSparkle,
 } from "./components/Icons";
@@ -23,6 +24,7 @@ const NAV: { sec: string; items: { to: string; label: string; Icon: typeof IconP
     sec: "Library",
     items: [
       { to: "/", label: "Photos", Icon: IconPhotos },
+      { to: "/search", label: "Search", Icon: IconSearch },
       { to: "/albums", label: "Albums", Icon: IconAlbum },
     ],
   },

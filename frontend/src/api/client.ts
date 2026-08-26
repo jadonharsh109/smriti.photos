@@ -141,6 +141,37 @@ export const canRevealFiles = () =>
 export const revealFile = (id: number, qs = "") =>
   api.post<{ ok: boolean; path: string }>(`/api/files/${id}/reveal${qs}`);
 
+/** A search hit: an ordinary grid item plus how well it answered the query. */
+export interface SearchItem extends Item {
+  score: number;
+}
+
+export interface SearchStatus {
+  model_ready: boolean;
+  model_mb: number;
+  indexed: number;
+  pending: number;
+  total: number;
+  ready: boolean;
+}
+
+/** What the search box can honestly offer before anyone types. */
+export const searchStatus = () => api.get<SearchStatus>("/api/search/status");
+
+/** Rank the library against a sentence. Runs entirely on the serving machine —
+ *  the query is never sent anywhere. */
+export const searchLibrary = (q: string, limit = 200) =>
+  api.get<{ query: string; items: SearchItem[]; indexed: number }>(
+    `/api/search?q=${encodeURIComponent(q)}&limit=${limit}`
+  );
+
+export const downloadSearchModel = () => api.post<{ job_id?: number }>("/api/search/models/download");
+export const buildSearchIndex = () => api.post<{ job_id?: number }>("/api/search/index");
+
+/** More photos like this one — the same ranking, with an image as the query. */
+export const similarTo = (fileId: number) =>
+  api.post<{ items: SearchItem[] }>("/api/search/similar", { file_id: fileId });
+
 /** Every face Smriti has of this person, best first — the covers to choose from. */
 export const personFaces = (personId: number, limit = 200) =>
   api.get<PersonFace[]>(`/api/people/${personId}/faces?limit=${limit}`);

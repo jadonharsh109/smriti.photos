@@ -796,6 +796,39 @@ code {
 }
 .face-pick:disabled { cursor: default; opacity: 0.5; transform: none; }
 
+/* ---- the search box ----
+   Given room to be the point of the page rather than tucked into a toolbar:
+   this is the one screen someone arrives at already knowing what they want. */
+.search-hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 18px 4px 16px;
+  margin-bottom: 22px;
+  border-radius: 18px;
+  background: var(--glass-2);
+  border: 1px solid var(--stroke);
+  box-shadow: inset 0 1px 0 var(--specular);
+  transition: border-color 0.2s ease, box-shadow 0.25s ease;
+}
+.search-hero:focus-within {
+  border-color: rgba(148, 190, 255, 0.55);
+  box-shadow: inset 0 1px 0 var(--specular), 0 0 22px rgba(110, 123, 255, 0.22);
+}
+.search-hero .ico { display: inline-flex; color: var(--fg-faint); flex: none; }
+.search-hero:focus-within .ico { color: var(--fg-dim); }
+.search-hero input {
+  flex: 1;
+  min-width: 0;
+  padding: 14px 0;
+  font-size: 17px;
+  background: none;
+  border: none;
+  box-shadow: none;
+  color: inherit;
+}
+.search-hero input:focus { outline: none; box-shadow: none; }
+
 .page-head .actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-left: auto; }
 
 .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

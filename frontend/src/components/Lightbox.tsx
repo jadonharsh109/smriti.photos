@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { api, canRevealFiles, fmtBytes, revealFile, type Item } from "../api/client";
+import { useNavigate } from "react-router-dom";
+import { api, canRevealFiles, fmtBytes, revealFile, searchStatus, type Item } from "../api/client";
 import { ConfirmDialog } from "./Dialogs";
 import {
   IconChevronL,
@@ -10,6 +11,7 @@ import {
   IconFolderOpen,
   IconHeart,
   IconInfo,
+  IconSearch,
   IconTrash,
 } from "./Icons";
 import PlaceInset from "./PlaceInset";
@@ -136,6 +138,16 @@ export default function Lightbox({ item, onClose, onPrev, onNext, qs = "", onTog
   });
   const fileManager = health?.file_manager ?? "your file manager";
   const showReveal = canRevealFiles();
+
+  // "More like this" is only honest once this photo is actually in the search
+  // index — offering it on an unindexed one would open an empty page.
+  const nav = useNavigate();
+  const { data: search } = useQuery({
+    queryKey: ["search-status"],
+    queryFn: searchStatus,
+    staleTime: 60_000,
+  });
+  const canFindSimilar = !!search?.ready;
 
   const doReveal = async () => {
     setRevealError(null);
@@ -391,6 +403,18 @@ export default function Lightbox({ item, onClose, onPrev, onNext, qs = "", onTog
         >
           <IconInfo />
         </button>
+        {canFindSimilar && (
+          <button
+            className="icon-btn"
+            title="Find photos that look like this one"
+            onClick={() => {
+              onClose();
+              nav(`/search?similar=${item.id}`);
+            }}
+          >
+            <IconSearch />
+          </button>
+        )}
         {showReveal && (
           <button
             className="icon-btn"
