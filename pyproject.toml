@@ -1,6 +1,6 @@
 [project]
 name = "smriti-photos"
-version = "1.2.0"
+version = "1.3.0"
 description = "स्मृति Smriti — fully-offline, Google-Photos-style library for your local photos"
 readme = "README.md"
 license = "AGPL-3.0-only"

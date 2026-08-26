@@ -1,6 +1,6 @@
 [package]
 name = "smriti-desktop"
-version = "1.2.0"
+version = "1.3.0"
 description = "Smriti — a fully-offline library for your local photos"
 authors = ["Harshvardhan Singh Jadon"]
 edition = "2021"
