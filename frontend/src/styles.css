@@ -806,28 +806,44 @@ code {
   padding: 4px 18px 4px 16px;
   margin-bottom: 22px;
   border-radius: 18px;
-  background: var(--glass-2);
+  /* Opaque, where every other control here is glass — and deliberately so.
+     The aurora puts a 1100px indigo radial at the top right of the stage, and
+     a 230px input spans too little of it to notice. This bar spans nearly the
+     whole width, catches the blob at one end and none of it at the other, and
+     reads as though it were painted in two colours left to right. Blur does
+     not help: blurring a smooth gradient leaves a smooth gradient. Compositing
+     the same glass tint over the page's own background gives the identical
+     surface with nothing showing through it. */
+  background: linear-gradient(var(--glass-2), var(--glass-2)), var(--bg);
   border: 1px solid var(--stroke);
-  box-shadow: inset 0 1px 0 var(--specular);
-  transition: border-color 0.2s ease, box-shadow 0.25s ease;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
 }
 .search-hero:focus-within {
-  border-color: rgba(148, 190, 255, 0.55);
-  box-shadow: inset 0 1px 0 var(--specular), 0 0 22px rgba(110, 123, 255, 0.22);
+  background: linear-gradient(var(--glass-3), var(--glass-3)), var(--bg);
+  border-color: rgba(124, 196, 255, 0.6);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.14), 0 0 0 4px rgba(124, 196, 255, 0.16);
 }
 .search-hero .ico { display: inline-flex; color: var(--fg-faint); flex: none; }
 .search-hero:focus-within .ico { color: var(--fg-dim); }
-.search-hero input {
+/* The field is a hole in the bar, not a box inside it. The global input rules
+   repaint their own background and ring on focus, which drew a second, smaller
+   rectangle around the text — so they are reset in both states, not just one. */
+.search-hero input,
+.search-hero input:focus {
   flex: 1;
   min-width: 0;
   padding: 14px 0;
   font-size: 17px;
   background: none;
   border: none;
+  border-radius: 0;
   box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  outline: none;
   color: inherit;
 }
-.search-hero input:focus { outline: none; box-shadow: none; }
 
 .page-head .actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-left: auto; }
 
