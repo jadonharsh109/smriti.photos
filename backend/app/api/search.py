@@ -161,9 +161,15 @@ def similar(body: SimilarIn, limit: int = 60):
     same space, so the thing being matched against can be either."""
     import numpy as np
 
-    row = db.query_one("SELECT embedding FROM file_clip WHERE file_id=? AND model=?",
-                       (body.file_id, config.CLIP_MODEL))
+    row = db.query_one(
+        "SELECT embedding FROM file_clip WHERE file_id=? AND model=? "
+        "AND file_id NOT IN (SELECT file_id FROM locked_items)",
+        (body.file_id, config.CLIP_MODEL))
     if not row:
+        # One message for locked, unindexed and nonexistent alike: a reply
+        # that differed for locked ids would confirm what the Locked section
+        # exists to deny. Belt over braces — locking deletes the embedding,
+        # so this clause only matters in the window an old library upgrades.
         raise HTTPException(404, "that photo hasn’t been indexed for search yet")
     ids, mat = search_svc._matrix()
     if not ids:

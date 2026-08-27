@@ -147,7 +147,10 @@ export default function Lightbox({ item, onClose, onPrev, onNext, qs = "", onTog
     queryFn: searchStatus,
     staleTime: 60_000,
   });
-  const canFindSimilar = !!search?.ready;
+  // Not in the Locked section (qs carries its token): locked photos have no
+  // embedding — deliberately, an embedding's neighbours describe the photo —
+  // so the button could only lead to "hasn't been indexed".
+  const canFindSimilar = !!search?.ready && !qs;
 
   const doReveal = async () => {
     setRevealError(null);

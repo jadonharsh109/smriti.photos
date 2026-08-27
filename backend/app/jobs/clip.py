@@ -19,10 +19,20 @@ from .runner import manager
 IN_FLIGHT = 8
 
 
+# Locked photos are never embedded at all — not merely hidden from results.
+# An embedding is a description: given one, "more like this" reconstructs what
+# the photo shows from its neighbours, which is exactly what the Locked
+# section promises cannot happen without the passcode. Locking deletes the
+# row; unlocking makes the photo pending again, and the next index run —
+# a scan's post-processing, or "Index the rest" — re-embeds it.
+_NOT_LOCKED = "f.id NOT IN (SELECT file_id FROM locked_items)"
+
+
 def pending_count() -> int:
     return db.query_one(
-        "SELECT COUNT(*) n FROM files f WHERE f.status='active' AND f.id NOT IN "
-        "(SELECT file_id FROM file_clip WHERE model=?)", (config.CLIP_MODEL,))["n"]
+        f"SELECT COUNT(*) n FROM files f WHERE f.status='active' AND {_NOT_LOCKED} "
+        "AND f.id NOT IN (SELECT file_id FROM file_clip WHERE model=?)",
+        (config.CLIP_MODEL,))["n"]
 
 
 def _source(row) -> str | None:
@@ -38,8 +48,9 @@ def _source(row) -> str | None:
 
 async def run_clip_scan(job_id: int) -> None:
     rows = db.query(
-        "SELECT f.* FROM files f WHERE f.status='active' AND f.id NOT IN "
-        "(SELECT file_id FROM file_clip WHERE model=?)", (config.CLIP_MODEL,))
+        f"SELECT f.* FROM files f WHERE f.status='active' AND {_NOT_LOCKED} "
+        "AND f.id NOT IN (SELECT file_id FROM file_clip WHERE model=?)",
+        (config.CLIP_MODEL,))
     todo, skipped = [], 0
     for r in rows:
         src = _source(r)

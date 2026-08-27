@@ -121,6 +121,14 @@ def add_items(body: ItemsIn, x_locked_token: str | None = Header(default=None)):
                 "INSERT OR IGNORE INTO locked_items (file_id, locked_at) VALUES (?,?)",
                 (fid, now),
             )
+            # The search embedding goes with it, in the same transaction. An
+            # embedding describes the photo — its nearest neighbours are what
+            # it looks like — so a locked photo must not have one. Unlocking
+            # makes the photo pending again and the next index run re-embeds.
+            conn.execute("DELETE FROM file_clip WHERE file_id=?", (fid,))
+    from ..services import search as search_svc
+
+    search_svc.invalidate()   # the cached matrix still holds the deleted rows
     return {"ok": True, "count": db.query_one("SELECT COUNT(*) n FROM locked_items")["n"]}
 
 
