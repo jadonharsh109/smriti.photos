@@ -40,8 +40,15 @@ _MONTHS["sept"] = 9
 
 # phrase -> (field, value, label). Multi-word entries are matched as phrases.
 _MODIFIERS: dict[str, tuple[str, object, str]] = {
+    # "only" and "just" are the same word as "solo" once there is a set of
+    # people to be exclusive about: one person and it means alone, several and
+    # it means these and nobody else.
     "solo": ("solo", True, "Solo"),
     "alone": ("solo", True, "Solo"),
+    "only": ("solo", True, "Solo"),
+    "just": ("solo", True, "Solo"),
+    "nobody else": ("solo", True, "Solo"),
+    "no one else": ("solo", True, "Solo"),
     "by himself": ("solo", True, "Solo"),
     "by herself": ("solo", True, "Solo"),
     "by themselves": ("solo", True, "Solo"),
@@ -68,7 +75,8 @@ _TOKEN = re.compile(r"[^\W_]+", re.UNICODE)
 
 @dataclass
 class Parsed:
-    person_id: int | None = None
+    #: every person named in the query — a photo must contain all of them
+    person_ids: list[int] = field(default_factory=list)
     country: str | None = None
     state: str | None = None
     city: str | None = None
@@ -91,7 +99,7 @@ class Parsed:
 
     def filter_kwargs(self) -> dict:
         return {
-            "person_id": self.person_id, "country": self.country, "state": self.state,
+            "person_ids": self.person_ids, "country": self.country, "state": self.state,
             "city": self.city, "album_id": self.album_id, "since": self.since,
             "until": self.until, "month": self.month, "solo": self.solo,
             "live": self.live, "media_type": self.media_type, "kind": self.kind,
@@ -132,6 +140,21 @@ def lexicon() -> dict[str, tuple[str, object, str]]:
             lex[r["name"].lower()] = ("person_id", r["id"], r["name"])
         _lex, _lex_stamp = lex, stamp
         return lex
+
+
+def _prefix_person(tok: str, lex: dict) -> tuple[int, str] | None:
+    """"harsh" when the person is "Harshh".
+
+    Only for a token long enough to mean something and only when exactly one
+    name starts with it — an ambiguous prefix is not a name someone typed, it
+    is a word, and belongs to the model."""
+    if len(tok) < 4:
+        return None
+    hits = {v[1]: v[2] for k, v in lex.items() if v[0] == "person_id" and k.startswith(tok)}
+    if len(hits) == 1:
+        pid, label = next(iter(hits.items()))
+        return pid, label
+    return None
 
 
 def _year(tok: str) -> int | None:
@@ -177,8 +200,13 @@ def parse(query: str) -> Parsed:
                 out.album_id = favourites.album_id()
                 out.chips.append({"kind": "album", "label": label})
             elif field_name == "person_id":
-                out.person_id = value
-                out.chips.append({"kind": "person", "label": label})
+                # A name repeated is still one person; a second name is a
+                # second filter, not a replacement for the first. Overwriting
+                # was the bug: the chips said "Yash, Karan" and the query
+                # asked only for Karan.
+                if value not in out.person_ids:
+                    out.person_ids.append(value)
+                    out.chips.append({"kind": "person", "label": label})
             elif field_name in ("country", "state", "city"):
                 setattr(out, field_name, value)
                 out.chips.append({"kind": "place", "label": label})
@@ -189,6 +217,14 @@ def parse(query: str) -> Parsed:
             continue
 
         tok = tokens[i]
+        near = _prefix_person(tok, lex)
+        if near is not None:
+            pid, label = near
+            if pid not in out.person_ids:
+                out.person_ids.append(pid)
+                out.chips.append({"kind": "person", "label": label})
+            i += 1
+            continue
         y = _year(tok)
         if y is not None and not iso:
             year = y
@@ -204,6 +240,10 @@ def parse(query: str) -> Parsed:
 
     if not iso and (year or month):
         _apply_date(out, year, month)
+    if out.solo and len(out.person_ids) > 1:
+        for c in out.chips:
+            if c["label"] == "Solo":
+                c["label"] = "Nobody else"
     out.text = " ".join(leftover)
     return out
 
