@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Smriti — turn your external drive into a photo library</title>
-<meta name="description" content="The photos and videos sitting on your external SSD or hard drive, turned into a real library — timeline, faces, places and trips. All on your own machine. No cloud." />
+<meta name="description" content="The photos and videos sitting on your external SSD or hard drive, turned into a real library — timeline, faces, places, trips, and search that understands what's in the picture. All on your own machine. No cloud." />
 <meta name="theme-color" content="#070a14" />
 <meta name="robots" content="index, follow, max-image-preview:large" />
 <link rel="canonical" href="https://smriti.jadonharsh.in/" />
@@ -13,7 +13,7 @@
 <meta property="og:site_name" content="Smriti" />
 <meta property="og:locale" content="en_IN" />
 <meta property="og:title" content="Smriti — turn your external drive into a photo library" />
-<meta property="og:description" content="The photos and videos on your external SSD or hard drive, turned into a real library — timeline, faces, places and trips. All computed on your own machine." />
+<meta property="og:description" content="The photos and videos on your external SSD or hard drive, turned into a real library — timeline, faces, places, trips, and search that understands what's in the picture. All computed on your own machine." />
 <meta property="og:url" content="https://smriti.jadonharsh.in/" />
 <meta property="og:image" content="https://smriti.jadonharsh.in/og.png" />
 <meta property="og:image:type" content="image/png" />
@@ -306,6 +306,10 @@ footer{padding:44px 0 40px; border-top:1px solid var(--stroke); margin-top:30px}
           <h3>Timeline</h3><p>Every photo by date, smooth at six figures.</p>
         </article>
         <article class="card">
+          <div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.2"/><path d="M15.2 15.2 20.5 20.5"/></svg></div>
+          <h3>Search</h3><p>“Sunset over the sea” finds it. Knows your people, places and dates too — and never leaves your machine.</p>
+        </article>
+        <article class="card">
           <div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.4"/><path d="M2.6 20c.6-3.5 3.3-5.4 6.4-5.4s5.8 1.9 6.4 5.4"/><circle cx="17.5" cy="9" r="2.6"/><path d="M17 14.8c2.3.2 4 1.9 4.4 5.2"/></svg></div>
           <h3>People</h3><p>Faces found and grouped on your own CPU. Name them once.</p>
         </article>
@@ -316,6 +320,10 @@ footer{padding:44px 0 40px; border-top:1px solid var(--stroke); margin-top:30px}
         <article class="card">
           <div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l2.1 5.4 5.9.4-4.5 3.8 1.4 5.7L12 15.2 7.1 18.3l1.4-5.7L4 8.8l5.9-.4z"/></svg></div>
           <h3>Events</h3><p>Trips found automatically from gaps in your timeline.</p>
+        </article>
+        <article class="card">
+          <div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M7.5 4.5v15M16.5 4.5v15M3 12h18M3 8.25h4.5M3 15.75h4.5M16.5 8.25H21M16.5 15.75H21"/></svg></div>
+          <h3>Moments</h3><p>A trip turned into a minute of video — sharpest shots, no blinks, set to music. Made on your CPU.</p>
         </article>
         <article class="card">
           <div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h13M4 12h13M4 17h8"/><circle cx="19.5" cy="17" r="2.5"/></svg></div>
@@ -489,6 +497,9 @@ footer{padding:44px 0 40px; border-top:1px solid var(--stroke); margin-top:30px}
     "Indexes photos and videos on external SSDs and hard drives, tracked by disk identity",
     "Browse the library with the drive unplugged",
     "Date-grouped timeline, virtualized for six-figure libraries",
+    "Search by what the photo shows, computed on-device — the query never leaves the machine",
+    "Searches understand people's names, places and dates from the library's own index",
+    "Moments: trips rendered into short montage videos, scored with the project's own generated music",
     "On-device face recognition, clustered into people you can name",
     "Offline reverse geocoding and a tile-server-free globe",
     "Trips detected automatically from gaps in your timeline",
