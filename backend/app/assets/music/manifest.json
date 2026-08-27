@@ -8,7 +8,7 @@
       "mood": "warm",
       "seconds": 67.0,
       "bytes": 1072944,
-      "sha256": "f60e117faed5089261c59440f77fc364d06870b2bb8135aa3bb16ae082d66b9a"
+      "sha256": "39de5c8284c48006770698ee552359f02380b1dd642b06c786d04765f916a6ac"
     },
     {
       "file": "quiet-hours.mp3",
@@ -16,7 +16,7 @@
       "mood": "reflective",
       "seconds": 83.0,
       "bytes": 1329153,
-      "sha256": "94edd81f72108923d7d904f8177b4aa174332cd254a7369b127f0a1ae46256bf"
+      "sha256": "9513d7778299b9b7ef91eed9427046993dd11a946716861d1ef1a472ca001f26"
     },
     {
       "file": "out-in-the-open.mp3",
@@ -24,7 +24,31 @@
       "mood": "bright",
       "seconds": 54.2,
       "bytes": 868144,
-      "sha256": "bc423237493c4c6c03e6e5de4cf3b2e3605fe46476517d7ba08d10c182f27836"
+      "sha256": "800aed8f1adbcc9bb92a6bcfcd9dbd7502a51baea6433f6c5040f407df1b632b"
+    },
+    {
+      "file": "evening-lamps.mp3",
+      "title": "Evening Lamps",
+      "mood": "dusk",
+      "seconds": 76.6,
+      "bytes": 1226753,
+      "sha256": "f9ed814c31514463a05de381c8ce19e4c74c29dd61e77d831c093158261ec5f7"
+    },
+    {
+      "file": "mela.mp3",
+      "title": "Mela",
+      "mood": "festive",
+      "seconds": 44.6,
+      "bytes": 714753,
+      "sha256": "bc0072bc16ad1e3e8587fec787c22f92b685cea30b6d5d5444259b3b509b3f44"
+    },
+    {
+      "file": "slow-river.mp3",
+      "title": "Slow River",
+      "mood": "drift",
+      "seconds": 89.4,
+      "bytes": 1431553,
+      "sha256": "5fc1b39035e959cfcf20291cfdffb05deab418d3fd4054c83c4c52640c4187b1"
     }
   ]
 }

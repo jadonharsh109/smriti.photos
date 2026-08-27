@@ -30,7 +30,8 @@ async def run_render(job_id: int, moment_id: int) -> None:
 
     try:
         src = svc.source_for(row["kind"], row["ref"])
-        picks = svc.curate(svc.candidates(row["kind"], row["ref"]))
+        # a few more than fit: render drops the softest after looking at them
+        picks = svc.curate(svc.candidates(row["kind"], row["ref"]), target=svc.MAX_ITEMS + 4)
         if len(picks) < svc.MIN_ITEMS:
             raise svc.MomentError(
                 f"only {len(picks)} usable photos here — a moment needs at least {svc.MIN_ITEMS}")
@@ -41,7 +42,7 @@ async def run_render(job_id: int, moment_id: int) -> None:
             return svc.render(src, picks, out, track, work, on_progress=progress)
 
         manager.update(job_id, message="putting it together…")
-        duration = await asyncio.to_thread(work_fn)
+        duration, used = await asyncio.to_thread(work_fn)
     except svc.MomentError as e:
         db.execute("UPDATE moments SET status='failed', error=? WHERE id=?", (str(e), moment_id))
         manager.finish(job_id, "failed", str(e))
@@ -57,10 +58,10 @@ async def run_render(job_id: int, moment_id: int) -> None:
     db.execute(
         "UPDATE moments SET status='ready', rel_path=?, duration_s=?, bytes=?, item_count=?, "
         "cover_file_id=?, track=? WHERE id=?",
-        (rel, duration, os.path.getsize(out), len(picks), picks[0]["id"],
+        (rel, duration, os.path.getsize(out), len(used), used[0]["id"],
          (track or {}).get("file"), moment_id))
     manager.update(job_id, done=len(picks) + 1)
-    manager.finish(job_id, "done", f"{len(picks)} photos, {duration:.0f} seconds")
+    manager.finish(job_id, "done", f"{len(used)} photos, {duration:.0f} seconds")
 
 
 def create(kind: str, ref: str, track: str | None = None) -> int:

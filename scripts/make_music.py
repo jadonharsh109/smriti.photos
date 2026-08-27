@@ -41,6 +41,12 @@ PROGRESSIONS = {
     "reflective": [(9, "min"), (5, "maj"), (0, "maj"), (7, "maj")],
     # I – vi – IV – V, brighter, and it keeps moving
     "bright": [(0, "maj"), (9, "min"), (5, "maj"), (7, "maj")],
+    # i – VI – III – VII, the minor lap — evening light, nothing mournful
+    "dusk": [(0, "min"), (8, "maj"), (3, "maj"), (10, "maj")],
+    # I – IV – V – IV, the two-chord sway with a lift in the middle
+    "festive": [(0, "maj"), (5, "maj"), (7, "maj"), (5, "maj")],
+    # IV – I – V – vi, starts away from home and keeps leaning back toward it
+    "drift": [(5, "maj"), (0, "maj"), (7, "maj"), (9, "min")],
 }
 CHORD = {"maj": (0, 4, 7, 12), "min": (0, 3, 7, 12)}
 
@@ -49,6 +55,9 @@ TRACKS = [
     ("warm-light", "warm", 60, 4.0, 4, 2600.0),
     ("quiet-hours", "reflective", 57, 5.0, 3, 1900.0),
     ("out-in-the-open", "bright", 62, 3.2, 6, 3400.0),
+    ("evening-lamps", "dusk", 57, 4.6, 4, 2100.0),
+    ("mela", "festive", 64, 2.6, 8, 3600.0),
+    ("slow-river", "drift", 59, 5.4, 3, 1750.0),
 ]
 
 

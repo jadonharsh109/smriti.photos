@@ -55,10 +55,20 @@ function Player({ moment, onClose }: { moment: Moment; onClose: () => void }) {
   );
 }
 
+/** What the music dialog is deciding for: a new moment, or a remake. */
+interface Choosing {
+  title: string;
+  kind?: string;
+  ref?: string;
+  remakeId?: number;
+  current?: string | null;
+}
+
 export default function MomentsPage() {
   const qc = useQueryClient();
   const [playing, setPlaying] = useState<Moment | null>(null);
   const [confirming, setConfirming] = useState<Moment | null>(null);
+  const [choosing, setChoosing] = useState<Choosing | null>(null);
   const [track, setTrack] = useState<string>("");
 
   const { data: moments } = useQuery({
@@ -72,15 +82,15 @@ export default function MomentsPage() {
   const { data: music } = useQuery({ queryKey: ["moment-music"], queryFn: momentMusic });
 
   const make = useMutation({
-    mutationFn: ({ kind, ref }: { kind: string; ref: string }) =>
-      createMoment(kind, ref, track || null),
+    mutationFn: ({ kind, ref, music }: { kind: string; ref: string; music: string | null }) =>
+      createMoment(kind, ref, music),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["moments"] });
       qc.invalidateQueries({ queryKey: ["moment-suggestions"] });
     },
   });
   const again = useMutation({
-    mutationFn: (id: number) => remakeMoment(id, track || null),
+    mutationFn: ({ id, music }: { id: number; music: string | null }) => remakeMoment(id, music),
     onSettled: () => qc.invalidateQueries({ queryKey: ["moments"] }),
   });
   const remove = useMutation({
@@ -105,17 +115,6 @@ export default function MomentsPage() {
               : "Your photos, in order, set to music"}
           </p>
         </div>
-        {(music?.tracks.length ?? 0) > 0 && (
-          <div className="actions">
-            <label className="muted small" htmlFor="mtrack">Music</label>
-            <select id="mtrack" value={track} onChange={(e) => setTrack(e.target.value)}>
-              <option value="">Pick one for me</option>
-              {music!.tracks.map((t) => (
-                <option key={t.file} value={t.file}>{t.title}</option>
-              ))}
-            </select>
-          </div>
-        )}
       </header>
 
       {make.error && (
@@ -151,7 +150,12 @@ export default function MomentsPage() {
                   <span className="play"><IconPlay size={22} /></span>
                 )}
                 {(m.status === "rendering" || m.status === "pending") && (
-                  <span className="working"><span className="spin" /></span>
+                  <span className="working">
+                    <span className="spin" />
+                    {Array.from({ length: 6 }, (_, i) => (
+                      <i key={i} className={`sp sp${i}`}>✦</i>
+                    ))}
+                  </span>
                 )}
                 {m.duration_s && m.status === "ready" && (
                   <span className="dur">{mmss(m.duration_s)}</span>
@@ -170,8 +174,11 @@ export default function MomentsPage() {
                   <button
                     className="small"
                     disabled={again.isPending || m.status === "rendering"}
-                    title="Make it again — a different pick of photos, or the music you chose above"
-                    onClick={() => again.mutate(m.id)}
+                    title="Make it again — a fresh pick of photos, or different music"
+                    onClick={() => {
+                      setTrack(m.track ?? "");
+                      setChoosing({ title: m.title, remakeId: m.id, current: m.track });
+                    }}
                   >
                     Make again
                   </button>
@@ -194,7 +201,10 @@ export default function MomentsPage() {
                 <button
                   className="shot"
                   disabled={make.isPending}
-                  onClick={() => make.mutate({ kind: s.kind, ref: s.ref })}
+                  onClick={() => {
+                    setTrack("");
+                    setChoosing({ title: s.title, kind: s.kind, ref: s.ref });
+                  }}
                   title={`Make a moment from ${s.title}`}
                 >
                   {s.cover_file_id ? (
@@ -214,6 +224,59 @@ export default function MomentsPage() {
         </>
       )}
 
+      {choosing && (
+        <Portal>
+          <div className="modal-back" onClick={() => setChoosing(null)}>
+            <div className="modal" style={{ width: 440 }} onClick={(e) => e.stopPropagation()}>
+              <header>
+                {choosing.remakeId ? `Make “${choosing.title}” again` : `A moment of ${choosing.title}`}
+                <span className="spacer" />
+                <button className="icon-btn" style={{ width: 30, height: 30 }} onClick={() => setChoosing(null)}>
+                  <IconClose size={15} />
+                </button>
+              </header>
+              <div className="modal-body">
+                <p className="muted small" style={{ margin: "2px 0 10px" }}>
+                  What should it sound like?
+                </p>
+                <div className="track-list">
+                  <button
+                    className={`track-row${track === "" ? " on" : ""}`}
+                    onClick={() => setTrack("")}
+                  >
+                    <span className="nm">Pick one for me</span>
+                  </button>
+                  {(music?.tracks ?? []).map((t) => (
+                    <button
+                      key={t.file}
+                      className={`track-row${track === t.file ? " on" : ""}`}
+                      onClick={() => setTrack(t.file)}
+                    >
+                      <span className="nm">{t.title}</span>
+                      <span className="ct">{mmss(t.seconds)}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <footer>
+                <button className="ghost" onClick={() => setChoosing(null)}>Cancel</button>
+                <button
+                  className="primary"
+                  disabled={make.isPending || again.isPending}
+                  onClick={() => {
+                    const music = track || null;
+                    if (choosing.remakeId) again.mutate({ id: choosing.remakeId, music });
+                    else make.mutate({ kind: choosing.kind!, ref: choosing.ref!, music });
+                    setChoosing(null);
+                  }}
+                >
+                  Make it
+                </button>
+              </footer>
+            </div>
+          </div>
+        </Portal>
+      )}
       {playing && <Player moment={playing} onClose={() => setPlaying(null)} />}
       {confirming && (
         <ConfirmDialog

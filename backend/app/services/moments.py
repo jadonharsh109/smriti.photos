@@ -53,6 +53,9 @@ _BASE = (
     "AND f.id NOT IN (SELECT file_id FROM locked_items) "
     # the movie half of a Live Photo is not a photograph anyone took
     "AND f.id NOT IN (SELECT video_file_id FROM file_motion WHERE video_file_id IS NOT NULL) "
+    # a receipt or a screenshot in the middle of a montage breaks the spell —
+    # same tombstone-aware rule the timeline uses
+    "AND f.id NOT IN (SELECT file_id FROM file_kinds WHERE kind != 'photo') "
 )
 
 
@@ -159,35 +162,80 @@ def _font(size: int):
     return ImageFont.load_default(size=size)
 
 
-def _still(row, dest: str) -> str | None:
-    """A photo, decoded here rather than by ffmpeg.
+def _centering(img, file_id: int) -> tuple[float, float]:
+    """Where to put the 16:9 crop, so the people in the photo stay in it.
 
-    Originals are HEIC as often as not and the bundled ffmpeg cannot read them;
-    Pillow can, with pillow_heif registered. Decoding here also means a moment
-    can be made of photos whose drive is not plugged in, off the cached
-    preview — the same trick that lets them be searchable."""
+    The library already knows where every face is. Framing the crop on the
+    union of them — instead of a fixed "slightly above centre" guess — is what
+    keeps the slow zoom from pushing someone's head off the top of the frame:
+    zoompan zooms toward the middle, so whatever is centred is what survives."""
+    faces = db.query("SELECT x, y, w, h FROM faces WHERE file_id=?", (file_id,))
+    if not faces:
+        return (0.5, 0.42)
+    x0 = min(f["x"] for f in faces)
+    y0 = min(f["y"] for f in faces)
+    x1 = max(f["x"] + f["w"] for f in faces)
+    y1 = max(f["y"] + f["h"] for f in faces)
+    fcx, fcy = (x0 + x1) / 2, (y0 + y1) / 2
+    iw, ih = img.size
+    # ImageOps.fit places the crop window proportionally: 0 = flush left/top,
+    # 1 = flush right/bottom. Solve for the value that puts the face centre at
+    # the crop centre, then clamp into the image.
+    if iw * H > ih * W:            # wider than 16:9 — cropping left/right
+        crop_w = ih * W / H
+        cx = 0.5 if iw <= crop_w else min(1.0, max(0.0, (fcx * iw - crop_w / 2) / (iw - crop_w)))
+        return (cx, 0.5)
+    crop_h = iw * H / W            # taller — cropping top/bottom, the usual portrait case
+    cy = 0.42 if ih <= crop_h else min(1.0, max(0.0, (fcy * ih - crop_h / 2) / (ih - crop_h)))
+    return (0.5, cy)
+
+
+def _sharpness(img) -> float:
+    """Gradient variance on a small grayscale copy — enough to rank the frames
+    of one event against each other, which is all it is used for."""
+    import numpy as np
+
+    g = np.asarray(img.convert("L").resize((480, 270)), dtype=np.float32)
+    return float(np.var(np.diff(g, axis=0)) + np.var(np.diff(g, axis=1)))
+
+
+# 1.5x the output frame: the zoom peaks at 1.09, so ffmpeg never has to invent
+# pixels, and a 1600px preview upscales far less than the old 2x demanded.
+_UP = 1.5
+
+
+def _still(row, dest: str) -> tuple[str, float] | None:
+    """A photo, decoded here rather than by ffmpeg, best copy first.
+
+    The original, wherever its drive is plugged in — this is the render that
+    ends up projected on someone's TV, and a 512px thumbnail blown up to 4K is
+    where the "why is my memory blurry" report came from. The cached preview
+    and thumbnail remain the fallback that lets a moment be made of photos
+    whose drive is offline. HEIC originals go through the same decoder the
+    preview pipeline uses."""
     from PIL import Image, ImageOps
 
-    src = None
-    for p in (thumbs.preview_path(row["id"]), thumbs.thumb_path(row["id"])):
-        if p.exists():
-            src = str(p)
-            break
-    if src is None:
-        ap = vol_svc.abs_path_for_file(db.query_one("SELECT * FROM files WHERE id=?", (row["id"],)))
-        if ap and os.path.exists(ap):
-            src = ap
-    if src is None:
+    img = None
+    ap = vol_svc.abs_path_for_file(db.query_one("SELECT * FROM files WHERE id=?", (row["id"],)))
+    if ap and os.path.exists(ap):
+        img = thumbs._decode_full(ap)          # handles HEIC + sips fallback
+        if img is not None:
+            img = ImageOps.exif_transpose(img)
+    if img is None:
+        for p in (thumbs.preview_path(row["id"]), thumbs.thumb_path(row["id"])):
+            if p.exists():
+                try:
+                    img = ImageOps.exif_transpose(Image.open(p))
+                    break
+                except Exception:
+                    img = None
+    if img is None:
         return None
-    try:
-        img = ImageOps.exif_transpose(Image.open(src)).convert("RGB")
-    except Exception:
-        return None
-    # twice the output size, so the slow zoom never runs out of pixels;
-    # framed slightly above centre because that is where faces are
-    img = ImageOps.fit(img, (W * 2, H * 2), Image.LANCZOS, centering=(0.5, 0.42))
+    img = img.convert("RGB")
+    img = ImageOps.fit(img, (int(W * _UP), int(H * _UP)), Image.LANCZOS,
+                       centering=_centering(img, row["id"]))
     img.save(dest, "JPEG", quality=92)
-    return dest
+    return dest, _sharpness(img)
 
 
 def _title_card(src: Source, under, dest: str) -> str:
@@ -229,8 +277,10 @@ def build_graph(n_slides: int, holds: list[float]) -> tuple[str, str, float]:
     for i, hold in enumerate(holds):
         d = max(2, int(hold * FPS))
         # alternate the direction so consecutive slides do not all drift the
-        # same way, which reads as a camera fault rather than a choice
-        z = ("min(1+0.0016*on,1.13)" if i % 2 == 0 else "max(1.13-0.0016*on,1.0)")
+        # same way, which reads as a camera fault rather than a choice. 1.09,
+        # down from 1.13: with the crop now framed on the faces, 9% is drift
+        # you feel without ever cutting a forehead off.
+        z = ("min(1+0.0011*on,1.09)" if i % 2 == 0 else "max(1.09-0.0011*on,1.0)")
         filt.append(
             f"[{i}:v]zoompan=z='{z}':d={d}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
             f":s={W}x{H}:fps={FPS},setsar=1,format=yuv420p[v{i}]")
@@ -273,19 +323,28 @@ def pick_track(name: str | None, seed: int = 0) -> dict | None:
 
 
 def render(src: Source, rows: list, out_path: str, track: dict | None,
-           workdir: str, on_progress=None) -> float:
-    """Render the montage. Returns its duration in seconds."""
+           workdir: str, on_progress=None) -> tuple[float, list]:
+    """Render the montage. Returns (duration seconds, the rows actually used) —
+    curation offers more than fit and the soft ones are dropped in here."""
     os.makedirs(workdir, exist_ok=True)
-    stills, kept = [], []
+    decoded: list[tuple[dict, str, float]] = []          # (row, path, sharpness)
     for i, r in enumerate(rows):
-        p = _still(r, os.path.join(workdir, f"{i:03d}.jpg"))
-        if p:
-            stills.append(p)
-            kept.append(r)
+        got = _still(r, os.path.join(workdir, f"{i:03d}.jpg"))
+        if got:
+            decoded.append((r, got[0], got[1]))
         if on_progress:
             on_progress(i + 1, len(rows))
-    if len(stills) < MIN_ITEMS:
-        raise MomentError(f"only {len(stills)} photos could be read — need at least {MIN_ITEMS}")
+    if len(decoded) < MIN_ITEMS:
+        raise MomentError(f"only {len(decoded)} photos could be read — need at least {MIN_ITEMS}")
+    # Curation hands over a few more than fit, and the softest are dropped here,
+    # where the pixels have actually been looked at — file_quality is empty on
+    # any library that never ran the blur scan, and a montage should not need a
+    # prerequisite. Order stays chronological; only membership is decided.
+    if len(decoded) > MAX_ITEMS:
+        floor = sorted(d[2] for d in decoded)[len(decoded) - MAX_ITEMS - 1]
+        decoded = [d for d in decoded if d[2] > floor][:MAX_ITEMS]
+    kept = [d[0] for d in decoded]
+    stills = [d[1] for d in decoded]
 
     card = _title_card(src, stills[0], os.path.join(workdir, "title.jpg"))
     paths = [card] + stills
@@ -315,4 +374,4 @@ def render(src: Source, rows: list, out_path: str, track: dict | None,
     if res.returncode != 0:
         raise MomentError((res.stderr or b"").decode(errors="replace").strip()[-400:]
                           or "ffmpeg failed")
-    return total
+    return total, kept
