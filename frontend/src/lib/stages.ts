@@ -17,6 +17,7 @@ const LABEL: Record<string, string> = {
   models: "Downloading models",
   search_models: "Downloading search",
   search_index: "Making photos searchable",
+  moment: "Making a moment",
   classify: "Sorting documents",
   remove: "Removing a folder",
   blur: "Checking sharpness",
@@ -37,6 +38,7 @@ const SENTENCE: Record<string, string> = {
   models: "Downloading the face models",
   search_models: "Downloading the search model",
   search_index: "Learning what your photos show",
+  moment: "Putting your photos to music",
   classify: "Sorting out screenshots and scans",
   remove: "Removing a folder from your library",
   blur: "Checking your photos for blur",
@@ -65,6 +67,7 @@ const UNIT: Record<string, string> = {
   blur: "photos checked",
   motion: "photos checked",
   search_index: "photos indexed",
+  moment: "photos used",
   takeout: "photos and videos copied",
 };
 

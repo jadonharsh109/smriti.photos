@@ -13,6 +13,7 @@ import LandingPage from "./pages/LandingPage";
 import LockedPage from "./pages/LockedPage";
 import MapPage from "./pages/MapPage";
 import PeoplePage from "./pages/PeoplePage";
+import MomentsPage from "./pages/MomentsPage";
 import SearchPage from "./pages/SearchPage";
 import PersonPage from "./pages/PersonPage";
 import PlaceGridPage from "./pages/PlaceGridPage";
@@ -34,6 +35,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/" element={<App />}>
             <Route index element={<TimelinePage />} />
             <Route path="search" element={<SearchPage />} />
+            <Route path="moments" element={<MomentsPage />} />
             <Route path="people" element={<PeoplePage />} />
             <Route path="people/:id" element={<PersonPage />} />
             <Route path="places" element={<PlacesPage />} />

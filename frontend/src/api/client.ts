@@ -51,6 +51,52 @@ export interface Person {
   photo_count: number;
 }
 
+export interface Moment {
+  id: number;
+  kind: "event" | "person" | "place" | "day";
+  ref: string;
+  title: string;
+  subtitle: string | null;
+  duration_s: number | null;
+  bytes: number | null;
+  item_count: number | null;
+  cover_file_id: number | null;
+  track: string | null;
+  status: "pending" | "rendering" | "ready" | "failed";
+  error: string | null;
+  created_at: number;
+  playable: boolean;
+}
+
+export interface MomentSuggestion {
+  kind: string;
+  ref: string;
+  title: string;
+  count: number;
+  cover_file_id: number | null;
+  already: boolean;
+}
+
+export interface MusicTrack {
+  file: string;
+  title: string;
+  mood: string;
+  seconds: number;
+}
+
+export const listMoments = () => api.get<Moment[]>("/api/moments");
+export const momentSuggestions = () => api.get<MomentSuggestion[]>("/api/moments/suggestions");
+export const momentMusic = () => api.get<{ tracks: MusicTrack[] }>("/api/moments/music");
+export const createMoment = (kind: string, ref: string, track?: string | null) =>
+  api.post<{ moment_id: number; job_id: number; photos: number }>("/api/moments", {
+    kind, ref, track: track ?? null,
+  });
+export const remakeMoment = (id: number, track?: string | null) =>
+  api.post<{ moment_id: number; job_id: number }>(`/api/moments/${id}/remake`, {
+    kind: "event", ref: "0", track: track ?? null,
+  });
+export const deleteMoment = (id: number) => api.del<{ ok: boolean }>(`/api/moments/${id}`);
+
 /** One detected face belonging to a person — a candidate cover. */
 export interface PersonFace {
   id: number;

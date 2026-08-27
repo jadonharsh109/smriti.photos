@@ -25,6 +25,11 @@ PREVIEWS_DIR = DATA_DIR / "previews"
 FACE_CROPS_DIR = DATA_DIR / "facecrops"
 MODELS_DIR = DATA_DIR / "models"
 EXPORTS_DIR = DATA_DIR / "exports"
+MOMENTS_DIR = DATA_DIR / "moments"
+# Ships inside the package, beside the code, like the migrations do. Generated
+# by scripts/make_music.py — original work, so there is no third-party audio in
+# the installer and nothing to attribute.
+MUSIC_DIR = _PKG_DIR / "assets" / "music"
 # installed wheels bundle the built frontend inside the package as webui/
 FRONTEND_DIST = (PROJECT_ROOT / "frontend" / "dist") if _IS_REPO else (_PKG_DIR / "webui")
 
@@ -125,7 +130,8 @@ FFPROBE = _tool("ffprobe")
 
 
 def ensure_dirs() -> None:
-    for d in (DATA_DIR, THUMBS_DIR, PREVIEWS_DIR, FACE_CROPS_DIR, MODELS_DIR, EXPORTS_DIR):
+    for d in (DATA_DIR, THUMBS_DIR, PREVIEWS_DIR, FACE_CROPS_DIR, MODELS_DIR, EXPORTS_DIR,
+              MOMENTS_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
 

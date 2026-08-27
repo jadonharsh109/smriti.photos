@@ -9,6 +9,7 @@ import {
   IconLock,
   IconPeople,
   IconPhotos,
+  IconFilm,
   IconPin,
   IconSearch,
   IconSliders,
@@ -31,6 +32,7 @@ const NAV: { sec: string; items: { to: string; label: string; Icon: typeof IconP
   {
     sec: "Explore",
     items: [
+      { to: "/moments", label: "Moments", Icon: IconFilm },
       { to: "/people", label: "People", Icon: IconPeople },
       { to: "/places", label: "Places", Icon: IconPin },
       { to: "/map", label: "Map", Icon: IconGlobe },
