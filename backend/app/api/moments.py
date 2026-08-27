@@ -49,10 +49,17 @@ def suggestions(limit: int = 12):
     made from the event's own page, it is just not *suggested*. Offered rather
     than rendered: every event on a large library would be an hour of CPU
     nobody asked for."""
+    # Only photos whose drive is actually plugged in are counted. The render
+    # is originals-first now, so an event sitting whole on an unplugged disk
+    # would be built from 512px thumbnails — the blurry montage this feature
+    # just stopped making. The volume watcher keeps is_online current within
+    # seconds, so plugging the drive in puts the event straight back on this
+    # list, and the count shown is the count a moment would be made from.
     rows = db.query(
         "SELECT e.id, e.title, COUNT(*) n, MAX(ei.file_id) cover FROM events e "
         "JOIN event_items ei ON ei.event_id = e.id "
         "JOIN files f ON f.id = ei.file_id AND f.status='active' AND f.media_type='photo' "
+        "JOIN volumes v ON v.id = f.volume_id AND v.is_online = 1 "
         "WHERE f.id NOT IN (SELECT file_id FROM locked_items) "
         "GROUP BY e.id HAVING n >= ? "
         "AND EXISTS (SELECT 1 FROM event_items ei2 "

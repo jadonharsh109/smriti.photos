@@ -46,7 +46,7 @@ class Source:
 # ---- choosing what goes in ---------------------------------------------------
 
 _BASE = (
-    "SELECT f.id, f.media_type, m.taken_at, q.sharpness "
+    "SELECT f.id, f.media_type, f.volume_id, m.taken_at, q.sharpness "
     "FROM files f JOIN metadata m ON m.file_id = f.id "
     "LEFT JOIN file_quality q ON q.file_id = f.id "
     "WHERE f.status='active' AND f.media_type='photo' AND m.taken_at IS NOT NULL "
@@ -130,6 +130,17 @@ def curate(rows: list, target: int = MAX_ITEMS) -> list:
             continue
         seen_groups.add(g)
         deduped.append(r)
+
+    # 1b. photos whose originals are actually reachable, while enough are: a
+    #     mixed event — half on this disk, half on one in a drawer — should be
+    #     built from the half that can be read at full size, not padded with
+    #     512px thumbnails. When too few are reachable the cache fallback
+    #     stands, deliberately: a moment of an unplugged trip can still be
+    #     asked for, it is just never *suggested*.
+    online = {r["id"] for r in db.query("SELECT id FROM volumes WHERE is_online=1")}
+    reachable = [r for r in deduped if r["volume_id"] in online]
+    if len(reachable) >= MIN_ITEMS:
+        deduped = reachable
 
     # 2. the soft ones — only where the blur scan has actually run. A library
     #    that never ran it should get a montage anyway, not an empty one.
