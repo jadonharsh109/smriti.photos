@@ -21,6 +21,35 @@ import PlacesPage from "./pages/PlacesPage";
 import SettingsPage from "./pages/SettingsPage";
 import TimelinePage from "./pages/TimelinePage";
 import "./styles.css";
+import { isDesktop } from "./lib/desktop";
+
+// Inside the desktop shell the webview's own context menu — Reload, Back,
+// Inspect Element on builds that have it — breaks the illusion that this is
+// an app rather than a page, so it is suppressed there. Two exceptions, both
+// about not taking real affordances away: editable fields keep their menu
+// (paste, spell-check), and so does selected text (copy). In a browser
+// nothing is touched: blocking right-click on a web page protects nothing —
+// the source is on GitHub anyway — and only breaks the user's own browser.
+if (isDesktop()) {
+  window.addEventListener("contextmenu", (e) => {
+    const t = e.target as HTMLElement | null;
+    const editable = !!t?.closest("input, textarea, [contenteditable]");
+    const selection = !!window.getSelection()?.toString();
+    if (!editable && !selection) e.preventDefault();
+  });
+  // Belt over braces for the devtools chords: with the feature compiled out
+  // of release builds they open nothing on macOS, but the Windows webview is
+  // its own animal and this costs one listener.
+  window.addEventListener("keydown", (e) => {
+    const mod = e.ctrlKey || e.metaKey;
+    const devtools =
+      e.key === "F12" ||
+      (mod && e.shiftKey && ["I", "J", "C", "i", "j", "c"].includes(e.key)) ||
+      (e.metaKey && e.altKey && ["I", "i", "Dead"].includes(e.key)) ||
+      (mod && ["U", "u"].includes(e.key));   // view-source
+    if (devtools) e.preventDefault();
+  });
+}
 
 const qc = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },

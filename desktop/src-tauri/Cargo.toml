@@ -10,7 +10,11 @@ rust-version = "1.85" # dependency tree pulls crates requiring edition2024
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["devtools"] }
+# No `devtools` feature: Tauri compiles the inspector into debug builds
+# regardless, so `tauri dev` keeps its tools — but a shipped app offering
+# "Inspect Element" reads as unfinished, and the feature flag is what was
+# putting it there.
+tauri = { version = "2", features = [] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-updater = "2"
