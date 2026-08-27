@@ -42,15 +42,27 @@ def music():
 def suggestions(limit: int = 12):
     """Sources worth making one of, best first.
 
-    Events with enough in them, biggest first — the trips someone actually
-    took. Offered rather than made: rendering every event on a large library
-    would be an hour of CPU nobody asked for."""
+    Not merely events with enough photos — events with someone the user has
+    named in them, somewhere the library can place. A moment is "that trip to
+    Rishikesh with Yash", and an event that is all strangers in an unlocated
+    folder makes a montage nobody is in and nowhere happened; it can still be
+    made from the event's own page, it is just not *suggested*. Offered rather
+    than rendered: every event on a large library would be an hour of CPU
+    nobody asked for."""
     rows = db.query(
         "SELECT e.id, e.title, COUNT(*) n, MAX(ei.file_id) cover FROM events e "
         "JOIN event_items ei ON ei.event_id = e.id "
         "JOIN files f ON f.id = ei.file_id AND f.status='active' AND f.media_type='photo' "
         "WHERE f.id NOT IN (SELECT file_id FROM locked_items) "
-        "GROUP BY e.id HAVING n >= ? ORDER BY n DESC LIMIT ?",
+        "GROUP BY e.id HAVING n >= ? "
+        "AND EXISTS (SELECT 1 FROM event_items ei2 "
+        "            JOIN faces fa ON fa.file_id = ei2.file_id "
+        "            JOIN persons pe ON pe.id = fa.person_id "
+        "            WHERE ei2.event_id = e.id AND pe.name IS NOT NULL) "
+        "AND EXISTS (SELECT 1 FROM event_items ei3 "
+        "            JOIN file_places pl ON pl.file_id = ei3.file_id "
+        "            WHERE ei3.event_id = e.id AND pl.city IS NOT NULL) "
+        "ORDER BY n DESC LIMIT ?",
         (svc.MIN_ITEMS, limit))
     made = {m["ref"] for m in db.query("SELECT ref FROM moments WHERE kind='event'")}
     return [{"kind": "event", "ref": str(r["id"]), "title": r["title"],

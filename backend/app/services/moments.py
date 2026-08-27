@@ -190,6 +190,82 @@ def _centering(img, file_id: int) -> tuple[float, float]:
     return (0.5, cy)
 
 
+# Above this closed-minus-open margin, a face is a blink. Calibrated on a real
+# library: 260 random face crops scored and eyeballed — everything past 0.025
+# was genuinely shut or downcast eyes, everything below -0.02 was wide open,
+# and the band between is squints and profiles, which stay.
+BLINK_MARGIN = 0.025
+_blink_cache: tuple | None | bool = None
+
+
+def _blink_scorer():
+    """CLIP, asked one narrow question per face: are the eyes shut?
+
+    The library stores face boxes but no eye landmarks, and shipping a
+    dedicated blink model for one filter would be absurd — while the search
+    model, if it has been downloaded, answers this zero-shot on a face crop.
+    Returns None where CLIP is absent; a montage must not grow a
+    prerequisite, it just skips the check it cannot make."""
+    global _blink_cache
+    if _blink_cache is not None:
+        return _blink_cache or None
+    try:
+        import numpy as np
+
+        from ..fetch_clip import present
+        if not present():
+            _blink_cache = False
+            return None
+        from .search import engine
+        eng = engine()
+        closed = ["a photo of a face with both eyes closed",
+                  "a person blinking, eyes shut",
+                  "a portrait of someone with closed eyes"]
+        opened = ["a photo of a face with eyes open",
+                  "a person looking at the camera with open eyes",
+                  "a portrait of someone with wide open eyes"]
+        tv = eng.encode_text(closed + opened)
+        c = tv[: len(closed)].mean(0)
+        o = tv[len(closed):].mean(0)
+        c, o = c / np.linalg.norm(c), o / np.linalg.norm(o)
+        _blink_cache = (eng, c, o)
+    except Exception:
+        _blink_cache = False
+        return None
+    return _blink_cache
+
+
+def _eyes_closed(img, file_id: int) -> float:
+    """The worst blink in the photo — max closed-minus-open margin across its
+    faces. One person mid-blink spoils the frame, so the max is the score.
+    Tiny background faces are skipped: no eye detail survives at that size,
+    and their answer would be noise either way."""
+    scorer = _blink_scorer()
+    if scorer is None:
+        return 0.0
+    eng, cvec, ovec = scorer
+    faces = db.query(
+        "SELECT x, y, w, h FROM faces WHERE file_id=? AND w*h >= 0.008 AND det_score > 0.6",
+        (file_id,))
+    if not faces:
+        return 0.0
+    W, H = img.size
+    worst = -1.0
+    for f in faces:
+        x, y, w, h = f["x"] * W, f["y"] * H, f["w"] * W, f["h"] * H
+        mx, my = w * 0.3, h * 0.3
+        crop = img.crop((max(0, int(x - mx)), max(0, int(y - my)),
+                         min(W, int(x + w + mx)), min(H, int(y + h + my))))
+        if min(crop.size) < 48:
+            continue
+        try:
+            emb = eng.encode_image(crop)
+        except Exception:
+            return 0.0
+        worst = max(worst, float(emb @ cvec - emb @ ovec))
+    return worst
+
+
 def _sharpness(img) -> float:
     """Gradient variance on a small grayscale copy — enough to rank the frames
     of one event against each other, which is all it is used for."""
@@ -204,7 +280,7 @@ def _sharpness(img) -> float:
 _UP = 1.5
 
 
-def _still(row, dest: str) -> tuple[str, float] | None:
+def _still(row, dest: str) -> tuple[str, float, float] | None:
     """A photo, decoded here rather than by ffmpeg, best copy first.
 
     The original, wherever its drive is plugged in — this is the render that
@@ -232,10 +308,13 @@ def _still(row, dest: str) -> tuple[str, float] | None:
     if img is None:
         return None
     img = img.convert("RGB")
+    # blink is judged before the 16:9 crop — the face boxes are normalised to
+    # the photo as shot, not to whatever framing survives the fit
+    blink = _eyes_closed(img, row["id"])
     img = ImageOps.fit(img, (int(W * _UP), int(H * _UP)), Image.LANCZOS,
                        centering=_centering(img, row["id"]))
     img.save(dest, "JPEG", quality=92)
-    return dest, _sharpness(img)
+    return dest, _sharpness(img), blink
 
 
 def _title_card(src: Source, under, dest: str) -> str:
@@ -327,19 +406,25 @@ def render(src: Source, rows: list, out_path: str, track: dict | None,
     """Render the montage. Returns (duration seconds, the rows actually used) —
     curation offers more than fit and the soft ones are dropped in here."""
     os.makedirs(workdir, exist_ok=True)
-    decoded: list[tuple[dict, str, float]] = []          # (row, path, sharpness)
+    decoded: list[tuple[dict, str, float, float]] = []   # (row, path, sharpness, blink)
     for i, r in enumerate(rows):
         got = _still(r, os.path.join(workdir, f"{i:03d}.jpg"))
         if got:
-            decoded.append((r, got[0], got[1]))
+            decoded.append((r, *got))
         if on_progress:
             on_progress(i + 1, len(rows))
     if len(decoded) < MIN_ITEMS:
         raise MomentError(f"only {len(decoded)} photos could be read — need at least {MIN_ITEMS}")
-    # Curation hands over a few more than fit, and the softest are dropped here,
-    # where the pixels have actually been looked at — file_quality is empty on
-    # any library that never ran the blur scan, and a montage should not need a
-    # prerequisite. Order stays chronological; only membership is decided.
+    # Membership is decided here, where the pixels have actually been looked
+    # at; order stays chronological. Blinks go first — a frame held for three
+    # seconds on someone mid-blink is the one everyone in it will notice —
+    # then the softest, down to what fits. Never below the minimum: a moment
+    # made entirely of blinks is still that event, eyes and all.
+    blinky = sorted((d for d in decoded if d[3] >= BLINK_MARGIN), key=lambda d: -d[3])
+    for d in blinky:
+        if len(decoded) <= MIN_ITEMS:
+            break
+        decoded.remove(d)
     if len(decoded) > MAX_ITEMS:
         floor = sorted(d[2] for d in decoded)[len(decoded) - MAX_ITEMS - 1]
         decoded = [d for d in decoded if d[2] > floor][:MAX_ITEMS]

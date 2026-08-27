@@ -151,7 +151,6 @@ export default function MomentsPage() {
                 )}
                 {(m.status === "rendering" || m.status === "pending") && (
                   <span className="working">
-                    <span className="spin" />
                     {Array.from({ length: 6 }, (_, i) => (
                       <i key={i} className={`sp sp${i}`}>✦</i>
                     ))}
