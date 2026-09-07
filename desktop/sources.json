@@ -30,9 +30,10 @@
       "x86_64-pc-windows-msvc": {
         "_source": "https://github.com/BtbN/FFmpeg-Builds — win64-lgpl-shared. ffmpeg.exe/ffprobe.exe are ~0.5MB stubs sharing one set of av*.dll, roughly half the size of two static binaries.",
         "_license": "LGPL (no --enable-gpl). fetch_ffmpeg.py verifies this from the binary's own configure flags at build time.",
-        "_pinned": "Dated autobuild tag, never 'latest' — that tag is rolling and would make builds unreproducible.",
-        "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-16-13-00/ffmpeg-n8.1.2-44-g7c533d0f86-win64-lgpl-shared-8.1.zip",
-        "sha256": "294dc74823eab6a6f36b2bc4560c90384c9ba971bd4d2e87eb4ecae5e4604e1e"
+        "_pinned": "Mirrored in this repo's 'build-inputs' pre-release. BtbN deletes dated autobuilds after a few weeks, and the 2.0.0 Windows build died on a 404 for the previous pin; 'latest' there is rolling and would make builds unreproducible. To re-pin: download the new zip, upload it to the build-inputs release (gh release upload build-inputs <zip>), and update url + sha256 + _upstream here.",
+        "_upstream": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-07-15-39/ffmpeg-n8.1.2-51-g7ba069f4f1-win64-lgpl-shared-8.1.zip",
+        "url": "https://github.com/jadonharsh109/smriti.photos/releases/download/build-inputs/ffmpeg-n8.1.2-51-g7ba069f4f1-win64-lgpl-shared-8.1.zip",
+        "sha256": "afb1c55ecdef6b80f6243984954dbfe350d44c7da2b64f30575c283b68214825"
       }
     }
   }

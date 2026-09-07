@@ -18,8 +18,11 @@ body {
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: default; }
 input, textarea, select { font: inherit; color: inherit; }
 button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Links never underline by default: the sidebar rows, cards and headings are
+   <a> elements too, and a whole window that underlines itself under the
+   cursor looks like a web page. Only a link inside running text does. */
 a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
+p a:hover, .note a:hover, .sbody a:hover, .empty a:hover, .kv a:hover, .link:hover { text-decoration: underline; }
 svg { display: block; }
 h1, h2, h3, h4, p, dl, dd { margin: 0; }
 .num { font-variant-numeric: tabular-nums; }
