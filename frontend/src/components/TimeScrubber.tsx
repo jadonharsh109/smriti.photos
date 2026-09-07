@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState } from "react";
 import type { Bucket } from "../api/client";
-import Portal from "./Portal";
 
 interface Props {
   buckets: Bucket[]; // newest-first
@@ -97,8 +96,9 @@ export default function TimeScrubber({ buckets, currentIndex, edge, onJump }: Pr
   const currentFrac =
     edge === "top" ? 0 : edge === "bottom" ? 1 : fracForDay(buckets[Math.min(currentIndex, buckets.length - 1)].day);
 
+  // Rendered inside the stage, pinned to its right edge: nothing above it
+  // animates any more, so no ancestor transform can hijack its position.
   return (
-    <Portal>
       <div className={`tscrub${dragging ? " drag" : ""}`}>
         <div
           ref={trackRef}
@@ -144,6 +144,5 @@ export default function TimeScrubber({ buckets, currentIndex, edge, onJump }: Pr
           )}
         </div>
       </div>
-    </Portal>
   );
 }

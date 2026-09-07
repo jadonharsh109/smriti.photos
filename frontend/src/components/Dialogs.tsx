@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import Portal from "./Portal";
 
-/** Glass sheet replacements for window.prompt / window.confirm. */
+/** Sheets in place of window.prompt / window.confirm. */
 
 export function TextDialog({
   title,
@@ -32,28 +32,26 @@ export function TextDialog({
 
   return (
     <Portal>
-    <div className="modal-back" onClick={onClose}>
-      <div className="modal" style={{ width: 420 }} onClick={(e) => e.stopPropagation()}>
-        <header>{title}</header>
-        <div className="modal-body" style={{ padding: "12px 24px 6px" }}>
-          <input
-            type="text"
-            autoFocus
-            style={{ width: "100%" }}
-            placeholder={placeholder}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && submit()}
-          />
+      <div className="scrim" onClick={onClose}>
+        <div className="sheet" role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
+          <header>{title}</header>
+          <div className="sbody">
+            <input
+              className="input"
+              type="text"
+              autoFocus
+              placeholder={placeholder}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && submit()}
+            />
+          </div>
+          <div className="sfoot">
+            <button className="btn" onClick={onClose}>Cancel</button>
+            <button className="btn primary" disabled={!value.trim()} onClick={submit}>{submitLabel}</button>
+          </div>
         </div>
-        <footer>
-          <button onClick={onClose}>Cancel</button>
-          <button className="primary" disabled={!value.trim()} onClick={submit}>
-            {submitLabel}
-          </button>
-        </footer>
       </div>
-    </div>
     </Portal>
   );
 }
@@ -70,33 +68,48 @@ export function ConfirmDialog({
   body?: React.ReactNode;
   confirmLabel?: string;
   danger?: boolean;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   onClose: () => void;
 }) {
+  const [busy, setBusy] = useState(false);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      // the confirm is the primary action; return runs it, like a native alert
+      if (e.key === "Enter" && !busy) {
+        e.preventDefault();
+        go();
+      }
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onClose, busy]);
+
+  const go = async () => {
+    setBusy(true);
+    try {
+      await onConfirm();
+    } finally {
+      setBusy(false);
+      onClose();
+    }
+  };
 
   return (
     <Portal>
-    <div className="modal-back" onClick={onClose}>
-      <div className="modal" style={{ width: 420 }} onClick={(e) => e.stopPropagation()}>
-        <header>{title}</header>
-        {body && (
-          <div className="modal-body muted" style={{ padding: "6px 24px 10px" }}>
-            {body}
+      <div className="scrim" onClick={onClose}>
+        <div className="sheet" role="alertdialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
+          <header>{title}</header>
+          {body && <div className="sbody">{typeof body === "string" ? <p>{body}</p> : body}</div>}
+          <div className="sfoot">
+            <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
+            <button className={`btn ${danger ? "danger" : "primary"}`} onClick={go} disabled={busy}>
+              {busy ? "Working…" : confirmLabel}
+            </button>
           </div>
-        )}
-        <footer>
-          <button onClick={onClose}>Cancel</button>
-          <button className={danger ? "danger" : "primary"} onClick={() => { onConfirm(); onClose(); }}>
-            {confirmLabel}
-          </button>
-        </footer>
+        </div>
       </div>
-    </div>
     </Portal>
   );
 }

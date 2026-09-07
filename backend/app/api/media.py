@@ -278,8 +278,13 @@ def file_detail(file_id: int, lt: str | None = None):
     motion = (db.query_one("SELECT video_file_id FROM file_motion WHERE file_id=?", (file_id,))
               if row["live"] else None)
     vol = db.query_one("SELECT label, last_mount_path, is_online FROM volumes WHERE id=?", (row["volume_id"],))
+    from ..services import favourites
+
+    fav = db.query_one("SELECT 1 FROM album_items WHERE album_id=? AND file_id=?",
+                       (favourites.album_id(), file_id)) is not None
     return {
         **dict(row),
+        "fav": 1 if fav else 0,
         "metadata": dict(meta) if meta else None,
         "place": dict(place) if place else None,
         "persons": [dict(p) for p in persons],

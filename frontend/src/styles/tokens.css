@@ -1,0 +1,64 @@
+/* Smriti · design tokens.
+   Light is the base; the dark set is applied under the OS preference unless
+   an explicit choice says otherwise, and again under an explicit dark
+   choice — three states, one token set, nothing defined only in one theme. */
+:root {
+  --page: #e9e9ec;
+  --ground: #f6f6f7;
+  --side: #ededef;
+  --surface: #ffffff;
+  --ink: #1d1d1f;
+  --muted: #6e6e73;
+  --faint: #9a9aa0;
+  --rule: #d6d6db;
+  --rule-soft: #e4e4e8;
+  --hover: rgba(0, 0, 0, 0.05);
+  --press: rgba(0, 0, 0, 0.09);
+  --accent: #c46a0e;
+  --accent-soft: rgba(196, 106, 14, 0.14);
+  --accent-ink: #ffffff;
+  --good: #2f7d4f;
+  --warn: #a8720f;
+  --bad: #b8382d;
+  --bad-soft: rgba(184, 56, 45, 0.12);
+  --viewer: #141416;
+  --shadow: 0 12px 40px rgba(0, 0, 0, 0.18), 0 1px 3px rgba(0, 0, 0, 0.12);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  --tile-bg: #dcdce0;
+  --scrim: rgba(0, 0, 0, 0.28);
+
+  --tile-h: 150px;
+  --side-w: 220px;
+  --insp-w: 280px;
+  --toolbar-h: 44px;
+  --status-h: 26px;
+
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, Roboto, sans-serif;
+  --dev-font: "Kohinoor Devanagari", "ITF Devanagari", "Devanagari MT", "Noto Sans Devanagari", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #151517; --ground: #1e1e21; --side: #252529; --surface: #2a2a2e;
+    --ink: #e8e8ea; --muted: #a0a0a6; --faint: #6f6f75; --rule: #3a3a40; --rule-soft: #303036;
+    --hover: rgba(255, 255, 255, 0.06); --press: rgba(255, 255, 255, 0.1);
+    --accent: #f0a34a; --accent-soft: rgba(240, 163, 74, 0.18); --accent-ink: #1a1207;
+    --good: #5cbf85; --warn: #d9a441; --bad: #e0675b; --bad-soft: rgba(224, 103, 91, 0.16);
+    --viewer: #0e0e10; --tile-bg: #35353a; --scrim: rgba(0, 0, 0, 0.5);
+    --shadow: 0 12px 40px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.06);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #151517; --ground: #1e1e21; --side: #252529; --surface: #2a2a2e;
+  --ink: #e8e8ea; --muted: #a0a0a6; --faint: #6f6f75; --rule: #3a3a40; --rule-soft: #303036;
+  --hover: rgba(255, 255, 255, 0.06); --press: rgba(255, 255, 255, 0.1);
+  --accent: #f0a34a; --accent-soft: rgba(240, 163, 74, 0.18); --accent-ink: #1a1207;
+  --good: #5cbf85; --warn: #d9a441; --bad: #e0675b; --bad-soft: rgba(224, 103, 91, 0.16);
+  --viewer: #0e0e10; --tile-bg: #35353a; --scrim: rgba(0, 0, 0, 0.5);
+  --shadow: 0 12px 40px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  color-scheme: dark;
+}
