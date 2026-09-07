@@ -1,26 +1,39 @@
-//! `smriti://` — thumbnails, previews, face crops and originals served by the
-//! shell straight from disk, so no image ever passes through the Python server
-//! and the webview is not limited to six HTTP connections while it scrolls.
+//! `smriti://` — thumbnails, previews, face crops and originals, served by the
+//! shell straight from disk.
 //!
-//! The URL a page has to use differs per platform, because of how Tauri maps
-//! custom schemes onto each webview:
+//! Why: the webview allows six connections to one host, and every image used
+//! to be one HTTP request through the Python server at about two milliseconds
+//! each. Measured in the Phase 0 spike: 600 warm thumbnails in 158–207 ms this
+//! way, against 302–1,589 ms over HTTP while Python was busy indexing.
+//!
+//! The URL a page uses differs per platform, because of how Tauri maps custom
+//! schemes onto each webview:
 //!
 //!   macOS / Linux / iOS   smriti://localhost/thumb/123
 //!   Windows / Android     http://smriti.localhost/thumb/123
 //!
-//! Only the path is routed on, so both forms reach the same code.
+//! `image_base()` is the form for this build. main.rs hands it to the page as
+//! `data-smriti-images` on `<html>`, and `frontend/src/lib/images.ts` builds
+//! every image URL from it.
 //!
-//! Spike scope (Phase 0): there is no Locked-section token yet — see the TODO
-//! in `original_path` — so an original that sits in `locked_items` is never
-//! served at all. Thumbnails and previews of locked files are still reachable
-//! by id, exactly as the HTTP routes were before their `lt` guard; the
-//! production version must gate all four routes the same way.
+//! Locked section: the shell never serves anything that belongs to a file with
+//! `files.locked = 1` — not its thumbnail, its preview, its face crops or its
+//! original — and answers 404, never 401, so the status does not confirm the
+//! file exists. Whatever the page shows *inside* the Locked section goes
+//! through the Python routes with the unlock token instead: images.ts falls
+//! back to `/api/...` whenever a query string is present.
+//!
+//! Misses are proxied. A preview is generated lazily by Python from the
+//! original, and a face crop may predate the scan writing them, so a request
+//! for a cache file that is not on disk yet is forwarded to the matching
+//! `/api/` route and its answer returned. The second request finds the file.
 
 use std::borrow::Cow;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{mpsc, Arc, Mutex, OnceLock};
+use std::thread;
 use std::time::Duration;
 
 use rusqlite::{OpenFlags, OptionalExtension};
@@ -31,21 +44,88 @@ use crate::paths;
 
 pub const SCHEME: &str = "smriti";
 
+/// The origin the page should build image URLs on, for this platform.
+pub fn image_base() -> &'static str {
+    if cfg!(any(windows, target_os = "android")) {
+        "http://smriti.localhost"
+    } else {
+        "smriti://localhost"
+    }
+}
+
 /// Largest slice handed back for an open-ended range ("bytes=0-"). Players ask
 /// for the rest as they need it, and a 500 MB original must never be read into
 /// memory in one go just because the first request did not name an end.
 const MAX_RANGE_CHUNK: u64 = 16 * 1024 * 1024;
 
+/// Most a proxied answer may be. Cache files are a few hundred KB at most; a
+/// preview is 1600 px WebP. Anything larger is not something Python's cache
+/// routes produce.
+const MAX_PROXY_BODY: u64 = 64 * 1024 * 1024;
+
 /// Cache files are content-addressed by id and version in their name, so the
 /// browser may keep them for as long as it likes.
 const CACHE_FOREVER: &str = "public, max-age=31536000, immutable";
+/// Originals can be edited or trashed under us; a short private cache is
+/// enough to make prev/next in the viewer instant.
+const CACHE_PRIVATE: &str = "private, max-age=3600";
+
+/// File reads for images. Four threads: enough to keep a disk busy, few enough
+/// that a scroll firing 600 requests at once queues them instead of spawning
+/// 600 threads — which is what the spike measured as a two-second cold start
+/// on Tauri's shared blocking pool.
+const WORKERS: usize = 4;
 
 type Body = Cow<'static, [u8]>;
+type Job = Box<dyn FnOnce() + Send + 'static>;
 
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+static SERVER_URL: OnceLock<String> = OnceLock::new();
+static POOL: OnceLock<Pool> = OnceLock::new();
+static DB: Mutex<Option<rusqlite::Connection>> = Mutex::new(None);
 
-/// The scheme handler. Runs on the webview's thread, so all the file I/O is
-/// pushed onto the blocking pool and the response is delivered from there.
+/// Where the Python server answers, once it does. Set by main.rs the moment
+/// the health check passes; until then a cache miss is a 503 rather than a
+/// proxy attempt at nothing.
+pub fn set_server_url(url: &str) {
+    let _ = SERVER_URL.set(url.trim_end_matches('/').to_owned());
+}
+
+struct Pool {
+    tx: Mutex<mpsc::Sender<Job>>,
+}
+
+impl Pool {
+    fn new(n: usize) -> Self {
+        let (tx, rx) = mpsc::channel::<Job>();
+        let rx = Arc::new(Mutex::new(rx));
+        for i in 0..n {
+            let rx = Arc::clone(&rx);
+            thread::Builder::new()
+                .name(format!("smriti-images-{i}"))
+                .spawn(move || loop {
+                    // The guard is a temporary of the `let`, released before
+                    // the job runs, so one worker waiting on the channel does
+                    // not hold the others off their own work.
+                    let job = match rx.lock().unwrap_or_else(|p| p.into_inner()).recv() {
+                        Ok(job) => job,
+                        Err(_) => return,
+                    };
+                    job();
+                })
+                .expect("spawn image worker");
+        }
+        Pool { tx: Mutex::new(tx) }
+    }
+
+    fn run(&self, job: Job) {
+        let _ = self.tx.lock().unwrap_or_else(|p| p.into_inner()).send(job);
+    }
+}
+
+/// The scheme handler. Runs on the webview's thread, so it only parses the
+/// request; the file I/O happens on the pool and the response is delivered
+/// from there.
 pub fn handle(
     ctx: UriSchemeContext<'_, Wry>,
     req: Request<Vec<u8>>,
@@ -58,18 +138,18 @@ pub fn handle(
         .get_or_init(|| paths::resolve_data_dir(ctx.app_handle()))
         .clone();
     let path = req.uri().path().to_string();
-    let range = req
-        .headers()
-        .get(header::RANGE)
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_string);
-    tauri::async_runtime::spawn_blocking(move || {
-        let response = match route(&data_dir, &path, range.as_deref()) {
-            Ok(r) => r,
-            Err(status) => empty(status),
-        };
-        responder.respond(response);
-    });
+    let hdr = |name: header::HeaderName| {
+        req.headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string)
+    };
+    let range = hdr(header::RANGE);
+    let origin = hdr(header::ORIGIN);
+    POOL.get_or_init(|| Pool::new(WORKERS)).run(Box::new(move || {
+        let response = route(&data_dir, &path, range.as_deref()).unwrap_or_else(empty);
+        responder.respond(with_cors(response, origin.as_deref()));
+    }));
 }
 
 fn route(data: &Path, path: &str, range: Option<&str>) -> Result<Response<Body>, StatusCode> {
@@ -77,17 +157,36 @@ fn route(data: &Path, path: &str, range: Option<&str>) -> Result<Response<Body>,
     let kind = parts.next().unwrap_or("");
     let id = parts.next().and_then(parse_id).ok_or(StatusCode::NOT_FOUND)?;
     match kind {
-        "thumb" => serve_file(&shard(&data.join("thumbs"), id, ".webp"), range, true),
-        "preview" => serve_file(&shard(&data.join("previews"), id, ".webp"), range, true),
+        "thumb" | "preview" => {
+            if file_locked(data, id)? {
+                return Err(StatusCode::NOT_FOUND);
+            }
+            let dir = if kind == "thumb" { "thumbs" } else { "previews" };
+            let file = shard(&data.join(dir), id, ".webp");
+            if file.is_file() {
+                serve_file(&file, range, CACHE_FOREVER)
+            } else {
+                proxy(&format!("/api/{kind}/{id}"), range)
+            }
+        }
         "face" => {
+            if face_locked(data, id)? {
+                return Err(StatusCode::NOT_FOUND);
+            }
             // Same fallback the Python side keeps: the current crop version
             // first, then whatever an older version left behind.
             let dir = data.join("facecrops");
             let current = shard(&dir, id, ".v2.webp");
-            let file = if current.is_file() { current } else { shard(&dir, id, ".webp") };
-            serve_file(&file, range, true)
+            let legacy = shard(&dir, id, ".webp");
+            if current.is_file() {
+                serve_file(&current, range, CACHE_FOREVER)
+            } else if legacy.is_file() {
+                serve_file(&legacy, range, CACHE_FOREVER)
+            } else {
+                proxy(&format!("/api/faces/{id}/thumb"), range)
+            }
         }
-        "media" => serve_file(&original_path(data, id)?, range, false),
+        "media" => serve_file(&original_path(data, id)?, range, CACHE_PRIVATE),
         _ => Err(StatusCode::NOT_FOUND),
     }
 }
@@ -106,50 +205,27 @@ fn shard(base: &Path, id: i64, suffix: &str) -> PathBuf {
     base.join(format!("{:02x}", id % 256)).join(format!("{id}{suffix}"))
 }
 
-/// Where the original of file `id` is right now, following the same rules as
-/// `services/volumes.abs_path_for_file`: the volume must be online, and the
-/// POSIX rel_path is joined onto its current mount path.
-fn original_path(data: &Path, id: i64) -> Result<PathBuf, StatusCode> {
-    let conn = open_db(&data.join("library.db")).map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-    let row = conn
-        .query_row(
-            "SELECT f.rel_path, v.last_mount_path, v.is_online, \
-                    EXISTS (SELECT 1 FROM locked_items li WHERE li.file_id = f.id) \
-             FROM files f JOIN volumes v ON v.id = f.volume_id \
-             WHERE f.id = ?1 AND f.status = 'active'",
-            [id],
-            |r| {
-                Ok((
-                    r.get::<_, String>(0)?,
-                    r.get::<_, Option<String>>(1)?,
-                    r.get::<_, i64>(2)?,
-                    r.get::<_, i64>(3)?,
-                ))
-            },
-        )
-        .optional()
-        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-    let (rel, mount, online, locked) = row.ok_or(StatusCode::NOT_FOUND)?;
+// ---- the database -----------------------------------------------------------
 
-    // TODO(locked): accept the Locked-section unlock token here — the shell can
-    // attach it as a header on its own requests, or the page can pass `?lt=` as
-    // the HTTP routes do — and let a valid token through. Until then a locked
-    // original is simply not served. 404 rather than 401 on purpose: the
-    // status must not confirm that a locked file exists.
-    if locked != 0 || online == 0 {
-        return Err(StatusCode::NOT_FOUND);
+/// Run a read against `library.db` on the one connection this module keeps.
+/// Opened on first use and reused; dropped after any error so the next
+/// request reopens it — the way out of a checkpoint or a replaced file.
+fn with_db<T>(
+    data: &Path,
+    f: impl FnOnce(&rusqlite::Connection) -> rusqlite::Result<T>,
+) -> Result<T, StatusCode> {
+    let mut guard = DB.lock().unwrap_or_else(|p| p.into_inner());
+    if guard.is_none() {
+        let conn = open_db(&data.join("library.db")).map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+        *guard = Some(conn);
     }
-    let mut path = PathBuf::from(mount.ok_or(StatusCode::NOT_FOUND)?);
-    for component in rel.split('/').filter(|c| !c.is_empty()) {
-        if component == ".." {
-            return Err(StatusCode::FORBIDDEN); // never stored, never honoured
+    match f(guard.as_ref().expect("opened above")) {
+        Ok(v) => Ok(v),
+        Err(_) => {
+            *guard = None;
+            Err(StatusCode::SERVICE_UNAVAILABLE)
         }
-        path.push(component);
     }
-    if !path.is_file() {
-        return Err(StatusCode::NOT_FOUND);
-    }
-    Ok(path)
 }
 
 /// Read-only where SQLite lets us: a WAL database opened read-only needs its
@@ -167,29 +243,116 @@ fn open_db(db: &Path) -> rusqlite::Result<rusqlite::Connection> {
     Ok(conn)
 }
 
+/// `files.locked` for one file. `Err(NOT_FOUND)` when there is no such file —
+/// a thumbnail for a row that no longer exists is not served either.
+///
+/// `files.locked` arrived with migration 0014; a database an older backend
+/// has not migrated yet answers the same question from `locked_items`.
+fn file_locked(data: &Path, id: i64) -> Result<bool, StatusCode> {
+    with_db(data, |c| {
+        let flag = c
+            .prepare_cached("SELECT locked FROM files WHERE id = ?1")
+            .and_then(|mut s| s.query_row([id], |r| r.get::<_, i64>(0)).optional());
+        match flag {
+            Ok(v) => Ok(v),
+            Err(_) => c
+                .prepare_cached(
+                    "SELECT EXISTS (SELECT 1 FROM locked_items li WHERE li.file_id = f.id) \
+                     FROM files f WHERE f.id = ?1",
+                )?
+                .query_row([id], |r| r.get::<_, i64>(0))
+                .optional(),
+        }
+    })
+    .and_then(|v| v.ok_or(StatusCode::NOT_FOUND))
+    .map(|v| v != 0)
+}
+
+/// The same, for the file a face was found in.
+fn face_locked(data: &Path, face_id: i64) -> Result<bool, StatusCode> {
+    with_db(data, |c| {
+        let flag = c
+            .prepare_cached("SELECT f.locked FROM faces fa JOIN files f ON f.id = fa.file_id WHERE fa.id = ?1")
+            .and_then(|mut s| s.query_row([face_id], |r| r.get::<_, i64>(0)).optional());
+        match flag {
+            Ok(v) => Ok(v),
+            Err(_) => c
+                .prepare_cached(
+                    "SELECT EXISTS (SELECT 1 FROM locked_items li WHERE li.file_id = fa.file_id) \
+                     FROM faces fa WHERE fa.id = ?1",
+                )?
+                .query_row([face_id], |r| r.get::<_, i64>(0))
+                .optional(),
+        }
+    })
+    .and_then(|v| v.ok_or(StatusCode::NOT_FOUND))
+    .map(|v| v != 0)
+}
+
+/// Where the original of file `id` is right now, following the same rules as
+/// `services/volumes.abs_path_for_file`: the volume must be online, and the
+/// POSIX rel_path is joined onto its current mount path. A locked file has no
+/// path, as far as this scheme is concerned.
+fn original_path(data: &Path, id: i64) -> Result<PathBuf, StatusCode> {
+    let row = with_db(data, |c| {
+        let modern = c
+            .prepare_cached(
+                "SELECT f.rel_path, v.last_mount_path, v.is_online, f.locked \
+                 FROM files f JOIN volumes v ON v.id = f.volume_id \
+                 WHERE f.id = ?1 AND f.status = 'active'",
+            )
+            .and_then(|mut s| s.query_row([id], row4).optional());
+        match modern {
+            Ok(v) => Ok(v),
+            Err(_) => c
+                .prepare_cached(
+                    "SELECT f.rel_path, v.last_mount_path, v.is_online, \
+                            EXISTS (SELECT 1 FROM locked_items li WHERE li.file_id = f.id) \
+                     FROM files f JOIN volumes v ON v.id = f.volume_id \
+                     WHERE f.id = ?1 AND f.status = 'active'",
+                )?
+                .query_row([id], row4)
+                .optional(),
+        }
+    })?;
+    let (rel, mount, online, locked) = row.ok_or(StatusCode::NOT_FOUND)?;
+    if locked != 0 || online == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    let mut path = PathBuf::from(mount.ok_or(StatusCode::NOT_FOUND)?);
+    for component in rel.split('/').filter(|c| !c.is_empty()) {
+        if component == ".." {
+            return Err(StatusCode::FORBIDDEN); // never stored, never honoured
+        }
+        path.push(component);
+    }
+    if !path.is_file() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    Ok(path)
+}
+
+type OriginalRow = (String, Option<String>, i64, i64);
+
+fn row4(r: &rusqlite::Row<'_>) -> rusqlite::Result<OriginalRow> {
+    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+}
+
+// ---- serving ----------------------------------------------------------------
+
 /// One file, whole or in part.
 ///
 /// A `Range` header gets a 206 with the slice it asked for (open-ended ranges
 /// are capped at `MAX_RANGE_CHUNK`); no header gets the whole file as a 200.
 /// Both carry `Accept-Ranges`, so a player learns it may seek.
-fn serve_file(path: &Path, range: Option<&str>, immutable: bool) -> Result<Response<Body>, StatusCode> {
+fn serve_file(path: &Path, range: Option<&str>, cache: &'static str) -> Result<Response<Body>, StatusCode> {
     let mut file = File::open(path).map_err(|_| StatusCode::NOT_FOUND)?;
     let total = file.metadata().map_err(|_| StatusCode::NOT_FOUND)?.len();
 
     let mut builder = Response::builder()
         .header(header::CONTENT_TYPE, mime_for(path))
         .header(header::ACCEPT_RANGES, "bytes")
-        // The SPA is a different origin from this scheme on every platform, so
-        // fetch()/XHR need CORS to read a response; <img> and <video> do not.
-        // Production should echo the loopback origin instead of "*".
-        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-        // Content-Range and Accept-Ranges are not CORS-safelisted, so a
-        // cross-origin fetch() cannot read them unless they are exposed. <video>
-        // does not need this; the range test in the spike script does.
-        .header(header::ACCESS_CONTROL_EXPOSE_HEADERS, "Content-Range, Accept-Ranges, Content-Length");
-    if immutable {
-        builder = builder.header(header::CACHE_CONTROL, CACHE_FOREVER);
-    }
+        .header(header::CACHE_CONTROL, cache);
 
     let (start, end, partial) = match range {
         None => (0, total.saturating_sub(1), false),
@@ -219,6 +382,49 @@ fn serve_file(path: &Path, range: Option<&str>, immutable: bool) -> Result<Respo
             .header(header::CONTENT_RANGE, format!("bytes {start}-{end}/{total}"));
     }
     builder.body(Body::from(buf)).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+/// A cache file that is not on disk yet: ask Python's own route for it and
+/// hand back whatever it says, status and all. Python writes the file as a
+/// side effect, so the next request is served from disk.
+fn proxy(path: &str, range: Option<&str>) -> Result<Response<Body>, StatusCode> {
+    let base = SERVER_URL.get().ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(60)).build();
+    let mut req = agent.get(&format!("{base}{path}"));
+    if let Some(r) = range {
+        req = req.set("Range", r);
+    }
+    let resp = match req.call() {
+        Ok(r) => r,
+        Err(ureq::Error::Status(_, r)) => r,
+        Err(_) => return Err(StatusCode::BAD_GATEWAY),
+    };
+    let status = StatusCode::from_u16(resp.status()).map_err(|_| StatusCode::BAD_GATEWAY)?;
+    let content_type = resp
+        .header("Content-Type")
+        .unwrap_or("application/octet-stream")
+        .to_string();
+    let passthrough: Vec<(header::HeaderName, String)> = [
+        (header::CACHE_CONTROL, resp.header("Cache-Control")),
+        (header::CONTENT_RANGE, resp.header("Content-Range")),
+        (header::ACCEPT_RANGES, resp.header("Accept-Ranges")),
+    ]
+    .into_iter()
+    .filter_map(|(k, v)| v.map(|v| (k, v.to_string())))
+    .collect();
+    let mut body = Vec::new();
+    resp.into_reader()
+        .take(MAX_PROXY_BODY)
+        .read_to_end(&mut body)
+        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+    let mut builder = Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CONTENT_LENGTH, body.len().to_string());
+    for (k, v) in passthrough {
+        builder = builder.header(k, v);
+    }
+    builder.body(Body::from(body)).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 /// `bytes=a-b`, `bytes=a-` or `bytes=-n` → inclusive (start, end), or None when
@@ -281,113 +487,73 @@ fn mime_for(path: &Path) -> &'static str {
     }
 }
 
+/// The SPA is a different origin from this scheme on every platform. `<img>`
+/// and `<video>` never need CORS; a `fetch()` from the page does — and only a
+/// page served from loopback is the page, so that is the only origin echoed.
+fn with_cors(mut response: Response<Body>, origin: Option<&str>) -> Response<Body> {
+    if let Some(o) = origin.filter(|o| o.starts_with("http://127.0.0.1:") || o.starts_with("http://localhost:")) {
+        let h = response.headers_mut();
+        if let Ok(v) = o.parse() {
+            h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, v);
+        }
+        // Content-Range and Accept-Ranges are not CORS-safelisted; expose them
+        // so the page can read what a ranged fetch got back.
+        h.insert(
+            header::ACCESS_CONTROL_EXPOSE_HEADERS,
+            "Content-Range, Accept-Ranges, Content-Length".parse().expect("static header"),
+        );
+    }
+    response
+}
+
 fn empty(status: StatusCode) -> Response<Body> {
     Response::builder()
         .status(status)
-        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .body(Body::from(Vec::new()))
         .expect("static response")
 }
 
-// ---------------------------------------------------------------------------
-// Spike measurement. Only when SMRITI_SPIKE_MEASURE=1: a script injected into
-// the webview loads the same 600 thumbnails through the Python HTTP route and
-// through smriti://, twice each, checks a Range request and a <video> seek on
-// SMRITI_SPIKE_VIDEO_ID, and reports the numbers by fetching /api/health with
-// the JSON as a query string — uvicorn writes that line to desktop.log, which
-// is the one place a headless run can read them back from.
-// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-pub fn spike_measurement_script() -> Option<String> {
-    if std::env::var("SMRITI_SPIKE_MEASURE").ok().as_deref() != Some("1") {
-        return None;
+    #[test]
+    fn ids_are_plain_positive_integers() {
+        assert_eq!(parse_id("123"), Some(123));
+        assert_eq!(parse_id("0"), None);
+        assert_eq!(parse_id("-1"), None);
+        assert_eq!(parse_id("1 "), None);
+        assert_eq!(parse_id("1/../2"), None);
+        assert_eq!(parse_id(""), None);
+        assert_eq!(parse_id("9999999999999999999"), None);
     }
-    let data = PathBuf::from(std::env::var("SMRITI_DATA_DIR").ok()?);
-    let mut ids: Vec<i64> = Vec::new();
-    for shard in std::fs::read_dir(data.join("thumbs")).ok()?.flatten() {
-        let Ok(files) = std::fs::read_dir(shard.path()) else { continue };
-        for f in files.flatten() {
-            let name = f.file_name();
-            let name = name.to_string_lossy();
-            if let Some(stem) = name.strip_suffix(".webp") {
-                if let Ok(id) = stem.parse::<i64>() {
-                    ids.push(id);
-                }
-            }
+
+    #[test]
+    fn ranges() {
+        assert_eq!(parse_range("bytes=0-9", 100), Some((0, 9)));
+        assert_eq!(parse_range("bytes=90-", 100), Some((90, 99)));
+        assert_eq!(parse_range("bytes=-10", 100), Some((90, 99)));
+        assert_eq!(parse_range("bytes=100-", 100), None);
+        assert_eq!(parse_range("bytes=5-3", 100), None);
+        assert_eq!(parse_range("bytes=0-", 0), None);
+        // open-ended ranges are capped, so a huge file is never read whole
+        let (s, e) = parse_range("bytes=0-", 10 * MAX_RANGE_CHUNK).unwrap();
+        assert_eq!((s, e), (0, MAX_RANGE_CHUNK - 1));
+    }
+
+    #[test]
+    fn shards_match_the_python_layout() {
+        let p = shard(Path::new("/d/thumbs"), 300_001, ".webp");
+        assert_eq!(p, PathBuf::from("/d/thumbs/e1/300001.webp")); // 300001 % 256 = 225 = 0xe1
+        assert_eq!(shard(Path::new("/d"), 5, ".v2.webp"), PathBuf::from("/d/05/5.v2.webp"));
+    }
+
+    #[test]
+    fn platform_base_matches_tauri_mapping() {
+        if cfg!(windows) {
+            assert_eq!(image_base(), "http://smriti.localhost");
+        } else {
+            assert_eq!(image_base(), "smriti://localhost");
         }
     }
-    ids.sort_unstable();
-    ids.truncate(600);
-    let ids_json = format!(
-        "[{}]",
-        ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",")
-    );
-    let video = std::env::var("SMRITI_SPIKE_VIDEO_ID").unwrap_or_else(|_| "0".into());
-    let video = if video.bytes().all(|b| b.is_ascii_digit()) { video } else { "0".into() };
-    Some(SPIKE_JS.replace("__IDS__", &ids_json).replace("__VIDEO__", &video))
 }
-
-const SPIKE_JS: &str = r#"
-(function () {
-  if (!/^http:\/\/(127\.0\.0\.1|localhost):/.test(location.origin)) return;
-  var IDS = __IDS__;
-  var VIDEO = __VIDEO__;
-  function load(src) {
-    return new Promise(function (res) {
-      var i = new Image();
-      i.onload = function () { res(true); };
-      i.onerror = function () { res(false); };
-      i.src = src;
-    });
-  }
-  async function run(label, mk) {
-    var t0 = performance.now();
-    var oks = await Promise.all(IDS.map(function (id) { return load(mk(id) + '?b=' + t0); }));
-    var wall = performance.now() - t0;
-    var seq = [];
-    for (var k = 0; k < 60 && k < IDS.length; k++) {
-      var s = performance.now();
-      await load(mk(IDS[k]) + '?s=' + s);
-      seq.push(performance.now() - s);
-    }
-    seq.sort(function (a, b) { return a - b; });
-    return { label: label, n: IDS.length, ok: oks.filter(Boolean).length,
-             wall_ms: Math.round(wall), per_img_ms: +(wall / IDS.length).toFixed(2),
-             seq_median_ms: +(seq[Math.floor(seq.length / 2)] || 0).toFixed(2) };
-  }
-  async function main() {
-    var results = [];
-    results.push(await run('http', function (id) { return '/api/thumb/' + id; }));
-    results.push(await run('smriti', function (id) { return 'smriti://localhost/thumb/' + id; }));
-    results.push(await run('http-2', function (id) { return '/api/thumb/' + id; }));
-    results.push(await run('smriti-2', function (id) { return 'smriti://localhost/thumb/' + id; }));
-    var range = null;
-    try {
-      var r = await fetch('smriti://localhost/media/' + VIDEO, { headers: { Range: 'bytes=100-199' } });
-      range = { status: r.status, cr: r.headers.get('content-range'), cl: r.headers.get('content-length'),
-                ar: r.headers.get('accept-ranges'), ct: r.headers.get('content-type'),
-                len: (await r.arrayBuffer()).byteLength };
-    } catch (e) { range = { error: String(e) }; }
-    var thumbRange = null;
-    try {
-      var tr = await fetch('smriti://localhost/thumb/' + IDS[0], { headers: { Range: 'bytes=0-9' } });
-      thumbRange = { status: tr.status, cr: tr.headers.get('content-range'), len: (await tr.arrayBuffer()).byteLength };
-    } catch (e) { thumbRange = { error: String(e) }; }
-    var vid = await new Promise(function (res) {
-      var v = document.createElement('video');
-      v.muted = true; v.preload = 'auto';
-      var to = setTimeout(function () { res({ timeout: true, code: v.error && v.error.code, rs: v.readyState }); }, 20000);
-      v.addEventListener('loadedmetadata', function () { v.currentTime = Math.min(2, v.duration / 2); });
-      v.addEventListener('seeked', function () { clearTimeout(to); res({ seeked: true, t: +v.currentTime.toFixed(2), dur: +v.duration.toFixed(1) }); });
-      v.addEventListener('error', function () { clearTimeout(to); res({ error: v.error && v.error.code }); });
-      v.src = 'smriti://localhost/media/' + VIDEO;
-      document.body.appendChild(v);
-    });
-    var report = { origin: location.origin, ua: navigator.userAgent.slice(-40), results: results, range: range, thumbRange: thumbRange, vid: vid };
-    await fetch('/api/health?spike=' + encodeURIComponent(JSON.stringify(report)));
-  }
-  window.addEventListener('load', function () { setTimeout(function () { main().catch(function (e) {
-    fetch('/api/health?spike=' + encodeURIComponent(JSON.stringify({ fatal: String(e) })));
-  }); }, 3000); });
-})();
-"#;

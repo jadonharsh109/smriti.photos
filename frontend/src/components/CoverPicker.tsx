@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { personFaces, setPersonCover, type Person } from "../api/client";
+import { faceUrl } from "../lib/images";
 import { IconClose } from "./Icons";
 import Portal from "./Portal";
 
@@ -99,7 +100,7 @@ export default function CoverPicker({ person, onClose }: Props) {
                       title={f.id === person.cover_face_id ? "This is the current photo" : "Use this photo"}
                       onClick={() => choose.mutate(f.id)}
                     >
-                      <img src={`/api/faces/${f.id}/thumb`} loading="lazy" decoding="async" alt="" />
+                      <img src={faceUrl(f.id)} loading="lazy" decoding="async" alt="" />
                     </button>
                   ))}
                 </div>

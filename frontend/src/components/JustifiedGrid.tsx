@@ -1,6 +1,7 @@
 import justifiedLayout from "justified-layout";
 import { useMemo } from "react";
 import { fmtDuration, type Item } from "../api/client";
+import { thumbUrl } from "../lib/images";
 import { IconHeart } from "./Icons";
 
 interface Props {
@@ -44,7 +45,7 @@ export default function JustifiedGrid({ items, width, onOpen, selected, onToggle
             }}
           >
             <img
-              src={`/api/thumb/${it.id}${thumbQS}`}
+              src={thumbUrl(it.id, thumbQS)}
               loading="lazy"
               /* Without this the browser may decode on the main thread as each
                  thumb arrives, and a fast scroll through a big day lands dozens

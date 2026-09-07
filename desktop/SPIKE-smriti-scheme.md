@@ -1,5 +1,20 @@
 # Spike: serving images from the shell over `smriti://`
 
+> **Productionised in Phase 2.** `assets.rs` is now the real thing: every
+> route refuses anything belonging to a file with `files.locked = 1` (404, no
+> distinction), a cache miss for a thumbnail, preview or face crop is proxied
+> to the Python route that generates it and served from disk from then on,
+> reads run on a dedicated four-thread pool instead of Tauri's blocking pool,
+> CORS echoes only a loopback origin, and the `library.db` connection is
+> opened once and reused. The measurement hook (`SMRITI_SPIKE_MEASURE`) is
+> gone; debug builds accept `SMRITI_DEBUG_SCRIPT=<file.js>` to run a script in
+> the page instead. The shell announces the per-platform base as
+> `data-smriti-images` on `<html>`, and `frontend/src/lib/images.ts`
+> (`thumbUrl`, `previewUrl`, `faceUrl`, `mediaUrl`) builds every image URL
+> from it, falling back to `/api/...` in a browser and whenever a query
+> string — the Locked section's `?lt=` token — is present. The rest of this
+> note is the spike as it was measured.
+
 Phase 0 of the desktop rebuild. Question asked: can the Tauri shell serve
 thumbnails, previews, face crops and originals straight from disk over a custom
 URL scheme, so that no image passes through the Python server and scrolling is

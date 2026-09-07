@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api, cardDelay } from "../api/client";
 import { ArtEvents } from "../components/Illustrations";
+import { thumbUrl } from "../lib/images";
 import { CardGridSkeleton } from "../components/Skeletons";
 import CardGrid from "../components/CardGrid";
 
@@ -50,7 +51,7 @@ export default function EventsPage() {
           {events!.map((e, i) => (
             <Link key={e.id} to={`/events/${e.id}`} className="card" style={cardDelay(i)}>
               {e.cover_file_id ? (
-                <img className="cover wide" src={`/api/thumb/${e.cover_file_id}`} loading="lazy" alt="" />
+                <img className="cover wide" src={thumbUrl(e.cover_file_id)} loading="lazy" alt="" />
               ) : (
                 <div className="cover wide" />
               )}

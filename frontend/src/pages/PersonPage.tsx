@@ -6,6 +6,7 @@ import AddAllToAlbum from "../components/AddAllToAlbum";
 import { IconCamera, IconPencil } from "../components/Icons";
 import CoverPicker from "../components/CoverPicker";
 import BackLink from "../components/BackLink";
+import { faceUrl } from "../lib/images";
 import { PhotoGridSkeleton } from "../components/Skeletons";
 import TimelineGrid from "../components/TimelineGrid";
 
@@ -90,7 +91,7 @@ export default function PersonPage() {
                 title={`Choose a different photo for ${person.name ?? "this person"}`}
                 onClick={() => setPickingCover(true)}
               >
-                <img src={`/api/faces/${person.cover_face_id}/thumb`} alt="" />
+                <img src={faceUrl(person.cover_face_id)} alt="" />
                 <span className="badge">
                   <IconCamera size={14} />
                 </span>

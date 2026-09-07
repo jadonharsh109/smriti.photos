@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
+import { thumbUrl } from "../lib/images";
 import { IconAlbum, IconClose } from "./Icons";
 import Portal from "./Portal";
 
@@ -118,7 +119,7 @@ export default function AlbumPicker({ title, onPick, onCreate, onClose }: Props)
                     {shown.map((a) => (
                       <button key={a.id} className="album-row" onClick={() => run(() => onPick(a.id))}>
                         {a.cover ? (
-                          <img src={`/api/thumb/${a.cover}`} alt="" loading="lazy" />
+                          <img src={thumbUrl(a.cover)} alt="" loading="lazy" />
                         ) : (
                           <span className="ph">
                             <IconAlbum size={17} />

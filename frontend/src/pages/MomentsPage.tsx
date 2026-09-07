@@ -12,6 +12,7 @@ import {
 } from "../api/client";
 import { ConfirmDialog } from "../components/Dialogs";
 import { IconClose, IconFilm, IconPlay, IconTrash } from "../components/Icons";
+import { thumbUrl } from "../lib/images";
 import { ArtEvents } from "../components/Illustrations";
 import Portal from "../components/Portal";
 
@@ -142,7 +143,7 @@ export default function MomentsPage() {
                 title={m.playable ? `Play ${m.title}` : undefined}
               >
                 {m.cover_file_id ? (
-                  <img src={`/api/thumb/${m.cover_file_id}`} alt="" loading="lazy" />
+                  <img src={thumbUrl(m.cover_file_id)} alt="" loading="lazy" />
                 ) : (
                   <span className="ph"><IconFilm size={26} /></span>
                 )}
@@ -207,7 +208,7 @@ export default function MomentsPage() {
                   title={`Make a moment from ${s.title}`}
                 >
                   {s.cover_file_id ? (
-                    <img src={`/api/thumb/${s.cover_file_id}`} alt="" loading="lazy" />
+                    <img src={thumbUrl(s.cover_file_id)} alt="" loading="lazy" />
                   ) : (
                     <span className="ph"><IconFilm size={26} /></span>
                   )}
