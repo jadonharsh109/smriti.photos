@@ -108,6 +108,7 @@ def _load_centroids():
 
 def _store_faces(file_id: int, faces: list[dict], centroids) -> tuple[int, int]:
     assigned = 0
+    crops: list[tuple[int, bytes]] = []
     with db.transaction() as conn:
         conn.execute("DELETE FROM faces WHERE file_id=?", (file_id,))
         for f in faces:
@@ -119,12 +120,22 @@ def _store_faces(file_id: int, faces: list[dict], centroids) -> tuple[int, int]:
                 if sims[best] >= config.FACE_MATCH_THRESHOLD:
                     person_id, src = ids[best], "incremental"
                     assigned += 1
-            conn.execute(
+            cur = conn.execute(
                 "INSERT INTO faces (file_id, x, y, w, h, det_score, embedding, person_id, assign_src) "
                 "VALUES (?,?,?,?,?,?,?,?,?)",
                 (file_id, f["x"], f["y"], f["w"], f["h"], f["score"], f["embedding"], person_id, src),
             )
+            if f.get("crop"):
+                crops.append((cur.lastrowid, f["crop"]))
         conn.execute("UPDATE files SET face_scanned=1 WHERE id=?", (file_id,))
+    # The worker cut the crop from the image it decoded; keyed by the face id
+    # it has only now, and written after the commit so a crop never outlives
+    # a row that failed to land.
+    for face_id, webp in crops:
+        try:
+            thumbs.write_face_crop(face_id, webp)
+        except OSError:
+            pass  # the request path regenerates a missing crop on demand
     return len(faces), assigned
 
 
@@ -326,8 +337,7 @@ def repick_cover(person_id: int) -> int | None:
         "SELECT fa.id, fa.det_score, fa.w, fa.h, "
         "(SELECT COUNT(*) FROM faces f2 WHERE f2.file_id=fa.file_id) AS nfaces "
         "FROM faces fa JOIN files f ON f.id=fa.file_id "
-        "WHERE fa.person_id=? AND f.status='active' "
-        "AND f.id NOT IN (SELECT file_id FROM locked_items)",
+        "WHERE fa.person_id=? AND f.status='active' AND f.locked=0",
         (person_id,),
     )
     best = max(rows, key=_cover_score)["id"] if rows else None

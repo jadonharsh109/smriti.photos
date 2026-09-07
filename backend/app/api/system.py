@@ -1,11 +1,10 @@
 import asyncio
-import os
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from .. import config, db
-from ..services import reveal
+from ..services import aggregates, reveal
 
 router = APIRouter()
 
@@ -98,54 +97,31 @@ def health():
     return {"ok": True, "version": _VERSION, "file_manager": reveal.manager_name()}
 
 
-def _dir_size(path) -> int:
-    total = 0
-    for dirpath, _, filenames in os.walk(path):
-        for f in filenames:
-            try:
-                total += os.path.getsize(os.path.join(dirpath, f))
-            except OSError:
-                pass
-    return total
-
-
 @router.get("/stats")
 def stats():
-    # The movie half of a Live Photo is not counted as a video: the tab that
-    # uses this number filters it out, and a count that disagrees with what the
-    # tab shows is worse than no count.
-    counts = {r["media_type"]: r["n"] for r in
-              db.query("SELECT media_type, COUNT(*) n FROM files WHERE status='active' "
-                       "AND id NOT IN (SELECT file_id FROM locked_items) "
-                       "AND id NOT IN (SELECT video_file_id FROM file_motion "
-                       "               WHERE video_file_id IS NOT NULL) "
-                       "GROUP BY media_type")}
+    """Library totals, from `library_stats` (services/aggregates.py).
+
+    This used to run ten COUNTs and then walk every cached thumbnail and
+    preview on disk — two seconds per 300,000 files, on each of the four pages
+    that ask. The counts are now refreshed when a job finishes; the walk runs
+    in a thread, at most every few hours."""
+    s = aggregates.stats()
+    aggregates.refresh_sizes_soon()
     return {
-        "photos": counts.get("photo", 0),
-        "videos": counts.get("video", 0),
-        "missing": db.query_one("SELECT COUNT(*) n FROM files WHERE status='missing'")["n"],
-        "with_gps": db.query_one("SELECT COUNT(*) n FROM metadata WHERE gps_lat IS NOT NULL")["n"],
-        "geocoded": db.query_one("SELECT COUNT(*) n FROM file_places")["n"],
-        "faces": db.query_one("SELECT COUNT(*) n FROM faces")["n"],
-        "live": db.query_one(
-            "SELECT COUNT(*) n FROM file_motion mo JOIN files f ON f.id=mo.file_id "
-            "WHERE f.status='active' AND f.id NOT IN (SELECT file_id FROM locked_items)")["n"],
-        "persons": db.query_one("SELECT COUNT(*) n FROM persons WHERE name IS NOT NULL")["n"],
-        # People the People page will actually show. `persons` above counts only
-        # NAMED people, so it is 0 on a library full of unnamed clusters — and
-        # faces alone prove nothing, since a face only becomes a person once
-        # FACE_MIN_CLUSTER_SIZE of them cluster together. Anything that offers
-        # to send someone to People has to ask this, or it promises an empty page.
-        "people_visible": db.query_one(
-            "SELECT COUNT(*) n FROM persons p WHERE p.is_hidden=0 AND EXISTS ("
-            " SELECT 1 FROM faces fa JOIN files f ON f.id=fa.file_id "
-            " WHERE fa.person_id=p.id AND f.status='active' "
-            " AND f.id NOT IN (SELECT file_id FROM locked_items))")["n"],
-        "face_pending": db.query_one(
-            "SELECT COUNT(*) n FROM files WHERE status='active' AND media_type='photo' AND face_scanned=0")["n"],
-        "db_bytes": os.path.getsize(config.DB_PATH) if config.DB_PATH.exists() else 0,
-        "thumbs_bytes": _dir_size(config.THUMBS_DIR),
-        "previews_bytes": _dir_size(config.PREVIEWS_DIR),
+        "photos": s.get("photos", 0),
+        "videos": s.get("videos", 0),
+        "missing": s.get("missing", 0),
+        "with_gps": s.get("with_gps", 0),
+        "geocoded": s.get("geocoded", 0),
+        "faces": s.get("faces", 0),
+        "live": s.get("live", 0),
+        # NAMED people; `people_visible` is what the People page will show.
+        "persons": s.get("persons", 0),
+        "people_visible": s.get("people_visible", 0),
+        "face_pending": s.get("face_pending", 0),
+        "db_bytes": s.get("db_bytes", 0),
+        "thumbs_bytes": s.get("thumbs_bytes", 0),
+        "previews_bytes": s.get("previews_bytes", 0),
         "face_model_ready": (config.FACE_MODEL_DIR / "det_10g.onnx").exists()
                             and (config.FACE_MODEL_DIR / "w600k_r50.onnx").exists(),
     }

@@ -60,7 +60,7 @@ def suggestions(limit: int = 12):
         "JOIN event_items ei ON ei.event_id = e.id "
         "JOIN files f ON f.id = ei.file_id AND f.status='active' AND f.media_type='photo' "
         "JOIN volumes v ON v.id = f.volume_id AND v.is_online = 1 "
-        "WHERE f.id NOT IN (SELECT file_id FROM locked_items) "
+        "WHERE f.locked = 0 "
         "GROUP BY e.id HAVING n >= ? "
         "AND EXISTS (SELECT 1 FROM event_items ei2 "
         "            JOIN faces fa ON fa.file_id = ei2.file_id "

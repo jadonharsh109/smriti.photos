@@ -15,9 +15,14 @@ async def lifespan(app: FastAPI):
 
     from .jobs import pipeline
     from .jobs.runner import manager
+    from .services import aggregates
 
     config.ensure_dirs()
     db.connect()
+    # The maintained aggregates every page reads (services/aggregates.py).
+    # A no-op on every start but the first after their migration, when they
+    # are filled before anything is served.
+    aggregates.ensure()
     manager.set_loop(asyncio.get_running_loop())
     loop = asyncio.get_running_loop()
     tasks = [loop.create_task(pipeline.auto_scan_loop()), loop.create_task(pipeline.volume_watch_loop())]

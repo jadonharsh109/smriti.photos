@@ -48,6 +48,14 @@ if IS_MACOS:
 
     def _volume_identity(mount_path: str, fallback_label: str) -> tuple[str, str]:
         info = _diskutil_info(mount_path)
+        if mount_path == "/":
+            # "/" is the sealed system snapshot, and its UUID changes with every
+            # macOS update — which is how a library woke up one day with every
+            # file on an "offline" drive. The Data volume underneath is the one
+            # that holds the user's files and keeps its UUID; identify by that.
+            data = _diskutil_info("/System/Volumes/Data")
+            if data.get("VolumeUUID"):
+                return data["VolumeUUID"], info.get("VolumeName") or fallback_label
         uuid = info.get("VolumeUUID") or f"path:{mount_path}"
         label = info.get("VolumeName") or fallback_label
         return uuid, label
@@ -110,14 +118,44 @@ else:  # generic POSIX (Linux, …)
 
 # ---- shared logic -----------------------------------------------------------
 
+def _adopt_internal(mount_path: str, uuid: str, live_uuids: set[str]):
+    """The system volume's UUID can change out from under a library — an OS
+    reinstall, a migration to a new Mac restored from backup — and when it does
+    the old row, holding every file the library ever indexed, sits offline for
+    good while an empty new row takes its place. The disk at "/" is the same
+    disk. Move the identity onto the row that owns the files, and fold an
+    empty newcomer (and any folders added under it) into it."""
+    old = db.query_one(
+        "SELECT v.* FROM volumes v WHERE v.last_mount_path=? AND v.disk_uuid!=? "
+        "AND (EXISTS (SELECT 1 FROM files f WHERE f.volume_id=v.id) "
+        "     OR EXISTS (SELECT 1 FROM roots r WHERE r.volume_id=v.id)) ORDER BY v.id LIMIT 1",
+        (mount_path, uuid))
+    if not old or old["disk_uuid"] in live_uuids:
+        return None
+    newcomer = db.query_one("SELECT * FROM volumes WHERE disk_uuid=?", (uuid,))
+    with db.transaction() as conn:
+        if newcomer:
+            if conn.execute("SELECT 1 FROM files WHERE volume_id=? LIMIT 1", (newcomer["id"],)).fetchone():
+                return None      # both hold files: not obviously the same disk, leave it
+            conn.execute("UPDATE OR IGNORE roots SET volume_id=? WHERE volume_id=?", (old["id"], newcomer["id"]))
+            conn.execute("DELETE FROM roots WHERE volume_id=?", (newcomer["id"],))
+            conn.execute("DELETE FROM volumes WHERE id=?", (newcomer["id"],))
+        conn.execute("UPDATE volumes SET disk_uuid=? WHERE id=?", (uuid, old["id"]))
+    return db.query_one("SELECT * FROM volumes WHERE id=?", (old["id"],))
+
+
 def refresh_volumes() -> list[dict]:
     """Sync mounted drives with the volumes table; mark unmounted ones offline."""
     mounts = list_mounts()
+    identities = [(_volume_identity(m["mount_path"], m["label"]), m) for m in mounts]
+    live_uuids = {uuid for (uuid, _), _ in identities}
     online_ids = set()
     result = []
-    for m in mounts:
-        uuid, label = _volume_identity(m["mount_path"], m["label"])
+    for (uuid, label), m in identities:
         row = db.query_one("SELECT * FROM volumes WHERE disk_uuid=?", (uuid,))
+        if m["internal"] and (row is None or not db.query_one(
+                "SELECT 1 FROM files WHERE volume_id=? LIMIT 1", (row["id"],))):
+            row = _adopt_internal(m["mount_path"], uuid, live_uuids) or row
         if row:
             db.execute(
                 "UPDATE volumes SET label=?, last_mount_path=?, is_online=1 WHERE id=?",

@@ -1,17 +1,11 @@
 """Shared WHERE/JOIN builder so every grid (timeline, person, place, album,
-event) is the same query with different filters."""
+event) is the same query with different filters.
 
-
-# kind='photo' rows are tombstones from a user correction ("not a document"),
-# so they must read as ordinary photos — hence != 'photo', not merely EXISTS.
-_NOT_PHOTO = "f.id IN (SELECT file_id FROM file_kinds WHERE kind != 'photo')"
-
-
-# The movie half of a Live Photo is not a video anyone filmed — it is three
-# seconds attached to a photograph. Counting it in Videos shows one moment
-# twice and pads the tab with clips nobody shot.
-_LIVE_COMPONENT = "f.id IN (SELECT video_file_id FROM file_motion WHERE video_file_id IS NOT NULL)"
-_IS_LIVE = "f.id IN (SELECT file_id FROM file_motion)"
+The visibility facts — locked, screenshot-or-scan, Live Photo still, Live
+Photo movie half — are flags on `files` (migration 0014), written by the code
+that changes them. They used to be three NOT IN subqueries per query, which
+at 300,000 files was most of the cost of every page. See services/aggregates.
+"""
 
 
 def build(person_id=None, country=None, city=None, album_id=None, event_id=None, day=None, solo=False,
@@ -19,8 +13,7 @@ def build(person_id=None, country=None, city=None, album_id=None, event_id=None,
           since=None, until=None, month=None, curated=False, person_ids=None):
     joins = ["JOIN metadata m ON m.file_id = f.id"]
     # locked-section files are invisible to every grid
-    where = ["f.status = 'active'", "m.taken_at IS NOT NULL",
-             "f.id NOT IN (SELECT file_id FROM locked_items)"]
+    where = ["f.status = 'active'", "f.locked = 0", "m.taken_at IS NOT NULL"]
     # Two lists, joined at the end, because SQLite binds ? by position in the
     # finished SQL — and every JOIN is rendered before the WHERE. One flat list
     # appended to in clause order therefore bound them crossways the moment a
@@ -39,22 +32,23 @@ def build(person_id=None, country=None, city=None, album_id=None, event_id=None,
     # to find the receipt that every generated view deliberately hides.
     curated = curated or album_id is not None or person_id is not None or country is not None
     if kind == "any":
-        where.append(_NOT_PHOTO)
+        where.append("f.doc = 1")
     elif kind:
         where.append("f.id IN (SELECT file_id FROM file_kinds WHERE kind = ?)")
         wparams.append(kind)
     elif not curated:
-        where.append(f"NOT ({_NOT_PHOTO})")
+        where.append("f.doc = 0")
     if live:
-        where.append(_IS_LIVE)
+        where.append("f.live = 1")
     if media_type in ("photo", "video"):
         where.append("f.media_type = ?")
         wparams.append(media_type)
         if media_type == "video":
-            where.append(f"NOT ({_LIVE_COMPONENT})")
+            # The movie half of a Live Photo is not a video anyone filmed.
+            where.append("f.livecomp = 0")
     elif not live:
         # "All" shows the photograph, not its motion clip as a second item.
-        where.append(f"NOT ({_LIVE_COMPONENT})")
+        where.append("f.livecomp = 0")
     # One person or several, and several means all of them in the same photo —
     # one JOIN each, so the joins intersect. "yash and karan" is a photo with
     # both in it, which is the only reading of it anyone means.
@@ -77,15 +71,10 @@ def build(person_id=None, country=None, city=None, album_id=None, event_id=None,
         # Each narrows independently, and each is optional. Browsing always
         # arrives here with a country — Places drills country, then state, then
         # city — and for those callers this is the same query it always was.
-        # Search does not: "photos in Indore" names a city and no country, and
-        # while these clauses were nested inside the country the city was
-        # silently dropped and the search answered with the whole library.
+        # Search does not: "photos in Indore" names a city and no country.
         if country is not None:
             where.append("pl.country = ?")
             wparams.append(country)
-        # A state on its own is the Places page's own sub-heading opening, and
-        # a state with a city is the same city as before — two places of the
-        # same name in one country are then no longer one grid.
         if state is not None:
             where.append("pl.state = ?")
             wparams.append(state)
@@ -101,25 +90,12 @@ def build(person_id=None, country=None, city=None, album_id=None, event_id=None,
         where.append("ei.event_id = ?")
         wparams.append(event_id)
     if day is not None:
-        # A half-open range on the column itself, not substr() of it.
-        #
-        # The grid fetches one query per day section it scrolls into view, so
-        # this is the single hottest query in the app — and substr() has to be
-        # computed for every row in the library before it can be compared,
-        # which ruled out idx_meta_taken and left a full scan as the only plan.
-        # On a 400k-file library that was 112ms a section, ~1s for one scroll
-        # burst, all of it holding the DB lock.
-        #
-        # taken_at is 'YYYY-MM-DD' followed by a separator and a time, so the
-        # day is exactly the rows from the date up to the date + 'z': every
-        # character a timestamp can continue with (' ', 'T', or nothing) sorts
-        # below 'z', and the next day differs by then. Same rows, 9ms, and it
-        # holds for a bare date with no time at all.
-        where.append("m.taken_at >= ? AND m.taken_at < ?")
-        wparams.extend([day, day + "z"])
-    # A half-open range, the same shape and for the same reason as `day` above:
-    # compared against the column itself so idx_meta_taken can still be used.
-    # "in 2024" and "March 2024" are both just a range.
+        # The stored day column, indexed. This is the single hottest query in
+        # the app — one per day section scrolled into view.
+        where.append("m.day = ?")
+        wparams.append(day)
+    # A half-open range compared against the column itself so idx_meta_taken
+    # can still be used. "in 2024" and "March 2024" are both just a range.
     if since is not None:
         where.append("m.taken_at >= ?")
         wparams.append(since)
@@ -133,3 +109,11 @@ def build(person_id=None, country=None, city=None, album_id=None, event_id=None,
         where.append("CAST(strftime('%m', m.taken_at) AS INTEGER) = ?")
         wparams.append(int(month))
     return " ".join(joins), " AND ".join(where), jparams + wparams
+
+
+def is_plain(person_id=None, country=None, city=None, album_id=None, event_id=None, solo=False,
+             kind=None, state=None, person_ids=None) -> bool:
+    """True when the only filters are media_type / live — the scopes
+    `day_buckets` keeps precomputed."""
+    return (person_id is None and country is None and city is None and state is None
+            and album_id is None and event_id is None and not solo and not kind and not person_ids)

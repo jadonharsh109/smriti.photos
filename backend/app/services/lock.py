@@ -29,9 +29,11 @@ _token_deadline: float = 0.0
 _fails = 0
 _last_fail: float = 0.0
 
-# SQL fragment every listing query uses to hide locked files
-def not_locked(col: str = "f.id") -> str:
-    return f"{col} NOT IN (SELECT file_id FROM locked_items)"
+
+def not_locked(alias: str = "f") -> str:
+    """SQL fragment hiding locked files. `files.locked` is the flag
+    locked_items is mirrored into (migration 0014)."""
+    return f"{alias}.locked = 0"
 
 
 # ---- settings storage -------------------------------------------------------
@@ -178,4 +180,5 @@ def note_failure() -> None:
 # ---- item helpers -----------------------------------------------------------
 
 def is_locked_file(file_id: int) -> bool:
-    return db.query_one("SELECT 1 FROM locked_items WHERE file_id=?", (file_id,)) is not None
+    row = db.query_one("SELECT locked FROM files WHERE id=?", (file_id,))
+    return bool(row and row["locked"])

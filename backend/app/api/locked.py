@@ -5,7 +5,7 @@ from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
 from .. import db
-from ..services import lock
+from ..services import aggregates, lock
 
 router = APIRouter()
 
@@ -102,8 +102,7 @@ def relock():
 def items(x_locked_token: str | None = Header(default=None)):
     _require(x_locked_token)
     rows = db.query(
-        "SELECT f.id, f.media_type, m.width, m.height, m.duration_s, "
-        "substr(m.taken_at, 1, 10) AS day "
+        "SELECT f.id, f.media_type, m.width, m.height, m.duration_s, m.day AS day "
         "FROM locked_items li JOIN files f ON f.id=li.file_id "
         "LEFT JOIN metadata m ON m.file_id=f.id "
         "WHERE f.status='active' ORDER BY m.taken_at DESC, f.id DESC",
@@ -121,6 +120,8 @@ def add_items(body: ItemsIn, x_locked_token: str | None = Header(default=None)):
                 "INSERT OR IGNORE INTO locked_items (file_id, locked_at) VALUES (?,?)",
                 (fid, now),
             )
+            # the flag every grid filters on (migration 0014)
+            conn.execute("UPDATE files SET locked=1 WHERE id=?", (fid,))
             # The search embedding goes with it, in the same transaction. An
             # embedding describes the photo — its nearest neighbours are what
             # it looks like — so a locked photo must not have one. Unlocking
@@ -129,6 +130,7 @@ def add_items(body: ItemsIn, x_locked_token: str | None = Header(default=None)):
     from ..services import search as search_svc
 
     search_svc.invalidate()   # the cached matrix still holds the deleted rows
+    aggregates.files_changed(body.file_ids)   # days, people, places, totals
     return {"ok": True, "count": db.query_one("SELECT COUNT(*) n FROM locked_items")["n"]}
 
 
@@ -138,4 +140,6 @@ def remove_items(body: ItemsIn, x_locked_token: str | None = Header(default=None
     with db.transaction() as conn:
         for fid in body.file_ids:
             conn.execute("DELETE FROM locked_items WHERE file_id=?", (fid,))
+            conn.execute("UPDATE files SET locked=0 WHERE id=?", (fid,))
+    aggregates.files_changed(body.file_ids)
     return {"ok": True}

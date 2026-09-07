@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from .. import db
 from ..jobs import classify as classify_job
 from ..jobs.runner import manager
+from ..services import aggregates
 from ..services import kinds as kinds_svc
 
 router = APIRouter()
@@ -16,14 +17,12 @@ class IdsIn(BaseModel):
 
 @router.get("/kinds/summary")
 def summary():
-    """Counts per kind, for the Documents page's filter chips."""
-    rows = db.query(
-        "SELECT k.kind, COUNT(*) n FROM file_kinds k JOIN files f ON f.id = k.file_id "
-        "WHERE f.status = 'active' AND k.kind != 'photo' "
-        "AND f.id NOT IN (SELECT file_id FROM locked_items) "
-        "GROUP BY k.kind ORDER BY n DESC",
-    )
-    out = [{"kind": r["kind"], "label": kinds_svc.label(r["kind"]), "count": r["n"]} for r in rows]
+    """Counts per kind, for the Documents page's filter chips — from the
+    maintained library totals (services/aggregates.py)."""
+    stats = aggregates.stats()
+    counts = {k[5:]: v for k, v in stats.items() if k.startswith("kind:") and v > 0}
+    out = [{"kind": k, "label": kinds_svc.label(k), "count": n}
+           for k, n in sorted(counts.items(), key=lambda kv: -kv[1])]
     return {"kinds": out, "total": sum(k["count"] for k in out)}
 
 
@@ -55,4 +54,6 @@ def not_document(body: IdsIn):
             "ON CONFLICT(file_id) DO UPDATE SET kind='photo', confidence=1.0, source='manual'",
             [(fid,) for fid in body.file_ids],
         )
+        conn.executemany("UPDATE files SET doc = 0 WHERE id = ?", [(fid,) for fid in body.file_ids])
+    aggregates.files_changed(body.file_ids)
     return {"ok": True, "restored": len(body.file_ids)}

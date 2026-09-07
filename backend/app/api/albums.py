@@ -25,18 +25,16 @@ class ItemsIn(BaseModel):
 @router.get("/albums")
 def list_albums():
     return [dict(r) for r in db.query(
-        "SELECT a.*, (SELECT COUNT(*) FROM album_items ai "
-        " WHERE ai.album_id=a.id AND ai.file_id NOT IN (SELECT file_id FROM locked_items)) AS count, "
+        "SELECT a.*, (SELECT COUNT(*) FROM album_items ai JOIN files f ON f.id=ai.file_id "
+        " WHERE ai.album_id=a.id AND f.locked=0) AS count, "
         # Cover: the stored one unless locked, else the first visible item.
         # Split in two so no outer column is referenced from a subquery's
-        # ORDER BY — SQLite < 3.46 rejects that (see api/people.py).
+        # ORDER BY — SQLite < 3.46 rejects that.
         "COALESCE("
-        " (SELECT ai.file_id FROM album_items ai WHERE ai.album_id=a.id "
-        "  AND ai.file_id = a.cover_file_id "
-        "  AND ai.file_id NOT IN (SELECT file_id FROM locked_items)), "
-        " (SELECT ai.file_id FROM album_items ai WHERE ai.album_id=a.id "
-        "  AND ai.file_id NOT IN (SELECT file_id FROM locked_items) "
-        "  ORDER BY ai.position LIMIT 1)) AS cover "
+        " (SELECT ai.file_id FROM album_items ai JOIN files f ON f.id=ai.file_id "
+        "  WHERE ai.album_id=a.id AND ai.file_id = a.cover_file_id AND f.locked=0), "
+        " (SELECT ai.file_id FROM album_items ai JOIN files f ON f.id=ai.file_id "
+        "  WHERE ai.album_id=a.id AND f.locked=0 ORDER BY ai.position LIMIT 1)) AS cover "
         # system albums first (Favourites), then the user's newest
         "FROM albums a ORDER BY (a.system IS NULL), a.created_at DESC",
     )]
@@ -59,8 +57,7 @@ def album_detail(album_id: int):
         f"        AND af.album_id = {favourites.album_id()}) AS fav "
         "FROM album_items ai JOIN files f ON f.id=ai.file_id "
         "LEFT JOIN metadata m ON m.file_id=f.id "
-        "WHERE ai.album_id=? AND f.status='active' "
-        "AND f.id NOT IN (SELECT file_id FROM locked_items) ORDER BY ai.position",
+        "WHERE ai.album_id=? AND f.status='active' AND f.locked=0 ORDER BY ai.position",
         (album_id,),
     )
     return {**dict(row), "items": [dict(i) for i in items]}

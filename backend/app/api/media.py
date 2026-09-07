@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from send2trash import send2trash
 
 from .. import db
-from ..services import lock, reveal, thumbs, zipstream
+from ..services import aggregates, lock, reveal, thumbs, zipstream
 from ..services import volumes as vol_svc
 
 router = APIRouter()
@@ -137,6 +137,12 @@ def delete_files(body: DeleteIn):
     trashed = 0
     skipped_offline = 0
     errors: list[dict] = []
+    # The maintained aggregates (services/aggregates.py) need to know which
+    # days, people and events these files belonged to, and the rows that know
+    # are about to cascade away — so ask before deleting anything.
+    days = aggregates.days_of(body.file_ids)
+    people = aggregates.people_of(body.file_ids)
+    events = aggregates.events_of(body.file_ids)
     for fid in body.file_ids:
         row = db.query_one("SELECT * FROM files WHERE id=?", (fid,))
         if not row:
@@ -157,6 +163,15 @@ def delete_files(body: DeleteIn):
             except OSError:
                 pass
         trashed += 1
+    if trashed:
+        aggregates.refresh_days(days)
+        aggregates.refresh_people(people)
+        aggregates.refresh_events(events)
+        aggregates.refresh_places()
+        aggregates.refresh_counts()
+        from ..services import search as search_svc
+
+        search_svc.invalidate()   # their embeddings cascaded away with them
     return {"trashed": trashed, "skipped_offline": skipped_offline, "errors": errors}
 
 
@@ -260,7 +275,8 @@ def file_detail(file_id: int, lt: str | None = None):
         "SELECT DISTINCT p.id, p.name FROM faces fa JOIN persons p ON p.id=fa.person_id WHERE fa.file_id=?",
         (file_id,),
     )
-    motion = db.query_one("SELECT video_file_id FROM file_motion WHERE file_id=?", (file_id,))
+    motion = (db.query_one("SELECT video_file_id FROM file_motion WHERE file_id=?", (file_id,))
+              if row["live"] else None)
     vol = db.query_one("SELECT label, last_mount_path, is_online FROM volumes WHERE id=?", (row["volume_id"],))
     return {
         **dict(row),

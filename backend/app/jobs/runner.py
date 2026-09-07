@@ -3,6 +3,7 @@ import asyncio
 import time
 
 from .. import db
+from ..services import aggregates
 
 
 class JobManager:
@@ -42,6 +43,24 @@ class JobManager:
         finally:
             self.tasks.pop(job_id, None)
             self.cancel_requested.discard(job_id)
+            await self._settle(job_id)
+
+    async def _settle(self, job_id: int) -> None:
+        """Bring the maintained aggregates (services/aggregates.py) up to date
+        with whatever the job did, off the event loop, then publish the job a
+        second time. The UI refetches when it sees a job stop; the first
+        publish came from `finish` before the numbers were current, and this
+        one lands after they are — so a page that refetched early refetches
+        once more and shows the truth. A cancelled or failed job settles too:
+        a face scan stopped halfway still stored faces."""
+        row = db.query_one("SELECT kind FROM jobs WHERE id=?", (job_id,))
+        if not row:
+            return
+        try:
+            await asyncio.to_thread(aggregates.after_job, row["kind"])
+        except Exception as e:  # noqa: BLE001 - never fail a finished job over this
+            print(f"aggregates after {row['kind']}: {type(e).__name__}: {e}")
+        self._publish(job_id)
 
     def update(self, job_id: int, *, total=None, done=None, errors=None, message=None) -> None:
         sets, params = [], []

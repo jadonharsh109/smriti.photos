@@ -50,12 +50,10 @@ _BASE = (
     "FROM files f JOIN metadata m ON m.file_id = f.id "
     "LEFT JOIN file_quality q ON q.file_id = f.id "
     "WHERE f.status='active' AND f.media_type='photo' AND m.taken_at IS NOT NULL "
-    "AND f.id NOT IN (SELECT file_id FROM locked_items) "
-    # the movie half of a Live Photo is not a photograph anyone took
-    "AND f.id NOT IN (SELECT video_file_id FROM file_motion WHERE video_file_id IS NOT NULL) "
-    # a receipt or a screenshot in the middle of a montage breaks the spell —
-    # same tombstone-aware rule the timeline uses
-    "AND f.id NOT IN (SELECT file_id FROM file_kinds WHERE kind != 'photo') "
+    # not locked; not the movie half of a Live Photo, which is no photograph
+    # anyone took; not a receipt or a screenshot, which breaks the spell in the
+    # middle of a montage — the same flags the timeline filters on
+    "AND f.locked = 0 AND f.livecomp = 0 AND f.doc = 0 "
 )
 
 

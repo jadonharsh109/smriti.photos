@@ -14,9 +14,19 @@ from .runner import manager
 
 META_COLS = ("taken_at", "taken_at_ts", "taken_at_src", "width", "height", "orientation",
              "camera_make", "camera_model", "iso", "f_number", "exposure", "focal_length",
-             "duration_s", "video_codec", "gps_lat", "gps_lon", "content_id")
+             "duration_s", "video_codec", "gps_lat", "gps_lon", "content_id", "day")
 
 IN_FLIGHT = 64
+
+
+def like_prefix(rel_path: str) -> str:
+    """`rel_path/%` with LIKE's own wildcards escaped, for `LIKE ? ESCAPE '\\'`.
+
+    A folder called "50% off" or "photos_2024" contains LIKE wildcards; unescaped,
+    "photos_2024/%" also matches "photosX2024/…", and a scan that trusted the
+    match would then mark a sibling folder's files missing."""
+    esc = rel_path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return esc + "/%"
 
 
 def _walk(root_abs: str, mount: str) -> list[tuple[str, str, int, int, str]]:
@@ -66,8 +76,8 @@ async def run_scan(job_id: int, root_id: int) -> None:
     prefix = root["rel_path"] + "/" if root["rel_path"] else ""
     existing = {r["rel_path"]: r for r in db.query(
         "SELECT id, rel_path, size_bytes, mtime_ns, content_hash, status FROM files "
-        "WHERE volume_id=? AND (rel_path LIKE ? OR ?='')",
-        (root["volume_id"], prefix + "%", prefix),
+        "WHERE volume_id=? AND (rel_path LIKE ? ESCAPE '\\' OR ?='')",
+        (root["volume_id"], like_prefix(root["rel_path"]) if root["rel_path"] else "%", prefix),
     )}
 
     to_process: list[tuple[int, str, str]] = []  # (file_id, abs_path, media_type)
@@ -175,6 +185,9 @@ async def run_scan(job_id: int, root_id: int) -> None:
 
 
 def _flush(batch: list[dict]) -> None:
+    for r in batch:
+        # the stored day the timeline groups by — see migration 0014
+        r["day"] = r["taken_at"][:10] if r.get("taken_at") else None
     db.executemany(
         "UPDATE files SET content_hash=?, phash=? WHERE id=?",
         [(r["content_hash"], r.get("phash"), r["file_id"]) for r in batch],

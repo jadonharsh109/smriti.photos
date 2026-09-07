@@ -25,7 +25,7 @@ IN_FLIGHT = 8
 # section promises cannot happen without the passcode. Locking deletes the
 # row; unlocking makes the photo pending again, and the next index run —
 # a scan's post-processing, or "Index the rest" — re-embeds it.
-_NOT_LOCKED = "f.id NOT IN (SELECT file_id FROM locked_items)"
+_NOT_LOCKED = "f.locked = 0"
 
 
 def pending_count() -> int:

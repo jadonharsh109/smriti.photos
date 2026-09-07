@@ -25,15 +25,23 @@ class ScanIn(BaseModel):
 @router.get("/roots")
 def list_roots():
     rows = db.query(
-        "SELECT r.id, r.rel_path, r.volume_id, v.label, v.last_mount_path, v.is_online, "
-        "(SELECT COUNT(*) FROM files f WHERE f.volume_id=r.volume_id AND f.status='active' "
-        " AND (r.rel_path='' OR f.rel_path LIKE r.rel_path || '/%')) AS file_count "
+        "SELECT r.id, r.rel_path, r.volume_id, v.label, v.last_mount_path, v.is_online "
         "FROM roots r JOIN volumes v ON v.id=r.volume_id ORDER BY r.id",
     )
     out = []
     for r in rows:
+        # Counted in Python-escaped LIKE terms: a folder named "photos_2024"
+        # would otherwise also count "photosX2024" (see jobs/scan.like_prefix).
+        if r["rel_path"]:
+            n = db.query_one(
+                "SELECT COUNT(*) n FROM files f WHERE f.volume_id=? AND f.status='active' "
+                "AND f.rel_path LIKE ? ESCAPE '\\'",
+                (r["volume_id"], scan_job.like_prefix(r["rel_path"])))["n"]
+        else:
+            n = db.query_one("SELECT COUNT(*) n FROM files WHERE volume_id=? AND status='active'",
+                             (r["volume_id"],))["n"]
         abs_path = os.path.join(r["last_mount_path"] or "?", r["rel_path"]) if r["rel_path"] else (r["last_mount_path"] or "?")
-        out.append({**dict(r), "abs_path": abs_path})
+        out.append({**dict(r), "file_count": n, "abs_path": abs_path})
     return out
 
 
@@ -75,7 +83,7 @@ def removal_preview(root_id: int):
         "faces": db.query_one(f"SELECT COUNT(*) n FROM faces WHERE file_id IN ({marks})", ids)["n"],
         # worth calling out separately: these are deliberately hidden photos
         "locked": db.query_one(
-            f"SELECT COUNT(*) n FROM locked_items WHERE file_id IN ({marks})", ids)["n"],
+            f"SELECT COUNT(*) n FROM files WHERE id IN ({marks}) AND locked=1", ids)["n"],
     }
 
 

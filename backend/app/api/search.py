@@ -12,20 +12,18 @@ from pydantic import BaseModel
 from .. import config, db
 from ..fetch_clip import NEEDED, TOTAL_MB, present
 from ..jobs.runner import manager
-from ..services import favourites, filters, query_parse, search as search_svc
+from ..services import aggregates, favourites, filters, query_parse, search as search_svc
 
 router = APIRouter()
 
 # The same row shape every grid renders, so results drop straight into it.
 _ITEM_SQL = (
-    "SELECT f.id, f.media_type, m.width, m.height, m.duration_s, "
-    "substr(m.taken_at, 1, 10) AS day, "
-    "EXISTS (SELECT 1 FROM file_motion mo WHERE mo.file_id = f.id) AS live, "
+    "SELECT f.id, f.media_type, m.width, m.height, m.duration_s, m.day AS day, "
+    "f.live AS live, "
     "EXISTS (SELECT 1 FROM album_items af "
     "        WHERE af.file_id = f.id AND af.album_id = {fav}) AS fav "
     "FROM files f LEFT JOIN metadata m ON m.file_id = f.id "
-    "WHERE f.id IN ({ids}) AND f.status='active' "
-    "AND f.id NOT IN (SELECT file_id FROM locked_items)"
+    "WHERE f.id IN ({ids}) AND f.status='active' AND f.locked=0"
 )
 
 
@@ -95,17 +93,18 @@ def search(q: str, limit: int = 200):
 
 @router.get("/search/status")
 def status():
-    """What the search box should say about itself before anyone types."""
-    total = db.query_one("SELECT COUNT(*) n FROM files WHERE status='active'")["n"]
-    from ..jobs import clip as clip_job
-
+    """What the search box should say about itself before anyone types.
+    Counts come from the maintained library totals (services/aggregates.py):
+    the search page polls this every two seconds while indexing runs."""
+    s = aggregates.stats()
+    indexed = s.get("clip_indexed", 0)
     return {
         "model_ready": present(),
         "model_mb": TOTAL_MB,
-        "indexed": search_svc.indexed_count(),
-        "pending": clip_job.pending_count(),
-        "total": total,
-        "ready": search_svc.ready(),
+        "indexed": indexed,
+        "pending": s.get("clip_pending", 0),
+        "total": s.get("total_active", 0),
+        "ready": present() and indexed > 0,
     }
 
 
@@ -162,8 +161,8 @@ def similar(body: SimilarIn, limit: int = 60):
     import numpy as np
 
     row = db.query_one(
-        "SELECT embedding FROM file_clip WHERE file_id=? AND model=? "
-        "AND file_id NOT IN (SELECT file_id FROM locked_items)",
+        "SELECT c.embedding FROM file_clip c JOIN files f ON f.id=c.file_id "
+        "WHERE c.file_id=? AND c.model=? AND f.locked=0",
         (body.file_id, config.CLIP_MODEL))
     if not row:
         # One message for locked, unindexed and nonexistent alike: a reply
@@ -171,14 +170,8 @@ def similar(body: SimilarIn, limit: int = 60):
         # exists to deny. Belt over braces — locking deletes the embedding,
         # so this clause only matters in the window an old library upgrades.
         raise HTTPException(404, "that photo hasn’t been indexed for search yet")
-    ids, mat = search_svc._matrix()
-    if not ids:
-        return {"items": []}
-    scores = mat @ np.frombuffer(row["embedding"], dtype=np.float32)
-    k = min(limit + 1, len(ids))
-    top = np.argpartition(-scores, k - 1)[:k]
-    top = sorted(top, key=lambda i: -scores[i])
-    ranked = [(ids[i], float(scores[i])) for i in top if ids[i] != body.file_id][:limit]
+    q = np.frombuffer(row["embedding"], dtype=np.float32)
+    ranked = [(fid, s) for fid, s in search_svc.rank_vector(q, limit + 1) if fid != body.file_id][:limit]
     if not ranked:
         return {"items": []}
     order = {fid: i for i, (fid, _) in enumerate(ranked)}

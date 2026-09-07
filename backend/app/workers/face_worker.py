@@ -1,5 +1,12 @@
 """Face pool worker: loads the ONNX models once per process (~300 MB), then
-detects + embeds per photo. Never touches the DB."""
+detects + embeds per photo. Never touches the DB.
+
+Also cuts the crop the People page shows for each face, from the image it
+has just decoded. Doing it here rather than on first request is what stops
+opening People from decoding one full-size original per person on the
+request thread."""
+import io
+
 _engine = None
 
 
@@ -11,6 +18,18 @@ def pool_init(model_dir: str, det_size: int, det_thresh: float) -> None:
     from ..services.face_engine import FaceEngine
 
     _engine = FaceEngine(model_dir, det_size, det_thresh)
+
+
+def _crop_webp(img, f: dict) -> bytes | None:
+    from .. import config
+    from ..services.thumbs import face_crop_image
+
+    crop = face_crop_image(img, f["x"], f["y"], f["w"], f["h"])
+    if crop is None:
+        return None
+    buf = io.BytesIO()
+    crop.save(buf, "WEBP", quality=config.FACE_CROP_WEBP_QUALITY, method=4)
+    return buf.getvalue()
 
 
 def process(file_id: int, path: str) -> dict:
@@ -27,6 +46,7 @@ def process(file_id: int, path: str) -> dict:
             img.thumbnail((2200, 2200))
         faces = _engine.process(img)
         return {"file_id": file_id, "ok": True,
-                "faces": [{**f, "embedding": f["embedding"].tobytes()} for f in faces]}
+                "faces": [{**f, "embedding": f["embedding"].tobytes(), "crop": _crop_webp(img, f)}
+                          for f in faces]}
     except Exception as e:
         return {"file_id": file_id, "ok": False, "error": f"{type(e).__name__}: {e}"}

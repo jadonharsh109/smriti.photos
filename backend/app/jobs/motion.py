@@ -128,11 +128,16 @@ def _scan(job_id: int, pending: dict[str, int], rows: list) -> tuple[int, int]:
             video_id = pending.pop(cid, None)
             if video_id is None:
                 continue
-            db.execute(
-                "INSERT OR REPLACE INTO file_motion (file_id, video_file_id, content_id, source) "
-                "VALUES (?,?,?,'apple')",
-                (r["id"], video_id, cid),
-            )
+            with db.transaction() as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO file_motion (file_id, video_file_id, content_id, source) "
+                    "VALUES (?,?,?,'apple')",
+                    (r["id"], video_id, cid),
+                )
+                # the flags the grids filter on (migration 0014): the still is
+                # a Live Photo, the movie is its component and leaves Videos
+                conn.execute("UPDATE files SET live = 1 WHERE id = ?", (r["id"],))
+                conn.execute("UPDATE files SET livecomp = 1 WHERE id = ?", (video_id,))
             found += 1
 
         now = time.monotonic()

@@ -24,8 +24,7 @@ def run_motion():
 def summary():
     return {
         "live": db.query_one(
-            "SELECT COUNT(*) n FROM file_motion mo JOIN files f ON f.id = mo.file_id "
-            "WHERE f.status='active'")["n"],
+            "SELECT COUNT(*) n FROM files WHERE status='active' AND live=1")["n"],
         "unpaired_clips": db.query_one(
             "SELECT COUNT(*) n FROM metadata m JOIN files f ON f.id = m.file_id "
             "WHERE m.content_id IS NOT NULL AND m.content_id != '' AND f.status='active' "

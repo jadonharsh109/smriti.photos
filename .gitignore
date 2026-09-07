@@ -13,3 +13,6 @@ desktop/src-tauri/target/
 desktop/src-tauri/payload/
 desktop/src-tauri/gen/
 desktop/.cache/
+
+# subagent worktrees
+.claude/worktrees/

@@ -1,11 +1,11 @@
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 from .. import config, db
 from ..jobs import faces as faces_job
 from ..jobs.runner import manager
-from ..services import thumbs
+from ..services import aggregates, thumbs
 from ..services import volumes as vol_svc
 
 router = APIRouter()
@@ -30,55 +30,28 @@ class CoverIn(BaseModel):
     face_id: int | None = None
 
 
-# The cover a page should actually show, which is not always the one on record:
-# prefer the stored choice, but only while it is still this person's face and
-# still something we can display — never a face from a locked photo, a missing
-# original, or an unplugged drive. Otherwise fall back to the best face in
-# front of us, so a person is never a blank circle when they needn't be.
-#
-# Two subqueries rather than ORDER BY (fa.id = p.cover_face_id): SQLite before
-# 3.46 cannot resolve an outer column reference inside a subquery's ORDER BY
-# and raises "no such column", which 500s the endpoint on e.g. the python.org
-# 3.12 build (SQLite 3.45).
-_COVER_SQL = (
-    "COALESCE("
-    " (SELECT fa.id FROM faces fa JOIN files fv ON fv.id=fa.file_id "
-    "  WHERE fa.id = p.cover_face_id AND fa.person_id = p.id AND fv.status='active' "
-    "  AND fv.id NOT IN (SELECT file_id FROM locked_items)), "
-    " (SELECT fa.id FROM faces fa JOIN files fv ON fv.id=fa.file_id "
-    "  WHERE fa.person_id = p.id AND fv.status='active' "
-    "  AND fv.id NOT IN (SELECT file_id FROM locked_items) "
-    "  ORDER BY fa.det_score DESC LIMIT 1)) AS cover_face_id"
-)
-
-_COUNT_SQL = (
-    "(SELECT COUNT(DISTINCT fa.file_id) FROM faces fa JOIN files f ON f.id=fa.file_id "
-    " WHERE fa.person_id=p.id AND f.status='active' "
-    " AND f.id NOT IN (SELECT file_id FROM locked_items)) AS photo_count"
-)
+# `photo_count` and `cover_face_id` are maintained columns (migration 0014,
+# services/aggregates.py): the count is refreshed whenever faces or visibility
+# change, and the cover is guaranteed to be this person's, on an active,
+# unlocked photo — a hand-picked one while it still qualifies, else the best
+# face Smriti can see. This list used to run two correlated subqueries per
+# person, 620 ms on a 300,000-file library; it is now one indexed read.
+_COLS = "p.id, p.name, p.is_hidden, p.cover_src, p.cover_face_id, p.photo_count"
 
 
 @router.get("/people")
 def list_people(include_hidden: bool = False):
-    where = "" if include_hidden else "WHERE p.is_hidden=0"
-    rows = db.query(
-        f"SELECT p.id, p.name, p.is_hidden, p.cover_src, {_COVER_SQL}, {_COUNT_SQL} "
-        f"FROM persons p {where} ORDER BY photo_count DESC",
-    )
-    return [dict(r) for r in rows if r["photo_count"] > 0]
+    where = "WHERE p.photo_count > 0" + ("" if include_hidden else " AND p.is_hidden = 0")
+    # built by SQLite in one step — see db.query_json for why
+    return Response(media_type="application/json", content=db.query_json(
+        "SELECT json_group_array(json_object('id', p.id, 'name', p.name, 'is_hidden', p.is_hidden, "
+        "'cover_src', p.cover_src, 'cover_face_id', p.cover_face_id, 'photo_count', p.photo_count) "
+        f"ORDER BY p.photo_count DESC, p.id) FROM persons p {where}"))
 
 
 @router.get("/people/{person_id}")
 def person_detail(person_id: int):
-    # The same cover and count the list computes, rather than the raw column:
-    # this page draws the same face in its header, and the two disagreeing —
-    # one showing a fallback, the other a broken image — is the sort of thing
-    # that reads as the library being wrong about who someone is.
-    row = db.query_one(
-        f"SELECT p.id, p.name, p.is_hidden, p.cover_src, {_COVER_SQL}, {_COUNT_SQL} "
-        "FROM persons p WHERE p.id=?",
-        (person_id,),
-    )
+    row = db.query_one(f"SELECT {_COLS} FROM persons p WHERE p.id=?", (person_id,))
     if not row:
         raise HTTPException(404, "no such person")
     return dict(row)
@@ -90,6 +63,7 @@ def patch_person(person_id: int, body: PersonPatch):
         db.execute("UPDATE persons SET name=? WHERE id=?", (body.name.strip() or None, person_id))
     if body.is_hidden is not None:
         db.execute("UPDATE persons SET is_hidden=? WHERE id=?", (1 if body.is_hidden else 0, person_id))
+    aggregates.refresh_counts()   # `persons` (named) and `people_visible`
     return {"ok": True}
 
 
@@ -108,9 +82,7 @@ def set_cover(person_id: int, body: CoverIn):
     if body.face_id is None:
         return {"ok": True, "cover_face_id": faces_job.repick_cover(person_id), "cover_src": None}
     face = db.query_one(
-        "SELECT fa.person_id, f.status, "
-        "(SELECT 1 FROM locked_items WHERE file_id=f.id) AS locked "
-        "FROM faces fa JOIN files f ON f.id=fa.file_id WHERE fa.id=?",
+        "SELECT fa.person_id, f.status, f.locked FROM faces fa JOIN files f ON f.id=fa.file_id WHERE fa.id=?",
         (body.face_id,),
     )
     if not face:
@@ -121,7 +93,7 @@ def set_cover(person_id: int, body: CoverIn):
     if face["person_id"] != person_id:
         raise HTTPException(400, "that face belongs to someone else now")
     if face["status"] != "active" or face["locked"]:
-        raise HTTPException(400, "that photo isn\u2019t available to use as a cover")
+        raise HTTPException(400, "that photo isn’t available to use as a cover")
     db.execute("UPDATE persons SET cover_face_id=?, cover_src='manual' WHERE id=?",
                (body.face_id, person_id))
     return {"ok": True, "cover_face_id": body.face_id, "cover_src": "manual"}
@@ -138,6 +110,8 @@ def merge(body: MergeIn):
         conn.execute("UPDATE faces SET person_id=? WHERE person_id=?", (body.to_id, body.from_id))
         conn.execute("DELETE FROM persons WHERE id=?", (body.from_id,))
     faces_job.recompute_centroid(body.to_id)
+    aggregates.refresh_people([body.to_id])
+    aggregates.refresh_counts()
     return {"ok": True}
 
 
@@ -145,8 +119,7 @@ def merge(body: MergeIn):
 def person_faces(person_id: int, limit: int = 200):
     rows = db.query(
         "SELECT fa.id, fa.file_id, fa.det_score, fa.assign_src FROM faces fa "
-        "JOIN files f ON f.id=fa.file_id WHERE fa.person_id=? AND f.status='active' "
-        "AND f.id NOT IN (SELECT file_id FROM locked_items) "
+        "JOIN files f ON f.id=fa.file_id WHERE fa.person_id=? AND f.status='active' AND f.locked=0 "
         "ORDER BY fa.det_score DESC LIMIT ?",
         (person_id, limit),
     )
@@ -160,8 +133,11 @@ def assign_face(face_id: int, body: FaceAssign):
         raise HTTPException(404, "no such face")
     old_person = face["person_id"]
     db.execute("UPDATE faces SET person_id=?, assign_src='manual' WHERE id=?", (body.person_id, face_id))
-    for pid in {old_person, body.person_id} - {None}:
+    touched = {old_person, body.person_id} - {None}
+    for pid in touched:
         faces_job.recompute_centroid(pid)
+    aggregates.refresh_people(touched)
+    aggregates.refresh_counts()
     return {"ok": True}
 
 
@@ -174,6 +150,11 @@ def face_thumb(face_id: int, lt: str | None = None):
         raise HTTPException(404, "no such face")
     if lock.is_locked_file(face["file_id"]) and not lock.check_token(lt):
         raise HTTPException(401, "locked")
+    # The common case now: the face scan wrote the crop, so this is one stat.
+    ready = thumbs.face_crop_path(face_id)
+    if ready.exists():
+        return FileResponse(ready, media_type="image/webp",
+                            headers={"Cache-Control": "public, max-age=31536000, immutable"})
     file_row = db.query_one("SELECT * FROM files WHERE id=?", (face["file_id"],))
     abs_path = vol_svc.abs_path_for_file(file_row) if file_row else None
     p = thumbs.ensure_face_crop(face, abs_path)

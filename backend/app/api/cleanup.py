@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from .. import config, db
 from ..jobs import blur as blur_job
 from ..jobs.runner import manager
-from ..services import purge
+from ..services import aggregates, purge
 
 router = APIRouter()
 
@@ -34,8 +34,7 @@ def blurry(sensitivity: str = "normal", limit: int = 300):
     rows = db.query(
         "SELECT f.id, f.filename, q.sharpness "
         "FROM file_quality q JOIN files f ON f.id = q.file_id "
-        "WHERE f.status='active' AND q.sharpness < ? "
-        "AND f.id NOT IN (SELECT file_id FROM locked_items) "
+        "WHERE f.status='active' AND q.sharpness < ? AND f.locked=0 "
         "ORDER BY q.sharpness ASC LIMIT ?",
         (ceiling, max(1, min(limit, 1000))),
     )
@@ -109,4 +108,8 @@ def forget_missing(body: ForgetIn):
         return {"forgotten": 0}
     purge.purge_files(None, ids)
     purge.drop_orphan_people()
+    # Missing files were already out of every visible count; only the
+    # `missing` total and the people list (orphans dropped) moved.
+    aggregates.refresh_people()
+    aggregates.refresh_counts()
     return {"forgotten": len(ids)}

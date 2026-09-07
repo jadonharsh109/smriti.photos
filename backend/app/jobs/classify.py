@@ -37,6 +37,13 @@ async def run_classify(job_id: int, force: bool = False) -> None:
             "INSERT OR REPLACE INTO file_kinds (file_id, kind, confidence, source) VALUES (?,?,?,?)",
             verdicts,
         )
+        # The flag every grid filters on (files.doc) mirrors this table. Only
+        # rows whose verdict changed are touched, so a rerun on an unchanged
+        # library writes nothing.
+        conn.execute("UPDATE files SET doc = 0 WHERE doc = 1 "
+                     "AND id NOT IN (SELECT file_id FROM file_kinds WHERE kind != 'photo')")
+        conn.execute("UPDATE files SET doc = 1 WHERE doc = 0 "
+                     "AND id IN (SELECT file_id FROM file_kinds WHERE kind != 'photo')")
 
     by_kind: dict[str, int] = {}
     for _, kind, _, _ in verdicts:
