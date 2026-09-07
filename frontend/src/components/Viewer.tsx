@@ -9,7 +9,7 @@ import { openContextMenu, type MenuItem } from "../shell/ContextMenu";
 import type { FileDetail } from "../shell/Inspector";
 import { inspector, setInspectorOpen, setInspectorSubject } from "../shell/store";
 import { useShell } from "../shell/Toolbar";
-import { IconChevronL, IconChevronR, IconHeart, IconInfo, IconMore } from "./Icons";
+import { IconChevronL, IconChevronR, IconExpand, IconHeart, IconInfo, IconMore } from "./Icons";
 
 interface Props {
   item: Item;
@@ -38,6 +38,40 @@ export default function Viewer({ item, onClose, onPrev, onNext, position, onTogg
   const [fav, setFav] = useState(!!item.fav);
   useEffect(() => setFav(!!item.fav), [item.id, item.fav]);
   const [playingLive, setPlayingLive] = useState(false);
+
+  // ---- full screen: the stage alone, media and arrows, nothing else ----
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [full, setFull] = useState(false);
+  const [immersive, setImmersive] = useState(false); // fallback where the Fullscreen API is missing
+  const fsElement = () => document.fullscreenElement ?? (document as unknown as { webkitFullscreenElement?: Element }).webkitFullscreenElement ?? null;
+  const exitFull = () => {
+    const d = document as unknown as { exitFullscreen?: () => Promise<void>; webkitExitFullscreen?: () => void };
+    if (fsElement()) (d.exitFullscreen ?? d.webkitExitFullscreen)?.call(document);
+    setImmersive(false);
+  };
+  const toggleFull = () => {
+    if (fsElement() || immersive) {
+      exitFull();
+      return;
+    }
+    const el = stageRef.current as unknown as { requestFullscreen?: () => Promise<void>; webkitRequestFullscreen?: () => void } | null;
+    const req = el?.requestFullscreen ?? el?.webkitRequestFullscreen;
+    if (el && req) {
+      const r = req.call(el) as Promise<void> | void;
+      if (r && typeof (r as Promise<void>).catch === "function") (r as Promise<void>).catch(() => setImmersive(true));
+    } else setImmersive(true);
+  };
+  useEffect(() => {
+    const on = () => setFull(!!fsElement());
+    document.addEventListener("fullscreenchange", on);
+    document.addEventListener("webkitfullscreenchange", on);
+    return () => {
+      document.removeEventListener("fullscreenchange", on);
+      document.removeEventListener("webkitfullscreenchange", on);
+      if (fsElement()) exitFull(); // the viewer closed while full screen
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: detail } = useQuery({
     queryKey: ["file", item.id, qs],
@@ -133,9 +167,11 @@ export default function Viewer({ item, onClose, onPrev, onNext, position, onTogg
       if (t?.closest("input, textarea, [contenteditable]")) return;
       if (e.key === "Escape" || e.key === " ") {
         e.preventDefault();
-        if (zoomRef.current > 1 && e.key === "Escape") resetZoom();
+        if (e.key === "Escape" && (fsElement() || immersive)) exitFull(); // one step out, not all the way
+        else if (zoomRef.current > 1 && e.key === "Escape") resetZoom();
         else onClose();
-      } else if (e.key === "ArrowLeft") onPrev?.();
+      } else if (e.key === "f" && !e.metaKey && !e.ctrlKey) toggleFull();
+      else if (e.key === "ArrowLeft") onPrev?.();
       else if (e.key === "ArrowRight") onNext?.();
       else if (e.key === "i" && !e.metaKey && !e.ctrlKey) setInspectorOpen(!inspector.get().open);
       else if (e.key === "." && onToggleFav) toggleFav();
@@ -144,7 +180,7 @@ export default function Viewer({ item, onClose, onPrev, onNext, position, onTogg
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onClose, onPrev, onNext, item.id, fav]);
+  }, [onClose, onPrev, onNext, item.id, fav, immersive]);
 
   const toggleFav = () => {
     if (!onToggleFav) return;
@@ -198,7 +234,7 @@ export default function Viewer({ item, onClose, onPrev, onNext, position, onTogg
 
   if (!contentEl) return null;
   return createPortal(
-    <div className="viewer" role="dialog" aria-label={detail?.filename ?? "Photo"}>
+    <div className={`viewer${immersive ? " immersive" : ""}`} role="dialog" aria-label={detail?.filename ?? "Photo"}>
       <div className="vbar">
         <button title="Back (esc)" onClick={onClose}><IconChevronL size={15} /></button>
         <span className="name">{detail?.filename ?? ""}</span>
@@ -218,9 +254,10 @@ export default function Viewer({ item, onClose, onPrev, onNext, position, onTogg
           </button>
         )}
         <button className={infoOpen ? "on" : ""} title="Info (i)" onClick={() => setInspectorOpen(!infoOpen)}><IconInfo size={15} /></button>
+        <button className={full || immersive ? "on" : ""} title="Full screen (f)" onClick={toggleFull}><IconExpand size={15} /></button>
         <button title="More" onClick={more}><IconMore size={15} /></button>
       </div>
-      <div className="vstage" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={stageRef} className="vstage" onClick={(e) => { if (e.target === e.currentTarget) (full || immersive ? exitFull() : onClose()); }}>
         {onPrev && <button className="varrow l" title="Previous (←)" onClick={onPrev}><IconChevronL size={16} /></button>}
         {item.media_type === "video" && mediaError && !noOriginal ? (
           <div className="vunavail">
@@ -233,7 +270,7 @@ export default function Viewer({ item, onClose, onPrev, onNext, position, onTogg
         ) : noOriginal ? (
           still
         ) : item.media_type === "video" ? (
-          <video key={item.id} className="vmedia" src={mediaUrl(item.id, qs)} poster={thumbUrl(item.id, qs)} controls autoPlay onError={diagnoseMediaError} />
+          <video key={item.id} className="vmedia" src={mediaUrl(item.id, qs)} poster={thumbUrl(item.id, qs)} controls autoPlay onError={diagnoseMediaError} onDoubleClick={toggleFull} />
         ) : playingLive && detail?.motion_file_id ? (
           <video key={`live-${item.id}`} className="vmedia" src={mediaUrl(detail.motion_file_id, qs)} poster={previewUrl(item.id, qs)} autoPlay muted playsInline onEnded={() => setPlayingLive(false)} onError={() => setPlayingLive(false)} />
         ) : (
@@ -246,7 +283,7 @@ export default function Viewer({ item, onClose, onPrev, onNext, position, onTogg
           </div>
         )}
         {!showingVideo && !noOriginal && (
-          <div className="vfoot">← → to move · double-click to zoom · esc to close</div>
+          <div className="vfoot">← → to move · double-click to zoom · f for full screen · esc to close</div>
         )}
       </div>
     </div>,
