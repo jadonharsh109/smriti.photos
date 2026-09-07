@@ -60,7 +60,9 @@ async def run_post_scan() -> None:
         await _wait_idle("faces", "recluster")
         if await _stage("faces", lambda jid: faces_job.run_face_scan(jid)) == "done":
             await _wait_idle("faces", "recluster")
-            await _stage("recluster", lambda jid: faces_job.run_recluster(jid))
+            # only the faces nobody has yet; a whole-library regroup is the
+            # user's button, not something every scan does to their names
+            await _stage("recluster", lambda jid: faces_job.run_recluster(jid, incremental=True))
     # A Takeout import records its albums but cannot apply them — the photos
     # have no ids until a scan covers them, which only happens if the user
     # chooses to add the folder. This is that moment, whenever it arrives.

@@ -139,9 +139,23 @@ def _store_faces(file_id: int, faces: list[dict], centroids) -> tuple[int, int]:
     return len(faces), assigned
 
 
-async def run_recluster(job_id: int) -> None:
+async def run_recluster(job_id: int, incremental: bool = False) -> None:
+    """Group faces into people.
+
+    `incremental` — what runs after every scan — touches only faces that
+    belong to nobody yet: the scan already handed each new face to the person
+    it resembles, so what is left is the faces of people the library has not
+    met. Clustering those alone takes seconds where re-clustering the whole
+    library took minutes, and it cannot disturb anything the user has done —
+    names, hidden people, chosen covers, moved faces all stay exactly as they
+    are. The full pass below is the "Group People" button, for when a library
+    wants a fresh opinion."""
+    if incremental:
+        await _group_new_faces(job_id)
+        return
     rows = db.query(
-        "SELECT fa.id, fa.embedding, fa.person_id, fa.assign_src, fa.det_score, p.name AS person_name "
+        "SELECT fa.id, fa.embedding, fa.person_id, fa.assign_src, fa.det_score, "
+        "p.name AS person_name, p.is_hidden AS person_hidden, p.cover_src AS person_cover_src "
         "FROM faces fa LEFT JOIN persons p ON p.id=fa.person_id",
     )
     n = len(rows)
@@ -153,14 +167,21 @@ async def run_recluster(job_id: int) -> None:
     X = np.stack([_emb(r["embedding"]) for r in rows])
     labels = await asyncio.to_thread(_cluster, X)
 
+    # A person the user has touched — named, hidden, or given a cover — is an
+    # identity worth carrying across the re-clustering. Hidden used to be left
+    # out here, so every hidden-but-unnamed person came back after a scan as a
+    # brand-new, visible one.
+    def kept(r) -> bool:
+        return bool(r["person_id"] and (r["person_name"] or r["person_hidden"] or r["person_cover_src"] == "manual"))
+
     # HDBSCAN over-splits the same person; repair before mapping to persons
-    named_by_idx = {i: r["person_id"] for i, r in enumerate(rows) if r["person_id"] and r["person_name"]}
+    named_by_idx = {i: r["person_id"] for i, r in enumerate(rows) if kept(r)}
     labels = _merge_split_clusters(X, labels, named_by_idx)
     labels = _adopt_noise(X, labels)
 
     manual = {r["id"]: r["person_id"] for r in rows if r["assign_src"] == "manual" and r["person_id"]}
 
-    # Majority-overlap remap: keep an existing NAMED person when a new cluster
+    # Majority-overlap remap: keep an existing kept person when a new cluster
     # is mostly made of their faces (largest cluster wins per person).
     clusters: dict[int, list[int]] = {}
     for i, lbl in enumerate(labels):
@@ -171,7 +192,7 @@ async def run_recluster(job_id: int) -> None:
         votes: dict[int, int] = {}
         for i in members:
             r = rows[i]
-            if r["person_id"] and r["person_name"]:
+            if kept(r):
                 votes[r["person_id"]] = votes.get(r["person_id"], 0) + 1
         for pid, v in votes.items():
             if v > len(members) / 3 and (pid not in named_claim or v > named_claim[pid][1]):
@@ -194,14 +215,64 @@ async def run_recluster(job_id: int) -> None:
         for i, lbl in enumerate(labels):
             if lbl < 0 and rows[i]["id"] not in manual:
                 conn.execute("UPDATE faces SET person_id=NULL, assign_src=NULL WHERE id=?", (rows[i]["id"],))
+        # an untouched person with no faces left is just a row; one the user
+        # named or hid keeps its place even if empty for now
         conn.execute(
-            "DELETE FROM persons WHERE name IS NULL AND id NOT IN "
-            "(SELECT DISTINCT person_id FROM faces WHERE person_id IS NOT NULL)",
+            "DELETE FROM persons WHERE name IS NULL AND is_hidden = 0 AND cover_src IS NOT 'manual' "
+            "AND id NOT IN (SELECT DISTINCT person_id FROM faces WHERE person_id IS NOT NULL)",
         )
     for p in db.query("SELECT id FROM persons"):
         recompute_centroid(p["id"])
     manager.update(job_id, done=n)
     manager.finish(job_id, "done", f"{len(clusters)} people from {n} faces")
+
+
+async def _group_new_faces(job_id: int) -> None:
+    """Cluster only the faces that belong to nobody, and leave every existing
+    person exactly as they are."""
+    rows = db.query("SELECT id, embedding FROM faces WHERE person_id IS NULL")
+    n = len(rows)
+    if n < config.FACE_MIN_CLUSTER_SIZE:
+        manager.finish(job_id, "done", f"{n} faces without a person — not enough to make one")
+        return
+    manager.update(job_id, total=n, message=f"grouping {n} new faces…")
+    X = np.stack([_emb(r["embedding"]) for r in rows])
+    labels = await asyncio.to_thread(_cluster, X)
+    labels = _merge_split_clusters(X, labels, {})
+    labels = _adopt_noise(X, labels)
+    clusters: dict[int, list[int]] = {}
+    for i, lbl in enumerate(labels):
+        if lbl >= 0:
+            clusters.setdefault(int(lbl), []).append(i)
+    existing = _load_centroids()
+    touched: set[int] = set()
+    made = 0
+    with db.transaction() as conn:
+        for members in clusters.values():
+            c = X[members].mean(axis=0)
+            norm = np.linalg.norm(c)
+            if norm > 0:
+                c = c / norm
+            pid = None
+            # a whole new cluster that sits right on an existing person's
+            # centroid is that person — a second batch of the same face
+            if existing is not None:
+                ids, mat = existing
+                sims = mat @ c
+                best = int(np.argmax(sims))
+                if sims[best] >= config.FACE_MERGE_SIM:
+                    pid = ids[best]
+            if pid is None:
+                pid = conn.execute("INSERT INTO persons (name) VALUES (NULL)").lastrowid
+                made += 1
+            touched.add(pid)
+            for i in members:
+                conn.execute("UPDATE faces SET person_id=?, assign_src='cluster' WHERE id=?", (pid, rows[i]["id"]))
+    for pid in touched:
+        recompute_centroid(pid)
+    manager.update(job_id, done=n)
+    joined = len(touched) - made
+    manager.finish(job_id, "done", f"{made} new people from {n} faces" + (f", {joined} joined existing people" if joined else ""))
 
 
 def _merge_split_clusters(X: np.ndarray, labels: np.ndarray, named_by_idx: dict[int, int]) -> np.ndarray:

@@ -74,8 +74,9 @@ makes. Everything after that runs on your machine.
 
 - **Timeline** — a date-grouped grid virtualized for six-figure libraries, a year scrubber, a
   viewer that fills the window with double-click zoom, and an Info panel with the photo's camera,
-  place and people. Click, ⌘-click and shift to select, arrow keys to move, and every action —
-  album, favourite, Locked, export, Trash — in the right-click menu.
+  place and people. A click opens a photo; the circle in its corner selects it, as do ⌘-click
+  and shift-click; arrow keys move, and every action — album, favourite, Locked, export,
+  Trash — is in the right-click menu.
 - **Search** — type what the photo *shows* — "sunset over the sea", "a qr code" — and it is
   found, ranked by a small vision model (MobileCLIP) on your CPU. Names, places and dates in
   the query are answered exactly from the index, not guessed at: *"solo photos of yash in

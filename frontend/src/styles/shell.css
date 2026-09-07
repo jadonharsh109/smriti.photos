@@ -126,9 +126,13 @@ h1, h2, h3, h4, p, dl, dd { margin: 0; }
 .tile img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity 160ms ease; }
 .tile img.ld { opacity: 1; }
 .tile.sel { outline: 2px solid var(--accent); outline-offset: -2px; }
-.tile.sel::after { content: "✓"; position: absolute; left: 6px; top: 6px; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 700; display: grid; place-items: center; }
-.selecting .tile::before { content: ""; position: absolute; left: 6px; top: 6px; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, 0.9); background: rgba(0, 0, 0, 0.25); z-index: 1; }
-.selecting .tile.sel::before { display: none; }
+/* the selection circle: shows under the cursor, in Select mode, and when on */
+.tile .pick { position: absolute; left: 6px; top: 6px; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, 0.92); background: rgba(0, 0, 0, 0.3); color: transparent; font-size: 11px; font-weight: 700; display: grid; place-items: center; opacity: 0; z-index: 1; transition: opacity 100ms ease, background 100ms ease; cursor: pointer; }
+.tile:hover .pick, .selecting .tile .pick, .tile.sel .pick { opacity: 1; }
+.tile .pick:hover { background: rgba(0, 0, 0, 0.55); color: rgba(255, 255, 255, 0.9); }
+.tile.sel .pick { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.tile.sel .pick:hover { background: var(--accent); color: var(--accent-ink); }
+.tile.sel .pick { animation: pop 140ms ease-out; }
 .tile .badge { position: absolute; right: 6px; bottom: 6px; padding: 1px 6px; border-radius: 3px; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 10.5px; font-weight: 600; pointer-events: none; }
 .tile .badge.live { right: auto; left: 6px; top: 6px; bottom: auto; letter-spacing: 0.04em; }
 .tile.sel .badge.live { left: 30px; }
@@ -469,7 +473,6 @@ video.vmedia { width: 100%; height: 100%; }
 [data-style="vibrant"] .day .n { color: var(--accent); opacity: 0.85; }
 [data-style="vibrant"] .tile { transition: transform 140ms ease, box-shadow 140ms ease; }
 [data-style="vibrant"] .tile:hover { transform: scale(1.02); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28); z-index: 2; }
-[data-style="vibrant"] .tile.sel::after { animation: pop 160ms ease-out; }
 [data-style="vibrant"] .card { transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease; }
 [data-style="vibrant"] .card:hover { transform: translateY(-2px); box-shadow: var(--shadow-sm); }
 [data-style="vibrant"] .card.person .face { box-shadow: 0 0 0 3px var(--accent-soft); }

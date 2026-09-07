@@ -32,8 +32,10 @@ interface Props {
   rowHeight?: number;
 }
 
-/** Justified rows of thumbnails, the way Photos lays them out. Click selects,
- *  double-click opens, right-click asks what to do, the heart hearts. */
+/** Justified rows of thumbnails, the way Photos lays them out. A click opens;
+ *  the circle in a photo's corner selects — as does ⌘-click, shift-click, the
+ *  Select button, or any click once something is already selected. Right-click
+ *  asks what to do, the heart hearts. */
 export default function PhotoGrid({ items, width, onOpen, qs = "", onToggleFav, menuExtras, onLayout, selectable = true, rowHeight }: Props) {
   const tileH = view.use((s) => s.tileHeight);
   const selecting = view.use((s) => s.selecting);
@@ -93,8 +95,11 @@ export default function PhotoGrid({ items, width, onOpen, qs = "", onToggleFav, 
                 return;
               }
               if (e.shiftKey) selectionActions.range(it.id);
-              else if (e.metaKey || e.ctrlKey || selecting) selectionActions.toggle(it.id);
-              else selectionActions.select(it.id);
+              else if (e.metaKey || e.ctrlKey || selecting || selection.get().ids.size > 0) selectionActions.toggle(it.id);
+              else {
+                onOpen(i);
+                return;
+              }
               inspector.set({ qs });
             }}
             onDoubleClick={(e) => {
@@ -119,6 +124,22 @@ export default function PhotoGrid({ items, width, onOpen, qs = "", onToggleFav, 
               }}
               onLoad={(e) => e.currentTarget.classList.add("ld")}
             />
+            {selectable && (
+              <button
+                className="pick"
+                title={isSel ? "Deselect" : "Select"}
+                aria-pressed={isSel}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (e.shiftKey) selectionActions.range(it.id);
+                  else selectionActions.toggle(it.id);
+                  inspector.set({ qs });
+                }}
+                onDoubleClick={(e) => e.stopPropagation()}
+              >
+                ✓
+              </button>
+            )}
             {it.live === 1 && <span className="badge live">LIVE</span>}
             {it.media_type === "video" && it.duration_s != null && <span className="badge num">{fmtDuration(it.duration_s)}</span>}
             {onToggleFav && (
