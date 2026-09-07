@@ -33,9 +33,6 @@ export default function TimelinePage() {
             <Link to="/settings">
               <button className="primary">Choose a photos folder</button>
             </Link>
-            <Link to="/welcome">
-              <button className="ghost">What is Smriti?</button>
-            </Link>
           </div>
         </div>
       ) : (
