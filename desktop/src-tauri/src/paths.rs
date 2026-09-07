@@ -26,7 +26,7 @@ fn python_rel() -> &'static str {
 /// but an existing `~/.smriti` from a CLI/Homebrew install wins — adopting it
 /// in place means an upgrading user keeps their index, thumbnail cache and the
 /// 182 MB of face models, with no copy and no risk of a half-finished move.
-fn resolve_data_dir(app: &AppHandle) -> PathBuf {
+pub(crate) fn resolve_data_dir(app: &AppHandle) -> PathBuf {
     if let Ok(explicit) = std::env::var("SMRITI_DATA_DIR") {
         if !explicit.is_empty() {
             return PathBuf::from(explicit);

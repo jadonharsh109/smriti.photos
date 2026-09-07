@@ -4,6 +4,7 @@
 // white window, which is the usual failure mode for this architecture.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod assets;
 mod paths;
 mod supervisor;
 mod updates;
@@ -154,6 +155,9 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        // smriti://thumb/…, smriti://media/… — images and originals served by
+        // the shell straight from disk. See assets.rs for the per-platform URL.
+        .register_asynchronous_uri_scheme_protocol(assets::SCHEME, assets::handle)
         .plugin(tauri_plugin_opener::init())
         // second launch focuses the existing window instead of starting a
         // second server against the same SQLite file
@@ -236,6 +240,12 @@ fn main() {
                 builder = builder
                     .title_bar_style(tauri::TitleBarStyle::Overlay)
                     .hidden_title(true);
+            }
+
+            // Phase 0 spike only (SMRITI_SPIKE_MEASURE=1): time smriti:// against
+            // the HTTP thumbnail route from inside the webview and log the result.
+            if let Some(js) = assets::spike_measurement_script() {
+                builder = builder.initialization_script(js);
             }
 
             let window = builder.build()?;
