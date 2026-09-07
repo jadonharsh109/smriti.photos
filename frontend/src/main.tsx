@@ -9,7 +9,6 @@ import DocumentsPage from "./pages/DocumentsPage";
 import CleanupPage from "./pages/CleanupPage";
 import EventPage from "./pages/EventPage";
 import EventsPage from "./pages/EventsPage";
-import LandingPage from "./pages/LandingPage";
 import LockedPage from "./pages/LockedPage";
 import MapPage from "./pages/MapPage";
 import PeoplePage from "./pages/PeoplePage";
@@ -60,7 +59,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <QueryClientProvider client={qc}>
       <BrowserRouter>
         <Routes>
-          <Route path="/welcome" element={<LandingPage />} />
+          {/* the in-app landing page was retired with the desktop rebuild;
+              the website carries that story now */}
+          <Route path="/welcome" element={<Navigate to="/" replace />} />
           <Route path="/" element={<App />}>
             <Route index element={<TimelinePage />} />
             <Route path="search" element={<SearchPage />} />

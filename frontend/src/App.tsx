@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { NavLink, Link, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { api } from "./api/client";
 import {
   IconAlbum,
@@ -101,11 +101,11 @@ export default function App() {
           without this the window cannot be moved at all. */}
       <div className="shell" data-tauri-drag-region>
         <aside className="rail">
-          <Link to="/welcome" className="rail-brand" title="About Smriti">
+          <div className="rail-brand" title="Smriti">
             <Logo size={27} />
             <span className="word">Smriti</span>
             <span className="dev brand-dev">स्मृति</span>
-          </Link>
+          </div>
           {/* Only the links scroll. The jobs card and version stay pinned to
               the foot of the rail, so a short window can never hide progress. */}
           <div className="rail-nav">
