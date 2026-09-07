@@ -146,9 +146,22 @@ pub fn handle(
     };
     let range = hdr(header::RANGE);
     let origin = hdr(header::ORIGIN);
+    let app = ctx.app_handle().clone();
     POOL.get_or_init(|| Pool::new(WORKERS)).run(Box::new(move || {
-        let response = route(&data_dir, &path, range.as_deref()).unwrap_or_else(empty);
-        responder.respond(with_cors(response, origin.as_deref()));
+        let response = with_cors(route(&data_dir, &path, range.as_deref()).unwrap_or_else(empty), origin.as_deref());
+        // The read happened here, on the pool; the answer is handed back on the
+        // main thread. WebKit stops a scheme task on the main thread — a
+        // seeking <video> stops dozens a second — and answering a stopped task
+        // raises an Objective-C exception. Answered from this thread, that
+        // exception arrives between wry's "is the task still alive" check and
+        // its call, and in a panic=abort build it cannot be caught: the app
+        // died with "abort() called" on smriti-images-N while a video played.
+        // On the main thread the check and the call cannot be interleaved with
+        // the stop, so the exception is never raised at all.
+        let deliver = move || responder.respond(response);
+        if app.run_on_main_thread(deliver).is_err() {
+            // the event loop is gone: the window is closing, nothing to answer
+        }
     }));
 }
 

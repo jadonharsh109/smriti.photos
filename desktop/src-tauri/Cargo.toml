@@ -32,7 +32,12 @@ rusqlite = { version = "0.40.2", features = ["bundled"] }
 codegen-units = 1
 lto = true
 opt-level = "s"
-panic = "abort"
+# Unwind, not abort: wry catches the Objective-C exception WebKit raises when a
+# scheme task was stopped mid-answer, and objc2 documents that this catch
+# cannot work under panic=abort — the exception aborts the process instead.
+# That was the crash while playing a video (2.5.0). The main-thread handoff in
+# assets.rs avoids raising it; this makes sure it could never be fatal.
+panic = "unwind"
 strip = true
 
 [dev-dependencies]
