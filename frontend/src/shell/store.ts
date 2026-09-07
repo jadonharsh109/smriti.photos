@@ -6,6 +6,7 @@
  *  (a primitive, or a value already held in the state), or React will loop. */
 import { useSyncExternalStore } from "react";
 import type { Job } from "../api/client";
+import { isDesktop, setUiZoom } from "../lib/desktop";
 
 export function createStore<T extends object>(initial: T) {
   let state = initial;
@@ -56,8 +57,69 @@ export function setTheme(mode: ThemeMode) {
   theme.set({ mode });
   write("smriti.theme", mode);
   applyTheme(mode);
+  savePrefs();
 }
 applyTheme(theme.get().mode);
+
+/* ---- appearance: accent, style, size --------------------------------- */
+export type Accent = "saffron" | "rani" | "teal" | "blue" | "violet" | "graphite";
+export type UiStyle = "minimal" | "vibrant";
+export const ACCENTS: { id: Accent; label: string; swatch: string }[] = [
+  { id: "saffron", label: "Saffron", swatch: "#d8781a" },
+  { id: "rani", label: "Rani", swatch: "#d8397a" },
+  { id: "teal", label: "Teal", swatch: "#1a9a8f" },
+  { id: "blue", label: "Blue", swatch: "#3373e0" },
+  { id: "violet", label: "Violet", swatch: "#8659d8" },
+  { id: "graphite", label: "Graphite", swatch: "#6b6b74" },
+];
+export const UI_SCALES: { value: number; label: string }[] = [
+  { value: 0.9, label: "Compact" },
+  { value: 1, label: "Default" },
+  { value: 1.1, label: "Large" },
+  { value: 1.25, label: "Larger" },
+];
+export const ui = createStore<{ accent: Accent; style: UiStyle; scale: number }>({
+  accent: read<Accent>("smriti.accent", "saffron"),
+  style: read<UiStyle>("smriti.style", "minimal"),
+  scale: read<number>("smriti.scale", 1),
+});
+export function applyUi() {
+  const u = ui.get();
+  const el = document.documentElement;
+  if (u.accent === "saffron") el.removeAttribute("data-accent");
+  else el.setAttribute("data-accent", u.accent);
+  if (u.style === "minimal") el.removeAttribute("data-style");
+  else el.setAttribute("data-style", u.style);
+  // the shell scales the page the way browser zoom would; a plain browser has its own
+  if (isDesktop()) setUiZoom(u.scale).catch(() => {});
+}
+export function setAccent(accent: Accent) {
+  ui.set({ accent });
+  write("smriti.accent", accent);
+  applyUi();
+  savePrefs();
+}
+export function setUiStyle(style: UiStyle) {
+  ui.set({ style });
+  write("smriti.style", style);
+  applyUi();
+  savePrefs();
+}
+export function setUiScale(scale: number) {
+  ui.set({ scale });
+  write("smriti.scale", scale);
+  applyUi();
+  savePrefs();
+}
+applyUi();
+
+/* ---- sidebar ------------------------------------------------------------- */
+export const side = createStore<{ albumsOpen: boolean }>({ albumsOpen: read("smriti.side.albums", true) });
+export function setAlbumsOpen(albumsOpen: boolean) {
+  side.set({ albumsOpen });
+  write("smriti.side.albums", albumsOpen);
+  savePrefs();
+}
 
 /* ---- view: thumbnail size, select mode ----------------------------------- */
 export const TILE_MIN = 96;
@@ -70,6 +132,7 @@ export function setTileHeight(h: number) {
   const v = Math.min(TILE_MAX, Math.max(TILE_MIN, Math.round(h)));
   view.set({ tileHeight: v });
   write("smriti.tile", v);
+  savePrefs();
 }
 export const setSelecting = (selecting: boolean) => view.set({ selecting });
 
@@ -130,6 +193,82 @@ export const inspector = createStore<{ open: boolean; subject: number | null; qs
 export function setInspectorOpen(open: boolean) {
   inspector.set({ open });
   write("smriti.inspector", open);
+  savePrefs();
+}
+
+/* ---- the window's look, remembered by the server ------------------------- */
+/** localStorage is the fast path for the first paint, but it is per origin —
+ *  and the desktop app serves the page from a fresh ephemeral port on every
+ *  launch, so it forgot the thumbnail size each time. The server's settings
+ *  are the copy that lasts; this loads them once and writes every change back. */
+interface UiPrefs {
+  theme?: ThemeMode;
+  tile?: number;
+  inspector?: boolean;
+  accent?: Accent;
+  style?: UiStyle;
+  scale?: number;
+  sideAlbums?: boolean;
+}
+let prefsLoaded = false;
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
+function collectPrefs(): UiPrefs {
+  return {
+    theme: theme.get().mode,
+    tile: view.get().tileHeight,
+    inspector: inspector.get().open,
+    accent: ui.get().accent,
+    style: ui.get().style,
+    scale: ui.get().scale,
+    sideAlbums: side.get().albumsOpen,
+  };
+}
+export function savePrefs() {
+  if (!prefsLoaded) return; // never overwrite the server's copy with this origin's defaults
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ui: collectPrefs() }) }).catch(() => {});
+  }, 400);
+}
+export async function loadPrefs() {
+  if (prefsLoaded) return;
+  try {
+    const r = await fetch("/api/settings");
+    const u: UiPrefs = (await r.json()).ui ?? {};
+    if (u.theme === "system" || u.theme === "light" || u.theme === "dark") {
+      theme.set({ mode: u.theme });
+      write("smriti.theme", u.theme);
+      applyTheme(u.theme);
+    }
+    if (typeof u.tile === "number") {
+      const v = Math.min(TILE_MAX, Math.max(TILE_MIN, Math.round(u.tile)));
+      view.set({ tileHeight: v });
+      write("smriti.tile", v);
+    }
+    if (typeof u.inspector === "boolean") {
+      inspector.set({ open: u.inspector });
+      write("smriti.inspector", u.inspector);
+    }
+    if (typeof u.sideAlbums === "boolean") {
+      side.set({ albumsOpen: u.sideAlbums });
+      write("smriti.side.albums", u.sideAlbums);
+    }
+    const accent = ACCENTS.find((a) => a.id === u.accent)?.id;
+    const style = u.style === "vibrant" || u.style === "minimal" ? u.style : undefined;
+    const scale = UI_SCALES.find((x) => x.value === u.scale)?.value;
+    if (accent || style || scale) {
+      ui.set({ ...(accent ? { accent } : {}), ...(style ? { style } : {}), ...(scale ? { scale } : {}) });
+      write("smriti.accent", ui.get().accent);
+      write("smriti.style", ui.get().style);
+      write("smriti.scale", ui.get().scale);
+    }
+    applyUi();
+    prefsLoaded = true;
+    // a library that has never stored a look gets this window's as the start
+    if (Object.keys(u).length === 0) savePrefs();
+  } catch {
+    prefsLoaded = true; // offline or old server: behave as before, per origin
+  }
 }
 export const setInspectorSubject = (subject: number | null, qs = "") => inspector.set({ subject, qs });
 

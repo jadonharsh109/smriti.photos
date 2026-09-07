@@ -10,15 +10,21 @@ import { isDesktop } from "../lib/desktop";
 import { friendlyError, stageLabel, stageSentence } from "../lib/stages";
 import { check as checkForUpdates, openSheet, useUpdates } from "../lib/updates";
 import {
+  ACCENTS,
   TILE_MAX,
   TILE_MIN,
+  UI_SCALES,
   closePrefs,
   jobs,
   prefs,
   runningJob,
+  setAccent,
   setTheme,
   setTileHeight,
+  setUiScale,
+  setUiStyle,
   theme,
+  ui,
   view,
   type PrefsTab,
 } from "./store";
@@ -378,9 +384,13 @@ function IndexingTab() {
 function AppearanceTab() {
   const mode = theme.use((s) => s.mode);
   const tile = view.use((s) => s.tileHeight);
+  const accent = ui.use((s) => s.accent);
+  const style = ui.use((s) => s.style);
+  const scale = ui.use((s) => s.scale);
   return (
     <>
       <h3>Appearance</h3>
+      <p>Remembered with the library, so the window looks the same next time it opens.</p>
       <div className="prow">
         <div>
           <div className="t">Theme</div>
@@ -392,6 +402,43 @@ function AppearanceTab() {
             <button key={m} className={mode === m ? "on" : ""} onClick={() => setTheme(m)}>{m[0].toUpperCase() + m.slice(1)}</button>
           ))}
         </span>
+      </div>
+      <div className="prow">
+        <div>
+          <div className="t">Accent</div>
+          <div className="d">The one colour that means “selected”, “on”, and “here”.</div>
+        </div>
+        <span className="grow" />
+        <span className="swatches" role="radiogroup" aria-label="Accent colour">
+          {ACCENTS.map((a) => (
+            <button key={a.id} className={`swatch${accent === a.id ? " on" : ""}`} style={{ background: a.swatch }} title={a.label} role="radio" aria-checked={accent === a.id} aria-label={a.label} onClick={() => setAccent(a.id)} />
+          ))}
+        </span>
+      </div>
+      <div className="prow">
+        <div>
+          <div className="t">Style</div>
+          <div className="d">{style === "vibrant" ? "The accent tints the sidebar and status bar; tiles and cards lift under the cursor." : "Flat and quiet. The accent marks state and nothing else."}</div>
+        </div>
+        <span className="grow" />
+        <span className="seg">
+          <button className={style === "minimal" ? "on" : ""} onClick={() => setUiStyle("minimal")}>Minimal</button>
+          <button className={style === "vibrant" ? "on" : ""} onClick={() => setUiStyle("vibrant")}>Vibrant</button>
+        </span>
+      </div>
+      <div className="prow">
+        <div>
+          <div className="t">Size</div>
+          <div className="d">{isDesktop() ? "Text, controls and spacing — everything but the photos, which have their own slider." : "In a browser, use its own zoom (⌘+ / ⌘−) for the whole window."}</div>
+        </div>
+        <span className="grow" />
+        {isDesktop() && (
+          <span className="seg">
+            {UI_SCALES.map((x) => (
+              <button key={x.value} className={scale === x.value ? "on" : ""} onClick={() => setUiScale(x.value)}>{x.label}</button>
+            ))}
+          </span>
+        )}
       </div>
       <div className="prow">
         <div>

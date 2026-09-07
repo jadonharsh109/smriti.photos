@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -20,15 +21,25 @@ def _put_setting(key: str, value: str) -> None:
 @router.get("/settings")
 def get_settings():
     rows = {r["key"]: r["value"] for r in db.query("SELECT key, value FROM settings")}
+    try:
+        ui = json.loads(rows.get("ui") or "{}")
+    except ValueError:
+        ui = {}
     return {
         "auto_scan": rows.get("auto_scan", "1") == "1",
         "auto_scan_minutes": int(rows.get("auto_scan_minutes", "30")),
+        # How the window looks — theme, accent, sizes. Kept here rather than in
+        # the page's localStorage because the desktop app serves the page from
+        # an ephemeral port, and a new port is a new origin with empty storage:
+        # every launch forgot the thumbnail size.
+        "ui": ui if isinstance(ui, dict) else {},
     }
 
 
 class SettingsIn(BaseModel):
     auto_scan: bool | None = None
     auto_scan_minutes: int | None = None
+    ui: dict | None = None
 
 
 @router.post("/settings")
@@ -37,6 +48,10 @@ def set_settings(body: SettingsIn):
         _put_setting("auto_scan", "1" if body.auto_scan else "0")
     if body.auto_scan_minutes is not None:
         _put_setting("auto_scan_minutes", str(max(5, min(1440, body.auto_scan_minutes))))
+    if body.ui is not None:
+        # merge, so a window that only knows some keys cannot erase the rest
+        merged = {**get_settings()["ui"], **{k: v for k, v in body.ui.items() if isinstance(k, str)}}
+        _put_setting("ui", json.dumps(merged)[:4096])
     return get_settings()
 
 

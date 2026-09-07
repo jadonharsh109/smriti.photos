@@ -11,6 +11,7 @@ import StatusBar from "./StatusBar";
 import { ShellContext } from "./Toolbar";
 import {
   inspector,
+  loadPrefs,
   openPrefs,
   prefs,
   selection,
@@ -38,6 +39,7 @@ export default function Shell() {
   // one event stream for the window; anything a finished job or a drive
   // change touched is refetched
   useEffect(() => {
+    loadPrefs();
     startJobStream(
       () => setTimeout(() => qc.invalidateQueries(), 400),
       () => {

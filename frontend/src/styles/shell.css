@@ -316,8 +316,12 @@ input[type="range"] { accent-color: var(--accent); }
 .vbar button.fav.on { color: #ff6b8a; }
 .vbar button:disabled { opacity: 0.35; }
 .vbar button svg { width: 15px; height: 15px; }
-.vstage { position: relative; display: grid; place-items: center; padding: 20px 56px; min-height: 0; overflow: hidden; }
+/* Flex, not grid: a video's percentage height has to resolve against the
+   stage, and in a grid cell it did not — the player took its intrinsic
+   height and hung off the bottom of the window. */
+.vstage { position: relative; display: flex; align-items: center; justify-content: center; padding: 20px 56px; min-height: 0; overflow: hidden; }
 .vmedia { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 3px; user-select: none; touch-action: none; }
+video.vmedia { width: 100%; height: 100%; }
 .vmedia.zoomable { cursor: zoom-in; }
 .vmedia.zoomed { cursor: grab; }
 .vmedia.panning { cursor: grabbing; }
@@ -431,4 +435,38 @@ input[type="range"] { accent-color: var(--accent); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ---- appearance: swatches in Preferences --------------------------------- */
+.swatches { display: flex; gap: 8px; }
+.swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--ground); box-shadow: 0 0 0 1px var(--rule); }
+.swatch:hover { box-shadow: 0 0 0 1px var(--muted); }
+.swatch.on { box-shadow: 0 0 0 2px var(--ink); }
+
+/* ---- style: vibrant -------------------------------------------------------
+   The same window with the accent let into the chrome and a little motion:
+   a tinted sidebar and status bar, a bar of colour on the selected row, a
+   gradient on the primary button, and tiles and cards that lift under the
+   cursor. Off by default; Minimal stays exactly as designed. */
+[data-style="vibrant"] .side { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 14%, var(--side)), var(--side) 60%); }
+[data-style="vibrant"] .toolbar { background: color-mix(in srgb, var(--accent) 3%, var(--ground)); }
+[data-style="vibrant"] .status { background: color-mix(in srgb, var(--accent) 7%, var(--side)); }
+[data-style="vibrant"] .inspector { background: color-mix(in srgb, var(--accent) 3%, var(--ground)); }
+[data-style="vibrant"] .srow.on { box-shadow: inset 3px 0 0 var(--accent); }
+[data-style="vibrant"] .btn.primary, [data-style="vibrant"] .tb.primary { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 82%, #fff), var(--accent)); }
+[data-style="vibrant"] .day { color: var(--ink); }
+[data-style="vibrant"] .day .n { color: var(--accent); opacity: 0.85; }
+[data-style="vibrant"] .tile { transition: transform 140ms ease, box-shadow 140ms ease; }
+[data-style="vibrant"] .tile:hover { transform: scale(1.02); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28); z-index: 2; }
+[data-style="vibrant"] .tile.sel::after { animation: pop 160ms ease-out; }
+[data-style="vibrant"] .card { transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease; }
+[data-style="vibrant"] .card:hover { transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+[data-style="vibrant"] .card.person .face { box-shadow: 0 0 0 3px var(--accent-soft); }
+[data-style="vibrant"] .stabs button.on { background: var(--accent-soft); }
+[data-style="vibrant"] .tseg button.on, [data-style="vibrant"] .seg button.on { color: var(--accent); }
+@keyframes pop { from { transform: scale(0.5); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  [data-style="vibrant"] .tile, [data-style="vibrant"] .card { transition: none; }
+  [data-style="vibrant"] .tile:hover, [data-style="vibrant"] .card:hover { transform: none; }
+  [data-style="vibrant"] .tile.sel::after { animation: none; }
 }

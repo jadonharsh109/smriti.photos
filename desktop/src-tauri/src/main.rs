@@ -53,6 +53,16 @@ fn quit_app(app: tauri::AppHandle) {
 /// Tauri's runtime and not the main thread, which is exactly where the blocking
 /// form is meant to be called from. It marshals the dialog onto the main thread
 /// itself and waits for the person to answer.
+/// Scale the whole page the way the browser's own zoom would — WKWebView's
+/// pageZoom on macOS, WebView2's zoom factor on Windows. CSS `zoom` was tried
+/// first and rejected: viewport units do not follow it, so every sheet sized
+/// in vh overflowed the window.
+#[tauri::command]
+fn set_ui_zoom(window: tauri::WebviewWindow, factor: f64) -> Result<(), String> {
+    let f = if (0.5..=3.0).contains(&factor) { factor } else { 1.0 };
+    window.set_zoom(f).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn pick_folder(app: tauri::AppHandle, title: Option<String>) -> Option<String> {
     use tauri_plugin_dialog::DialogExt;
@@ -178,6 +188,7 @@ fn main() {
             quit_app,
             pick_folder,
             pick_zip_files,
+            set_ui_zoom,
             updates::check_updates_now,
             updates::pending_update,
             updates::install_update,

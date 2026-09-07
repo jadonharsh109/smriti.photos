@@ -85,6 +85,11 @@ export async function openInMaps(lat: number, lon: number, label?: string): Prom
 
 /** Raise the system folder chooser and resolve to what the user picked, or
  *  null if they cancelled. Desktop only — see FolderPicker for the browser. */
+/** Scale the whole window, the way browser zoom would. Desktop only — a plain
+ *  browser has its own zoom, and the shell's is the only one that survives
+ *  the page navigating from the splash to the served origin. */
+export const setUiZoom = (factor: number) => invoke("set_ui_zoom", { factor }) as Promise<void>;
+
 export const pickFolder = (title?: string) =>
   invoke("pick_folder", { title }) as Promise<string | null>;
 

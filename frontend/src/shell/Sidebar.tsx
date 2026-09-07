@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { api } from "../api/client";
 import {
@@ -21,7 +20,7 @@ import {
   IconVideo,
 } from "../components/Icons";
 import Logo from "../components/Logo";
-import { openPrefs } from "./store";
+import { openPrefs, setAlbumsOpen, side } from "./store";
 
 interface Stats {
   photos: number;
@@ -83,7 +82,7 @@ export default function Sidebar() {
     queryFn: () => api.get<{ version: string }>("/api/health"),
     staleTime: Infinity,
   });
-  const [albumsOpen, setAlbumsOpen] = useState(() => localStorage.getItem("smriti.side.albums") !== "0");
+  const albumsOpen = side.use((s) => s.albumsOpen);
 
   const fav = albums?.find((a) => a.system === "favourites");
   const userAlbums = (albums ?? []).filter((a) => !a.system);
@@ -110,12 +109,7 @@ export default function Sidebar() {
             className="srow"
             style={{ width: 22, paddingLeft: 6, paddingRight: 0 }}
             aria-label={albumsOpen ? "Collapse albums" : "Expand albums"}
-            onClick={() => {
-              setAlbumsOpen((o) => {
-                localStorage.setItem("smriti.side.albums", o ? "0" : "1");
-                return !o;
-              });
-            }}
+            onClick={() => setAlbumsOpen(!albumsOpen)}
           >
             <IconChevronR className={`chev${albumsOpen ? " open" : ""}`} size={12} />
           </button>

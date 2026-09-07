@@ -62,3 +62,23 @@
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.06);
   color-scheme: dark;
 }
+
+/* ---- accents ------------------------------------------------------------
+   Saffron is the base set above. Each other accent redefines the three
+   accent tokens for light, and again for dark under both of the ways dark
+   can be chosen — the same three-state pattern as the palette itself. */
+:root[data-accent="rani"] { --accent: #c2185b; --accent-soft: rgba(194, 24, 91, 0.14); --accent-ink: #ffffff; }
+@media (prefers-color-scheme: dark) { :root[data-accent="rani"]:not([data-theme="light"]) { --accent: #ff7ba0; --accent-soft: rgba(255, 123, 160, 0.18); --accent-ink: #2a0a14; } }
+:root[data-theme="dark"][data-accent="rani"] { --accent: #ff7ba0; --accent-soft: rgba(255, 123, 160, 0.18); --accent-ink: #2a0a14; }
+:root[data-accent="teal"] { --accent: #0f766e; --accent-soft: rgba(15, 118, 110, 0.14); --accent-ink: #ffffff; }
+@media (prefers-color-scheme: dark) { :root[data-accent="teal"]:not([data-theme="light"]) { --accent: #4fd1c5; --accent-soft: rgba(79, 209, 197, 0.18); --accent-ink: #062420; } }
+:root[data-theme="dark"][data-accent="teal"] { --accent: #4fd1c5; --accent-soft: rgba(79, 209, 197, 0.18); --accent-ink: #062420; }
+:root[data-accent="blue"] { --accent: #1d5fd1; --accent-soft: rgba(29, 95, 209, 0.14); --accent-ink: #ffffff; }
+@media (prefers-color-scheme: dark) { :root[data-accent="blue"]:not([data-theme="light"]) { --accent: #6ea8ff; --accent-soft: rgba(110, 168, 255, 0.18); --accent-ink: #0a1a33; } }
+:root[data-theme="dark"][data-accent="blue"] { --accent: #6ea8ff; --accent-soft: rgba(110, 168, 255, 0.18); --accent-ink: #0a1a33; }
+:root[data-accent="violet"] { --accent: #6d3fc4; --accent-soft: rgba(109, 63, 196, 0.14); --accent-ink: #ffffff; }
+@media (prefers-color-scheme: dark) { :root[data-accent="violet"]:not([data-theme="light"]) { --accent: #b18cff; --accent-soft: rgba(177, 140, 255, 0.18); --accent-ink: #1c1030; } }
+:root[data-theme="dark"][data-accent="violet"] { --accent: #b18cff; --accent-soft: rgba(177, 140, 255, 0.18); --accent-ink: #1c1030; }
+:root[data-accent="graphite"] { --accent: #3f3f46; --accent-soft: rgba(63, 63, 70, 0.14); --accent-ink: #ffffff; }
+@media (prefers-color-scheme: dark) { :root[data-accent="graphite"]:not([data-theme="light"]) { --accent: #d4d4d8; --accent-soft: rgba(212, 212, 216, 0.18); --accent-ink: #18181b; } }
+:root[data-theme="dark"][data-accent="graphite"] { --accent: #d4d4d8; --accent-soft: rgba(212, 212, 216, 0.18); --accent-ink: #18181b; }
