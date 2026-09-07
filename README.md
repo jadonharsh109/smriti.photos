@@ -105,8 +105,9 @@ makes. Everything after that runs on your machine.
   bar; Preferences in a sheet (⌘,). Light and dark follow the system, or pick one of fourteen
   themes — Catppuccin, Nord, Dracula, Tokyo Night, Rosé Pine, Gruvbox, Solarized, One Dark and
   Smriti's own Midnight and Paper — plus an accent colour, a quiet Minimal or tinted Vibrant
-  style, and a UI size. All of it is remembered with the library, not the browser. Large
-  libraries stay
+  style, a UI size, and, if you like, a companion: a cat, dog, duck, ghost or bee that roams
+  the window, follows the cursor a little, naps when you're away and does a trick when clicked.
+  All of it is remembered with the library, not the browser. Large libraries stay
   quick: the day list, People, Places and Events are read from maintained tables, and inside
   the app every thumbnail is served by the shell itself, never through Python.
 - **Locked** — a passcode-protected section; hidden photos vanish from every other view.

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { UpdateSheet } from "../components/UpdateNotice";
 import { ActionsHost } from "./actions";
+import Companion from "./Companion";
 import { ContextMenuHost } from "./ContextMenu";
 import Inspector from "./Inspector";
 import Preferences from "./Preferences";
@@ -114,6 +115,7 @@ export default function Shell() {
       </div>
       {prefsOpen && <Preferences />}
       <ActionsHost />
+      <Companion />
       <UpdateSheet />
       <ContextMenuHost />
     </ShellContext.Provider>

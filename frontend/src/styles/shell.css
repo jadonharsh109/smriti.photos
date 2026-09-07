@@ -481,3 +481,54 @@ video.vmedia { width: 100%; height: 100%; }
   [data-style="vibrant"] .tile:hover, [data-style="vibrant"] .card:hover { transform: none; }
   [data-style="vibrant"] .tile.sel::after { animation: none; }
 }
+
+/* ---- companion ----------------------------------------------------------- */
+.cmp { position: fixed; left: 0; top: 0; width: 56px; height: 44px; z-index: 40; pointer-events: none; will-change: transform; transition: opacity 200ms ease; }
+.cmp.hidden { opacity: 0; }
+.cmp-hit { position: absolute; inset: 0; pointer-events: auto; cursor: pointer; display: block; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.25)); }
+.cmp.hidden .cmp-hit { pointer-events: none; }
+.cmp .fig { display: block; overflow: visible; }
+.cmp .eye { transform-origin: center; animation: cmp-blink 4.2s ease-in-out infinite; }
+.cmp .eye:nth-of-type(2) { animation-delay: 0.08s; }
+.cmp .tail { transform-origin: 12px 30px; animation: cmp-tail 1.6s ease-in-out infinite; }
+.cmp.walk .leg { animation: cmp-leg 0.42s ease-in-out infinite; transform-origin: top; }
+.cmp.walk .l2, .cmp.walk .l3 { animation-delay: 0.21s; }
+.cmp.walk .torso, .cmp.walk .head { animation: cmp-bob 0.42s ease-in-out infinite; }
+.cmp.duck.walk .torso { animation: cmp-waddle 0.5s ease-in-out infinite; transform-origin: 30px 36px; }
+.cmp.sit .leg { transform: scaleY(0.6); transform-origin: top; }
+.cmp.sleep .eye { transform: scaleY(0.12); animation: none; }
+.cmp.sleep .fig { animation: cmp-breathe 2.8s ease-in-out infinite; transform-origin: bottom; }
+.cmp.flies .torso, .cmp.flies .fig { animation: cmp-float 2.2s ease-in-out infinite; }
+.cmp.bee .wing { transform-origin: 30px 18px; animation: cmp-wing 0.12s linear infinite alternate; }
+.cmp.bee .w2 { animation-delay: 0.06s; }
+.cmp.dog .ear { transform-origin: 35px 10px; animation: cmp-tail 1.1s ease-in-out infinite; }
+.cmp.trick .cmp-hit { animation: cmp-trick 0.9s cubic-bezier(0.3, 0.6, 0.3, 1) 1; }
+.cmp-say { position: absolute; left: 50%; bottom: 46px; transform: translateX(-50%); padding: 3px 8px; border-radius: 10px; background: var(--surface); color: var(--ink); border: 1px solid var(--rule); box-shadow: var(--shadow-sm); font-size: 11.5px; font-weight: 600; white-space: nowrap; animation: cmp-say 1.6s ease-out 1 both; }
+.cmp-say::after { content: ""; position: absolute; left: 50%; bottom: -5px; width: 8px; height: 8px; background: var(--surface); border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); transform: translateX(-50%) rotate(45deg); }
+.cmp-zz { position: absolute; left: 42px; top: -8px; font: 700 12px var(--sans); color: var(--muted); animation: cmp-zz 2.4s ease-in-out infinite; }
+.cmp-zz span { font-size: 9px; opacity: 0.8; }
+.cmp-zz span + span { font-size: 7px; opacity: 0.6; }
+.cmp-burst { position: absolute; left: 28px; top: 22px; pointer-events: none; }
+.cmp-burst span { position: absolute; left: 0; top: 0; font-size: 14px; line-height: 1; transform: translate(-50%, -50%); animation: cmp-burst 0.95s cubic-bezier(0.2, 0.7, 0.3, 1) 1 both; }
+@keyframes cmp-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.1); } }
+@keyframes cmp-tail { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(14deg); } }
+@keyframes cmp-leg { 0%, 100% { transform: translateY(0) scaleY(1); } 50% { transform: translateY(-3px) scaleY(0.75); } }
+@keyframes cmp-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.5px); } }
+@keyframes cmp-waddle { 0%, 100% { transform: rotate(-5deg); } 50% { transform: rotate(5deg); } }
+@keyframes cmp-breathe { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(0.96); } }
+@keyframes cmp-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes cmp-wing { from { transform: scaleY(1) rotate(-6deg); } to { transform: scaleY(0.4) rotate(8deg); } }
+@keyframes cmp-trick { 0% { transform: translateY(0) rotate(0); } 35% { transform: translateY(-38px) rotate(180deg) scale(1.08); } 70% { transform: translateY(-6px) rotate(360deg); } 85% { transform: translateY(0) scaleY(0.85) scaleX(1.12); } 100% { transform: translateY(0) rotate(360deg); } }
+@keyframes cmp-say { 0% { opacity: 0; transform: translate(-50%, 6px) scale(0.8); } 12% { opacity: 1; transform: translate(-50%, 0) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -6px); } }
+@keyframes cmp-zz { 0% { opacity: 0; transform: translate(0, 4px); } 30% { opacity: 1; } 100% { opacity: 0; transform: translate(8px, -14px); } }
+@keyframes cmp-burst { 0% { opacity: 1; transform: translate(-50%, -50%) scale(0.4) rotate(0); } 100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.1) rotate(var(--rot)); } }
+/* the chooser in Appearance */
+.cmps { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.cmp-pick { display: grid; gap: 4px; padding: 6px 4px 5px; border-radius: 7px; border: 1px solid var(--rule-soft); background: var(--surface); justify-items: center; }
+.cmp-pick:hover { border-color: var(--rule); }
+.cmp-pick.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.cmp-pre { display: grid; place-items: center; height: 44px; }
+.cmp-pre .none { color: var(--faint); font-size: 18px; }
+@media (prefers-reduced-motion: reduce) {
+  .cmp .eye, .cmp .tail, .cmp .leg, .cmp .torso, .cmp .head, .cmp .fig, .cmp .wing, .cmp .ear, .cmp .cmp-hit { animation: none !important; }
+}

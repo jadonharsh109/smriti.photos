@@ -9,9 +9,11 @@ import TakeoutImport from "../components/TakeoutImport";
 import { isDesktop } from "../lib/desktop";
 import { friendlyError, stageLabel, stageSentence } from "../lib/stages";
 import { check as checkForUpdates, openSheet, useUpdates } from "../lib/updates";
+import { Figure } from "./Companion";
 import { PALETTES } from "./palettes";
 import {
   ACCENTS,
+  COMPANIONS,
   TILE_MAX,
   TILE_MIN,
   UI_SCALES,
@@ -20,6 +22,7 @@ import {
   prefs,
   runningJob,
   setAccent,
+  setCompanion,
   setPalette,
   setTheme,
   setTileHeight,
@@ -390,6 +393,7 @@ function AppearanceTab() {
   const style = ui.use((s) => s.style);
   const scale = ui.use((s) => s.scale);
   const palette = ui.use((s) => s.palette);
+  const companion = ui.use((s) => s.companion);
   const pal = PALETTES.find((p) => p.id === palette) ?? PALETTES[0];
   const paletteDecides = pal.scheme !== "auto";
   return (
@@ -470,6 +474,18 @@ function AppearanceTab() {
             ))}
           </span>
         )}
+      </div>
+      <div className="prow" style={{ display: "block" }}>
+        <div className="t">Companion</div>
+        <div className="d" style={{ marginBottom: 8 }}>A small friend that roams the window, follows the cursor a little, and naps when you’re away. Click it.</div>
+        <div className="cmps" role="radiogroup" aria-label="Companion">
+          {COMPANIONS.map((c) => (
+            <button key={c.id} className={`cmp-pick${companion === c.id ? " on" : ""}`} role="radio" aria-checked={companion === c.id} onClick={() => setCompanion(c.id)}>
+              <span className="cmp-pre">{c.id === "none" ? <span className="none">—</span> : <Figure kind={c.id} />}</span>
+              <span className="pal-name">{c.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
       <div className="prow">
         <div>

@@ -87,12 +87,27 @@ export const UI_SCALES: { value: number; label: string }[] = [
   { value: 1.1, label: "Large" },
   { value: 1.25, label: "Larger" },
 ];
-export const ui = createStore<{ palette: PaletteId; accent: Accent; style: UiStyle; scale: number }>({
+export type CompanionKind = "none" | "cat" | "dog" | "duck" | "ghost" | "bee";
+export const COMPANIONS: { id: CompanionKind; label: string }[] = [
+  { id: "none", label: "None" },
+  { id: "cat", label: "Cat" },
+  { id: "dog", label: "Dog" },
+  { id: "duck", label: "Duck" },
+  { id: "ghost", label: "Ghost" },
+  { id: "bee", label: "Bee" },
+];
+export const ui = createStore<{ palette: PaletteId; accent: Accent; style: UiStyle; scale: number; companion: CompanionKind }>({
   palette: read<PaletteId>("smriti.palette", "smriti"),
   accent: read<Accent>("smriti.accent", "auto"),
   style: read<UiStyle>("smriti.style", "minimal"),
   scale: read<number>("smriti.scale", 1),
+  companion: read<CompanionKind>("smriti.companion", "none"),
 });
+export function setCompanion(companion: CompanionKind) {
+  ui.set({ companion });
+  write("smriti.companion", companion);
+  savePrefs();
+}
 export function applyUi() {
   const u = ui.get();
   const el = document.documentElement;
@@ -229,6 +244,7 @@ interface UiPrefs {
   accent?: Accent;
   style?: UiStyle;
   scale?: number;
+  companion?: CompanionKind;
   sideAlbums?: boolean;
 }
 let prefsLoaded = false;
@@ -242,6 +258,7 @@ function collectPrefs(): UiPrefs {
     accent: ui.get().accent,
     style: ui.get().style,
     scale: ui.get().scale,
+    companion: ui.get().companion,
     sideAlbums: side.get().albumsOpen,
   };
 }
@@ -279,12 +296,14 @@ export async function loadPrefs() {
     const accent = ACCENTS.find((a) => a.id === u.accent)?.id;
     const style = u.style === "vibrant" || u.style === "minimal" ? u.style : undefined;
     const scale = UI_SCALES.find((x) => x.value === u.scale)?.value;
-    if (palette || accent || style || scale) {
-      ui.set({ ...(palette ? { palette } : {}), ...(accent ? { accent } : {}), ...(style ? { style } : {}), ...(scale ? { scale } : {}) });
+    const companion = COMPANIONS.find((c) => c.id === u.companion)?.id;
+    if (palette || accent || style || scale || companion) {
+      ui.set({ ...(palette ? { palette } : {}), ...(accent ? { accent } : {}), ...(style ? { style } : {}), ...(scale ? { scale } : {}), ...(companion ? { companion } : {}) });
       write("smriti.palette", ui.get().palette);
       write("smriti.accent", ui.get().accent);
       write("smriti.style", ui.get().style);
       write("smriti.scale", ui.get().scale);
+      write("smriti.companion", ui.get().companion);
     }
     applyUi();
     prefsLoaded = true;
