@@ -1,12 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, cardDelay, type Person } from "../api/client";
-import { ArtPeople } from "../components/Illustrations";
-import SearchBox from "../components/SearchBox";
-import { PeopleGridSkeleton } from "../components/Skeletons";
-import CardGrid from "../components/CardGrid";
+import { api, type Person } from "../api/client";
+import { IconEyeOff, IconMore } from "../components/Icons";
 import { faceUrl } from "../lib/images";
+import { openContextMenu } from "../shell/ContextMenu";
+import { jobs, openPrefs, runningJob } from "../shell/store";
+import { TbButton, Toolbar, ToolbarSearch } from "../shell/Toolbar";
+
+interface Stats {
+  faces: number;
+  people_visible: number;
+  face_pending: number;
+  face_model_ready: boolean;
+}
 
 export default function PeoplePage() {
   const [showHidden, setShowHidden] = useState(false);
@@ -16,181 +23,114 @@ export default function PeoplePage() {
     queryKey: ["people", showHidden],
     queryFn: () => api.get<Person[]>(`/api/people${showHidden ? "?include_hidden=true" : ""}`),
   });
-  const { data: stats } = useQuery({
-    queryKey: ["stats"],
-    queryFn: () =>
-      api.get<{ faces: number; people_visible: number; face_pending: number; face_model_ready: boolean }>(
-        "/api/stats"
-      ),
+  const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: () => api.get<Stats>("/api/stats") });
+  const running = runningJob(jobs.use((s) => s.byId));
+
+  const run = useMutation({ mutationFn: (url: string) => api.post(url), onSettled: () => qc.invalidateQueries({ queryKey: ["stats"] }) });
+  const setHidden = useMutation({
+    mutationFn: ({ id, hidden }: { id: number; hidden: boolean }) => api.patch(`/api/people/${id}`, { is_hidden: hidden }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["people"] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
+    },
   });
 
-  const scan = useMutation({
-    mutationFn: () => api.post("/api/faces/scan"),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["stats"] }),
-  });
-  const cluster = useMutation({
-    mutationFn: () => api.post("/api/faces/recluster"),
-    onSettled: () => qc.invalidateQueries(),
-  });
-  const unhide = useMutation({
-    mutationFn: (pid: number) => api.patch(`/api/people/${pid}`, { is_hidden: false }),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["people"] }),
-  });
-  const getModels = useMutation({
-    mutationFn: () => api.post("/api/models/download"),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["stats"] }),
-  });
-
-  /** Names only: an unnamed cluster has nothing to match on, so a query
-   *  necessarily hides them — which is the useful behaviour, since searching is
-   *  how you find someone you have already named. */
+  /** Names only: an unnamed cluster has nothing to match on. */
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return people ?? [];
     return (people ?? []).filter((p) => (p.name ?? "").toLowerCase().includes(needle));
   }, [people, query]);
   const searching = query.trim().length > 0;
+  const n = stats?.people_visible ?? 0;
+
+  const more = (e: React.MouseEvent) => {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    openContextMenu({ clientX: r.right - 200, clientY: r.bottom + 4, preventDefault: () => {} }, [
+      { label: "Scan for Faces", disabled: !!running || stats?.face_model_ready === false, onSelect: () => run.mutate("/api/faces/scan") },
+      { label: "Group into People", disabled: !!running || stats?.face_model_ready === false, onSelect: () => run.mutate("/api/faces/recluster") },
+      "sep",
+      { label: "Indexing Preferences…", onSelect: () => openPrefs("indexing") },
+    ]);
+  };
 
   return (
-    <div className="page">
-      <header className="page-head">
-        <div>
-          <h1>People</h1>
-          {/* People, not faces. A face count is an internal detail — it can read
-              in the thousands while this page is empty, because a face only
-              becomes a person once several of them match. */}
-          <p className="sub">
-            {/* Say nothing until we know something: "No one grouped yet" is a
-                claim about the library, and it was being made before the
-                answer had arrived. */}
-            {!stats
-              ? "\u00a0"
-              : (stats?.people_visible ?? 0) > 0
-              ? `${stats!.people_visible.toLocaleString()} ${stats!.people_visible === 1 ? "person" : "people"}`
-              : "No one grouped yet"}
-            {stats && stats.face_pending > 0
-              ? ` · ${stats.face_pending.toLocaleString()} photos still to check`
-              : ""}
-          </p>
-        </div>
-        <div className="actions">
-          {(people ?? []).length > 0 && (
-            <SearchBox
-              value={query}
-              onChange={setQuery}
-              placeholder="Search people"
-              result={`${shown.length} of ${people!.length}`}
-            />
-          )}
-          {/* Hidden people are still in the library. Without a way back this
-              action was one-way and unreachable, which is most of why it read
-              as broken. */}
-          <button
-            className={showHidden ? "on" : ""}
-            title="Show people you've hidden, so you can bring one back"
-            onClick={() => setShowHidden((v) => !v)}
-          >
-            {showHidden ? "Hide hidden" : "Show hidden"}
-          </button>
-          {stats?.face_model_ready === false ? (
-            <button className="primary" onClick={() => getModels.mutate()} disabled={getModels.isPending}>
-              Download face models (≈280 MB)
-            </button>
-          ) : (
-            <>
-              <button onClick={() => scan.mutate()} disabled={scan.isPending}>
-                Scan for faces
-              </button>
-              <button className="primary" onClick={() => cluster.mutate()} disabled={cluster.isPending}>
-                Group into people
-              </button>
-            </>
-          )}
-        </div>
-      </header>
-      {scan.error && <p className="sub" style={{ color: "var(--danger)" }}>{String(scan.error)}</p>}
-      {isLoading ? (
-        <PeopleGridSkeleton />
-      ) : searching && shown.length === 0 ? (
+    <>
+      <Toolbar
+        title="People"
+        count={!stats ? null : `${n.toLocaleString()} ${n === 1 ? "person" : "people"}` + (stats.face_pending > 0 ? ` · ${stats.face_pending.toLocaleString()} ${stats.face_pending === 1 ? "photo" : "photos"} to check` : "")}
+      >
+        {(people ?? []).length > 0 && <ToolbarSearch value={query} onChange={setQuery} placeholder="Search people" hits={`${shown.length} of ${people!.length}`} />}
+        <TbButton on={showHidden} icon={<IconEyeOff size={14} />} title={showHidden ? "Hide hidden people" : "Show hidden people"} onClick={() => setShowHidden((v) => !v)} />
+        <TbButton icon={<IconMore size={14} />} title="More" onClick={more} />
+      </Toolbar>
+      {isLoading ? null : searching && shown.length === 0 ? (
         <div className="empty">
-          <ArtPeople className="art" />
-          <p>
-            No one named “{query.trim()}”. People you haven’t named yet can’t be found by
-            search — clear the box to see everyone.
-          </p>
+          <p>No one named “{query.trim()}”. People you haven’t named yet can’t be found by search — clear the box to see everyone.</p>
         </div>
       ) : (people ?? []).length === 0 ? (
         <div className="empty">
-          <ArtPeople className="art" />
-          {/* "Scan for faces, then group them" is the wrong thing to say to
-              someone who has already done both — which is the common case when
-              a small library finds a few faces that never cluster. Say what is
-              actually true of their library instead. */}
           {stats?.face_model_ready === false ? (
-            <p>
-              People needs the face-recognition models first — about 280 MB, downloaded once.
-              Everything then runs on this machine.
-            </p>
+            <>
+              <h2>People needs its models first</h2>
+              <p>About 280 MB, downloaded once. Everything then runs on this machine.</p>
+              <div className="row">
+                <button className="btn primary" disabled={running?.kind === "models"} onClick={() => run.mutate("/api/models/download")}>
+                  {running?.kind === "models" ? "Downloading…" : "Download Face Models"}
+                </button>
+              </div>
+            </>
           ) : (stats?.faces ?? 0) === 0 ? (
-            <p>
-              {(stats?.face_pending ?? 0) > 0
-                ? "Your photos haven't been checked for faces yet — press Scan for faces."
-                : "No one found in your photos yet."}
-            </p>
+            <>
+              <p>{(stats?.face_pending ?? 0) > 0 ? "Your photos haven’t been checked for faces yet." : "No one found in your photos yet."}</p>
+              {(stats?.face_pending ?? 0) > 0 && (
+                <div className="row">
+                  <button className="btn primary" disabled={!!running} onClick={() => run.mutate("/api/faces/scan")}>Scan for Faces</button>
+                </div>
+              )}
+            </>
           ) : (
-            <p>
-              Smriti has found people in your photos, but not yet enough of the same person to
-              group anyone. It waits until someone appears in several photos before calling
-              them a person — add more photos, or press Group into people to try again.
-              {(stats?.face_pending ?? 0) > 0
-                ? ` ${stats!.face_pending.toLocaleString()} photos still to check.`
-                : ""}
-            </p>
+            <>
+              <p>
+                Smriti has found people in your photos, but not yet enough of the same person to group anyone. It waits until someone appears in several photos.
+                {(stats?.face_pending ?? 0) > 0 ? ` ${stats!.face_pending.toLocaleString()} photos still to check.` : ""}
+              </p>
+              <div className="row">
+                <button className="btn" disabled={!!running} onClick={() => run.mutate("/api/faces/recluster")}>Group into People</button>
+              </div>
+            </>
           )}
         </div>
       ) : (
-        <CardGrid>
-          {shown.map((p, i) => (
-            <Link key={p.id} to={`/people/${p.id}`} className="card" style={cardDelay(i)}>
-              <div className="face-wrap">
-                {p.cover_face_id ? (
-                  <img
-                    className="face-cover"
-                    src={faceUrl(p.cover_face_id)}
-                    /* Every other card grid already loads its covers lazily; this one
-                       did not, so opening People fetched and decoded one thumbnail per
-                       person — 253 of them — before the dozen you can actually see. */
-                    loading="lazy"
-                    decoding="async"
-                    alt=""
-                  />
-                ) : (
-                  <div className="face-cover" />
-                )}
-              </div>
-              <div className="meta" style={{ textAlign: "center" }}>
-                <div className="name">{p.name ?? "Add a name"}</div>
-                <div className="sub">
-                  {p.photo_count} photos{p.is_hidden ? " · hidden" : ""}
+        <div className="page">
+          <div className="cards">
+            {shown.map((p) => (
+              <Link
+                key={p.id}
+                to={`/people/${p.id}`}
+                className="card person"
+                style={{ "--card-h": "190px" } as React.CSSProperties}
+                onContextMenu={(e) =>
+                  openContextMenu(e, [
+                    p.is_hidden
+                      ? { label: "Unhide", onSelect: () => setHidden.mutate({ id: p.id, hidden: false }) }
+                      : { label: "Hide This Person", onSelect: () => setHidden.mutate({ id: p.id, hidden: true }) },
+                  ])
+                }
+              >
+                {p.cover_face_id ? <img className="face" src={faceUrl(p.cover_face_id)} loading="lazy" decoding="async" alt="" /> : <div className="face" />}
+                <div className="meta">
+                  <div className={`name${p.name ? "" : " placeholder"}`}>{p.name ?? "Add a name"}</div>
+                  <div className="sub num">
+                    {p.photo_count.toLocaleString()} {p.photo_count === 1 ? "photo" : "photos"}
+                    {p.is_hidden ? " · hidden" : ""}
+                  </div>
                 </div>
-                {p.is_hidden ? (
-                  <button
-                    className="small"
-                    style={{ marginTop: 8 }}
-                    onClick={(e) => {
-                      e.preventDefault();   // the whole card is a Link
-                      e.stopPropagation();
-                      unhide.mutate(p.id);
-                    }}
-                  >
-                    Unhide
-                  </button>
-                ) : null}
-              </div>
-            </Link>
-          ))}
-        </CardGrid>
+              </Link>
+            ))}
+          </div>
+        </div>
       )}
-    </div>
+    </>
   );
 }

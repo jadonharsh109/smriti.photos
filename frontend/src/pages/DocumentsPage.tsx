@@ -1,98 +1,66 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, type Filters } from "../api/client";
-import { ArtFolder } from "../components/Illustrations";
-import { PhotoGridSkeleton } from "../components/Skeletons";
-import TimelineGrid from "../components/TimelineGrid";
+import DayGrid from "../components/DayGrid";
+import { IconMore } from "../components/Icons";
+import { actions } from "../shell/actions";
+import { openContextMenu } from "../shell/ContextMenu";
+import { GridControls, StandardSelection } from "../shell/GridToolbar";
+import { jobs, runningJob, selection } from "../shell/store";
+import { Segmented, TbButton, Toolbar } from "../shell/Toolbar";
 
 interface KindSummary {
   kinds: { kind: string; label: string; count: number }[];
   total: number;
 }
 
-/** Screenshots and scans, sorted out of the main timeline.
- *
- * Nothing here is a new kind of file — these are photos already in the
- * library, recognised from their metadata. Everything is reversible from the
- * selection bar, because the classifier is a suggestion, not a verdict. */
+/** Screenshots and scans, sorted out of the main timeline. The sorter is a
+ *  suggestion, not a verdict: "Not a Document" sends one back for good. */
 export default function DocumentsPage() {
   const qc = useQueryClient();
-  const [kind, setKind] = useState<"any" | string>("any");
-
-  const { data: summary, isLoading } = useQuery({
-    queryKey: ["kinds"],
-    queryFn: () => api.get<KindSummary>("/api/kinds/summary"),
-  });
-
-  const sort = useMutation({
-    mutationFn: () => api.post("/api/kinds/classify"),
-    onSettled: () => qc.invalidateQueries(),
-  });
+  const [kind, setKind] = useState<string>("any");
+  const { data: summary, isLoading } = useQuery({ queryKey: ["kinds"], queryFn: () => api.get<KindSummary>("/api/kinds/summary") });
+  const running = runningJob(jobs.use((s) => s.byId));
+  const sort = useMutation({ mutationFn: () => api.post("/api/kinds/classify"), onSettled: () => qc.invalidateQueries() });
 
   const filters: Filters = { kind: kind as Filters["kind"] };
-  const chips = summary?.kinds ?? [];
+  const kinds = summary?.kinds ?? [];
+  const more = (e: React.MouseEvent) => {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    openContextMenu({ clientX: r.right - 180, clientY: r.bottom + 4, preventDefault: () => {} }, [
+      { label: "Sort Again", disabled: !!running, onSelect: () => sort.mutate() },
+    ]);
+  };
 
   return (
-    <div className="page">
-      <header className="page-head">
-        <div>
-          <h1>Documents</h1>
-          <p className="sub">
-            {summary && summary.total > 0
-              ? `${summary.total.toLocaleString()} kept out of your timeline — ` +
-                summary.kinds.map((k) => `${k.count.toLocaleString()} ${k.label.toLowerCase()}`).join(", ") +
-                ". Your photos are untouched; these are only labelled."
-              : "Screenshots and scans, kept out of your timeline. Your photos are untouched — these are only labelled."}
-          </p>
-        </div>
-        <div className="actions">
-          {chips.length > 1 && (
-            <div className="seg">
-              <button className={kind === "any" ? "on" : ""} onClick={() => setKind("any")}>
-                All{summary ? ` · ${summary.total.toLocaleString()}` : ""}
-              </button>
-              {chips.map((k) => (
-                <button key={k.kind} className={kind === k.kind ? "on" : ""} onClick={() => setKind(k.kind)}>
-                  {k.label} · {k.count.toLocaleString()}
-                </button>
-              ))}
-            </div>
-          )}
-          <button onClick={() => sort.mutate()} disabled={sort.isPending}>
-            {sort.isPending ? "Sorting…" : "Sort again"}
-          </button>
-        </div>
-      </header>
-
-      {isLoading ? (
-        <PhotoGridSkeleton />
-      ) : summary?.total === 0 ? (
+    <>
+      <Toolbar title="Documents" count={summary?.total ? `${summary.total.toLocaleString()} kept out of Photos` : null}>
+        <StandardSelection>
+          <TbButton title="Send these back to Photos — the sorter will not pick them up again" onClick={() => actions.notDocument([...selection.get().ids])}>
+            Not a Document
+          </TbButton>
+        </StandardSelection>
+        {kinds.length > 1 && (
+          <Segmented
+            value={kind}
+            options={[{ value: "any", label: "All" }, ...kinds.map((k) => ({ value: k.kind, label: k.label }))]}
+            onChange={setKind}
+          />
+        )}
+        <TbButton icon={<IconMore size={14} />} title="More" onClick={more} />
+        <GridControls />
+      </Toolbar>
+      {isLoading ? null : summary?.total === 0 ? (
         <div className="empty">
-          <ArtFolder className="art" />
-          <p>
-            Nothing sorted out yet. Press <strong>Sort again</strong> to look through your
-            library for screenshots and scans — it reads only what is already indexed, so it
-            takes a moment.
-          </p>
+          <h2>Nothing sorted out yet</h2>
+          <p>Smriti looks for screenshots and scans in what is already indexed. Your photos are untouched — these are only labelled.</p>
+          <div className="row">
+            <button className="btn primary" disabled={!!running} onClick={() => sort.mutate()}>Look for Documents</button>
+          </div>
         </div>
       ) : (
-        <TimelineGrid
-          filters={filters}
-          emptyText="Nothing of this kind"
-          selectionActions={(sel, clear) => (
-            <button
-              title="Send these back to the timeline — the sorter will not pick them up again"
-              onClick={async () => {
-                await api.post("/api/kinds/not-document", { file_ids: [...sel] });
-                qc.invalidateQueries();
-                clear();
-              }}
-            >
-              Not a document
-            </button>
-          )}
-        />
+        <DayGrid filters={filters} emptyText="Nothing of this kind" menuExtras={(ids) => [{ label: "Not a Document", onSelect: () => actions.notDocument(ids) }]} />
       )}
-    </div>
+    </>
   );
 }

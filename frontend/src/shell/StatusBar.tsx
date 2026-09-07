@@ -3,6 +3,7 @@ import { api, type Root } from "../api/client";
 import { stageSentence, stageUnit } from "../lib/stages";
 import { openSheet, useUpdates } from "../lib/updates";
 import { isDesktop } from "../lib/desktop";
+import { useActionNote } from "./actions";
 import { jobs, runningJob, selection } from "./store";
 
 interface Stats {
@@ -24,6 +25,7 @@ export default function StatusBar() {
   const job = runningJob(byId);
   const cancel = useMutation({ mutationFn: (id: number) => api.post(`/api/jobs/${id}/cancel`) });
   const update = useUpdates();
+  const note = useActionNote();
 
   const offline = [...new Set((roots ?? []).filter((r) => !r.is_online).map((r) => r.label))];
   const pct = job && job.total > 0 ? Math.round((job.done / job.total) * 100) : null;
@@ -41,6 +43,7 @@ export default function StatusBar() {
         </span>
       ))}
       <span className="grow" />
+      {note && <span className={note.bad ? "err" : ""}>{note.text}</span>}
       {toasts.map((t) => (
         <span key={t.id} className="drive">
           <i className={t.kind === "in" ? "on" : ""} />

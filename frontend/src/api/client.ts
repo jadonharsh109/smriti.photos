@@ -4,7 +4,7 @@ export interface Bucket {
   day: string;
   count: number;
   /** Summed width/height of the day's media. Lets the grid predict a day's
-   *  height before it has fetched a single item — see TimelineGrid. */
+   *  height before it has fetched a single item — see DayGrid. */
   ar?: number;
 }
 

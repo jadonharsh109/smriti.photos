@@ -1,14 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api, type Person } from "../api/client";
-import AddAllToAlbum from "../components/AddAllToAlbum";
-import { IconCamera, IconPencil } from "../components/Icons";
+import { api, fetchAllItems, type Person } from "../api/client";
 import CoverPicker from "../components/CoverPicker";
-import BackLink from "../components/BackLink";
+import DayGrid from "../components/DayGrid";
+import { TextDialog } from "../components/Dialogs";
+import { IconMore, IconPencil } from "../components/Icons";
+import Portal from "../components/Portal";
 import { faceUrl } from "../lib/images";
-import { PhotoGridSkeleton } from "../components/Skeletons";
-import TimelineGrid from "../components/TimelineGrid";
+import { actions } from "../shell/actions";
+import { openContextMenu } from "../shell/ContextMenu";
+import { GridControls, StandardSelection } from "../shell/GridToolbar";
+import { Segmented, TbButton, Toolbar } from "../shell/Toolbar";
 
 export default function PersonPage() {
   const { id } = useParams();
@@ -16,38 +19,27 @@ export default function PersonPage() {
   const qc = useQueryClient();
   const nav = useNavigate();
   const [renaming, setRenaming] = useState(false);
-  const [name, setName] = useState("");
   const [merging, setMerging] = useState(false);
   const [pickingCover, setPickingCover] = useState(false);
-  const [soloOnly, setSoloOnly] = useState(false);
-  const filters = { person_id: personId, solo: soloOnly || undefined };
+  const [solo, setSolo] = useState<"all" | "solo">("all");
+  const filters = { person_id: personId, solo: solo === "solo" || undefined };
 
-  const { data: person } = useQuery({
-    queryKey: ["person", personId],
-    queryFn: () => api.get<Person>(`/api/people/${personId}`),
-  });
-  const { data: allPeople } = useQuery({
-    queryKey: ["people"],
-    queryFn: () => api.get<Person[]>("/api/people"),
-    enabled: merging,
-  });
+  const { data: person } = useQuery({ queryKey: ["person", personId], queryFn: () => api.get<Person>(`/api/people/${personId}`) });
 
   const rename = useMutation({
-    mutationFn: (newName: string) => api.patch(`/api/people/${personId}`, { name: newName }),
+    mutationFn: (name: string) => api.patch(`/api/people/${personId}`, { name }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["person", personId] });
       qc.invalidateQueries({ queryKey: ["people"] });
       setRenaming(false);
     },
   });
-  // Hiding without invalidating left the person visibly still there on the
-  // page we navigate to — react-query served the cached list. That is what
-  // made this look broken.
   const setHidden = useMutation({
     mutationFn: (hidden: boolean) => api.patch(`/api/people/${personId}`, { is_hidden: hidden }),
     onSuccess: (_d, hidden) => {
       qc.invalidateQueries({ queryKey: ["people"] });
       qc.invalidateQueries({ queryKey: ["person", personId] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
       if (hidden) nav("/people");
     },
   });
@@ -59,136 +51,93 @@ export default function PersonPage() {
     },
   });
 
-  // A person page is a header plus a photo grid; show that shape rather than
-  // the word "Loading", so nothing jumps when the real thing arrives.
-  if (!person)
-    return (
-      <div className="page">
-        <header className="page-head">
-          <div className="row" style={{ gap: 16 }}>
-            <div className="skeleton" style={{ width: 72, height: 72, borderRadius: "50%" }} />
-            <div>
-              <div className="skeleton line" style={{ width: 180, height: 22 }} />
-              <div className="skeleton line short" style={{ width: 90 }} />
-            </div>
-          </div>
-        </header>
-        <PhotoGridSkeleton />
-      </div>
-    );
-  return (
-    <div className="page">
-      <header className="page-head">
-        <div>
-          <BackLink to="/people" label="People" />
-          <div className="row" style={{ gap: 16 }}>
-            {/* the face IS the control, the same way the name below it is —
-                clicking the thing you want to change is the obvious gesture,
-                and the badge is what makes it discoverable */}
-            {person.cover_face_id && (
-              <button
-                className="cover-edit"
-                title={`Choose a different photo for ${person.name ?? "this person"}`}
-                onClick={() => setPickingCover(true)}
-              >
-                <img src={faceUrl(person.cover_face_id)} alt="" />
-                <span className="badge">
-                  <IconCamera size={14} />
-                </span>
-              </button>
-            )}
-            {renaming ? (
-              <div className="row">
-                <input
-                  type="text"
-                  autoFocus
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && rename.mutate(name)}
-                  placeholder="Name"
-                />
-                <button className="primary" onClick={() => rename.mutate(name)}>
-                  Save
-                </button>
-                <button className="ghost" onClick={() => setRenaming(false)}>Cancel</button>
-              </div>
-            ) : (
-              <div>
-                {/* the name IS the rename control — clicking it is the obvious
-                    gesture, and the pencil makes that discoverable */}
-                <button
-                  className={`name-edit${person.name ? "" : " unnamed"}`}
-                  title={person.name ? "Rename this person" : "Give this person a name"}
-                  onClick={() => {
-                    setName(person.name ?? "");
-                    setRenaming(true);
-                  }}
-                >
-                  <h1>{person.name ?? "Unnamed person"}</h1>
-                  <span className="pencil">
-                    <IconPencil size={17} />
-                  </span>
-                </button>
-                {person.photo_count != null && <p className="sub">{person.photo_count} photos</p>}
-              </div>
-            )}
-          </div>
-        </div>
-        {!renaming && (
-          <div className="actions">
-            <div className="seg" title="Show every photo, or only ones where this person appears alone">
-              <button className={soloOnly ? "" : "on"} onClick={() => setSoloOnly(false)}>
-                All photos
-              </button>
-              <button className={soloOnly ? "on" : ""} onClick={() => setSoloOnly(true)}>
-                Solo
-              </button>
-            </div>
-            <AddAllToAlbum filters={filters} />
-            <button
-              title="Pick which photo of this person is shown on the People page"
-              onClick={() => setPickingCover(true)}
-            >
-              Change photo
-            </button>
-            <button onClick={() => setMerging((m) => !m)}>Merge into…</button>
-            {person.is_hidden ? (
-              <button
-                className="primary"
-                title="Show this person in People again"
-                onClick={() => setHidden.mutate(false)}
-              >
-                Unhide this person
-              </button>
-            ) : (
-              <button
-                className="danger"
-                title="Remove this person from the People page. No photos are deleted, and you can unhide them later."
-                onClick={() => setHidden.mutate(true)}
-              >
-                Hide this person
-              </button>
-            )}
-          </div>
-        )}
-      </header>
-      {merging && (
-        <div className="row" style={{ marginBottom: 16 }}>
-          <span className="muted small">Merge into:</span>
-          {(allPeople ?? [])
-            .filter((p) => p.id !== personId)
-            .map((p) => (
-              <button key={p.id} onClick={() => merge.mutate(p.id)}>
-                {p.name ?? `Person ${p.id}`}
-              </button>
-            ))}
-        </div>
+  const addAll = async () => {
+    const items = await fetchAllItems(filters);
+    actions.addToAlbum(items.map((i) => i.id));
+  };
+
+  const more = (e: React.MouseEvent) => {
+    if (!person) return;
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    openContextMenu({ clientX: r.right - 200, clientY: r.bottom + 4, preventDefault: () => {} }, [
+      { label: person.name ? "Rename…" : "Name This Person…", onSelect: () => setRenaming(true) },
+      { label: "Choose Photo…", disabled: !person.cover_face_id, onSelect: () => setPickingCover(true) },
+      { label: "Merge Into…", onSelect: () => setMerging(true) },
+      { label: "Add All to Album…", onSelect: addAll },
+      "sep",
+      person.is_hidden
+        ? { label: "Unhide This Person", onSelect: () => setHidden.mutate(false) }
+        : { label: "Hide This Person", danger: true, onSelect: () => setHidden.mutate(true) },
+    ]);
+  };
+
+  const title = person ? (
+    <span className="row" style={{ gap: 8 }}>
+      {person.cover_face_id && (
+        <button title="Choose a different photo" onClick={() => setPickingCover(true)} style={{ display: "inline-flex" }}>
+          <img src={faceUrl(person.cover_face_id)} alt="" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover", background: "var(--tile-bg)" }} />
+        </button>
       )}
-      {pickingCover && <CoverPicker person={person} onClose={() => setPickingCover(false)} />}
-      <TimelineGrid
-        filters={filters}
-        emptyText={soloOnly ? "No solo photos of this person" : "No photos of this person"}
-      />
-    </div>
+      <button
+        className="row"
+        style={{ gap: 5, fontWeight: 600, fontSize: 13, color: person.name ? "var(--ink)" : "var(--muted)", fontStyle: person.name ? undefined : "italic" }}
+        title={person.name ? "Rename this person" : "Give this person a name"}
+        onClick={() => setRenaming(true)}
+      >
+        {person.name ?? "Unnamed person"}
+        <span style={{ color: "var(--faint)", display: "inline-flex" }}><IconPencil size={12} /></span>
+      </button>
+    </span>
+  ) : "";
+
+  return (
+    <>
+      <Toolbar back="/people" title={title} count={person ? `${person.photo_count.toLocaleString()} ${person.photo_count === 1 ? "photo" : "photos"}${person.is_hidden ? " · hidden" : ""}` : null}>
+        <StandardSelection />
+        <Segmented value={solo} options={[{ value: "all", label: "All" }, { value: "solo", label: "Solo" }]} onChange={setSolo} />
+        <TbButton icon={<IconMore size={14} />} title="More" onClick={more} />
+        <GridControls />
+      </Toolbar>
+      <DayGrid filters={filters} emptyText={solo === "solo" ? "No photos of this person alone" : "No photos of this person"} />
+      {renaming && person && (
+        <TextDialog title={person.name ? "Rename" : "Name this person"} initial={person.name ?? ""} placeholder="Name" submitLabel="Save" onSubmit={(n) => rename.mutate(n)} onClose={() => setRenaming(false)} />
+      )}
+      {pickingCover && person && <CoverPicker person={person} onClose={() => setPickingCover(false)} />}
+      {merging && person && <MergeSheet from={person} onPick={(toId) => merge.mutate(toId)} onClose={() => setMerging(false)} />}
+    </>
+  );
+}
+
+/** Which person this one is really the same as. */
+function MergeSheet({ from, onPick, onClose }: { from: Person; onPick: (toId: number) => void; onClose: () => void }) {
+  const [q, setQ] = useState("");
+  const { data: people } = useQuery({ queryKey: ["people", false], queryFn: () => api.get<Person[]>("/api/people") });
+  const needle = q.trim().toLowerCase();
+  const list = (people ?? []).filter((p) => p.id !== from.id && (!needle || (p.name ?? "").toLowerCase().includes(needle)));
+  return (
+    <Portal>
+      <div className="scrim" onClick={onClose}>
+        <div className="sheet" role="dialog" onClick={(e) => e.stopPropagation()}>
+          <header>Merge {from.name ?? "this person"} into…</header>
+          <div className="sbody">
+            <p>Their photos join the person you pick, and this entry goes away. Choose the one whose name should survive.</p>
+            <input className="input" autoFocus placeholder="Search people" value={q} onChange={(e) => setQ(e.target.value)} />
+            <div className="album-list">
+              {list.map((p) => (
+                <button key={p.id} className="album-row" onClick={() => onPick(p.id)}>
+                  {p.cover_face_id ? <img src={faceUrl(p.cover_face_id)} alt="" style={{ borderRadius: "50%" }} /> : <span className="ph" />}
+                  <span className="nm">{p.name ?? `Person ${p.id}`}</span>
+                  <span className="ct num">{p.photo_count.toLocaleString()}</span>
+                </button>
+              ))}
+              {list.length === 0 && <p style={{ padding: 8 }}>No one else to merge into.</p>}
+            </div>
+          </div>
+          <div className="sfoot">
+            <button className="btn" onClick={onClose}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    </Portal>
   );
 }

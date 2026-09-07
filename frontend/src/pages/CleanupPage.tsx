@@ -2,11 +2,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, fmtBytes, type Item } from "../api/client";
 import { ConfirmDialog } from "../components/Dialogs";
-import { IconExpand } from "../components/Icons";
-import { ArtDupes } from "../components/Illustrations";
-import Lightbox from "../components/Lightbox";
-import { Loading } from "../components/Skeletons";
+import { IconExpand, IconMore, IconTrash } from "../components/Icons";
+import Viewer from "../components/Viewer";
 import { thumbUrl } from "../lib/images";
+import { actions } from "../shell/actions";
+import { openContextMenu } from "../shell/ContextMenu";
+import { jobs, runningJob } from "../shell/store";
+import { InfoToggle, Segmented, TbButton, Toolbar } from "../shell/Toolbar";
 
 interface DupeItem {
   id: number;
@@ -43,23 +45,14 @@ interface Missing {
 }
 
 type Tab = "exact" | "near" | "blurry" | "missing";
+const SENS = [
+  { value: "gentle", label: "Only the worst" },
+  { value: "normal", label: "Normal" },
+  { value: "aggressive", label: "Catch more" },
+];
 
-const SENSITIVITIES = [
-  { key: "gentle", label: "Only the worst" },
-  { key: "normal", label: "Normal" },
-  { key: "aggressive", label: "Catch more" },
-] as const;
-
-/** What the viewer needs to open something, from a row that was never a
- *  timeline item. Cleanup lists carry only what their own tab is about, so the
- *  shape is filled in and the viewer fetches the rest by id, exactly as it does
- *  for a photo opened from the grid. */
-const asItem = (r: {
-  id: number;
-  media_type?: string;
-  width?: number | null;
-  height?: number | null;
-}): Item => ({
+/** What the viewer needs, from a row that was never a timeline item. */
+const asItem = (r: { id: number; media_type?: string; width?: number | null; height?: number | null }): Item => ({
   id: r.id,
   media_type: r.media_type === "video" ? "video" : "photo",
   width: r.width ?? null,
@@ -68,125 +61,64 @@ const asItem = (r: {
   day: "",
 });
 
-/** The magnifier that sits on a card. Its own button so that clicking the card
- *  still means "mark this one", which is the action the page is for — looking
- *  closer is the second thought, not the first.
- *
- *  Declared out here rather than inside the page: a component defined during
- *  render is a new type every render, and React would unmount and rebuild every
- *  one of these — one per row, and Missing shows hundreds — each time a single
- *  row was picked. */
-function PreviewButton({ id, label, onOpen }: { id: number; label: string; onOpen: (id: number) => void }) {
+function PreviewButton({ id, onOpen }: { id: number; onOpen: (id: number) => void }) {
   return (
-    <button
-      className="preview-btn"
-      title={label}
-      aria-label={label}
-      onClick={(e) => {
-        e.stopPropagation();
-        onOpen(id);
-      }}
-    >
-      <IconExpand size={16} />
+    <button className="preview" title="Look closer" aria-label="Look closer" onClick={(e) => { e.stopPropagation(); onOpen(id); }}>
+      <IconExpand />
     </button>
   );
 }
 
 /** Everything worth deleting, in one place: exact copies, near-duplicates,
- *  blurry shots, and photos whose files are already gone. */
+ *  blurry shots, and photos whose files are already gone. Nothing leaves
+ *  until you say so, and deleting goes to the system Trash. */
 export default function CleanupPage() {
-  const [tab, setTab] = useState<Tab>("exact");
-  const [sens, setSens] = useState<string>("normal");
-  const [discards, setDiscards] = useState<Set<number>>(new Set());
-  const [exportResult, setExportResult] = useState<string | null>(null);
-  const [confirmingTrash, setConfirmingTrash] = useState(false);
-  const [confirmingForget, setConfirmingForget] = useState(false);
-  const [trashResult, setTrashResult] = useState<string | null>(null);
-  // Which list the viewer is stepping through, and where in it. Held as the
-  // list rather than a single item so ←/→ work here the way they do in the
-  // timeline — reviewing a pile of near-copies is exactly the job where you
-  // want to flick between them rather than open and close each one.
-  const [preview, setPreview] = useState<{ list: Item[]; idx: number } | null>(null);
-  const [missingSel, setMissingSel] = useState<Set<number>>(new Set());
   const qc = useQueryClient();
-
+  const [tab, setTab] = useState<Tab>("exact");
+  const [sens, setSens] = useState("normal");
+  const [discards, setDiscards] = useState<Set<number>>(new Set());
+  const [missingSel, setMissingSel] = useState<Set<number>>(new Set());
+  const [confirmForgetAll, setConfirmForgetAll] = useState(false);
+  const [preview, setPreview] = useState<{ list: Item[]; idx: number } | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const running = runningJob(jobs.use((s) => s.byId));
   const isDupeTab = tab === "exact" || tab === "near";
 
-  const { data: groups, isLoading: dupesLoading } = useQuery({
-    queryKey: ["dupes", tab],
-    queryFn: () => api.get<Group[]>(`/api/dupes/${tab}`),
-    enabled: isDupeTab,
-  });
-  const { data: blurry, isLoading: blurryLoading } = useQuery({
-    queryKey: ["blurry", sens],
-    queryFn: () => api.get<Blurry>(`/api/cleanup/blurry?sensitivity=${sens}`),
-    enabled: tab === "blurry",
-  });
-  const { data: missing, isLoading: missingLoading } = useQuery({
-    queryKey: ["missing"],
-    queryFn: () => api.get<Missing>("/api/cleanup/missing"),
-    enabled: tab === "missing",
-  });
+  const { data: groups, isLoading: dupesLoading } = useQuery({ queryKey: ["dupes", tab], queryFn: () => api.get<Group[]>(`/api/dupes/${tab}`), enabled: isDupeTab });
+  const { data: blurry, isLoading: blurryLoading } = useQuery({ queryKey: ["blurry", sens], queryFn: () => api.get<Blurry>(`/api/cleanup/blurry?sensitivity=${sens}`), enabled: tab === "blurry" });
+  const { data: missing, isLoading: missingLoading } = useQuery({ queryKey: ["missing"], queryFn: () => api.get<Missing>("/api/cleanup/missing"), enabled: tab === "missing" });
 
-  const run = useMutation({
-    mutationFn: () => api.post("/api/dupes/run"),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["dupes"] }),
-  });
-  const scanBlur = useMutation({
-    mutationFn: (rescore: boolean) => api.post(`/api/cleanup/blur/scan?rescore=${rescore}`),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["blurry"] }),
-  });
-  const forget = useMutation({
-    // undefined = every missing file; a list = exactly those. Never send an
-    // empty list dressed up as "all" — see the endpoint.
-    mutationFn: (ids?: number[]) =>
-      api.post<{ forgotten: number }>(
-        "/api/cleanup/missing/forget",
-        ids ? { file_ids: ids } : {}
-      ),
+  const run = useMutation({ mutationFn: (url: string) => api.post(url), onSettled: () => qc.invalidateQueries() });
+  const forgetAll = useMutation({
+    mutationFn: () => api.post<{ forgotten: number }>("/api/cleanup/missing/forget", {}),
     onSuccess: (r) => {
-      setTrashResult(
-        `Forgot ${r.forgotten.toLocaleString()} ${r.forgotten === 1 ? "entry" : "entries"} for files that were already gone`
-      );
+      setNote(`Forgot ${r.forgotten.toLocaleString()} ${r.forgotten === 1 ? "entry" : "entries"}`);
       setMissingSel(new Set());
       qc.invalidateQueries();
     },
   });
-  const dismissGroup = useMutation({
-    mutationFn: (gid: number) => api.post(`/api/dupes/groups/${gid}/dismiss`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["dupes"] }),
-  });
+  const dismissGroup = useMutation({ mutationFn: (gid: number) => api.post(`/api/dupes/groups/${gid}/dismiss`), onSuccess: () => qc.invalidateQueries({ queryKey: ["dupes"] }) });
 
-  const toggleDiscard = (id: number) =>
-    setDiscards((prev) => {
+  const toggleIn = (set: (f: (p: Set<number>) => Set<number>) => void) => (id: number) =>
+    set((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+  const toggleDiscard = toggleIn(setDiscards);
+  const toggleMissing = toggleIn(setMissingSel);
 
-  const toggleMissingSel = (id: number) =>
-    setMissingSel((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
-  /** Every card in the tab currently on screen, in the order it is drawn — so
-   *  the viewer's ←/→ walk the page rather than one group. */
   const previewList = (): Item[] => {
     if (isDupeTab) return (groups ?? []).flatMap((g) => g.items.map(asItem));
     if (tab === "blurry") return (blurry?.items ?? []).map((it) => asItem({ ...it, media_type: "photo" }));
     return (missing?.items ?? []).map(asItem);
   };
-
   const openPreview = (id: number) => {
     const list = previewList();
     const idx = list.findIndex((it) => it.id === id);
     if (idx >= 0) setPreview({ list, idx });
   };
-
   const stepPreview = (dir: 1 | -1) =>
     setPreview((p) => {
       if (!p) return p;
@@ -194,345 +126,191 @@ export default function CleanupPage() {
       return idx < 0 || idx >= p.list.length ? p : { ...p, idx };
     });
 
-  const checkNonKeepers = () => {
+  const markNonKeepers = () => {
     const next = new Set(discards);
     for (const g of groups ?? []) for (const it of g.items) if (!it.is_suggested_keeper) next.add(it.id);
     setDiscards(next);
   };
+  const exportList = async () => {
+    const r = await fetch("/api/dupes/export", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file_ids: [...discards] }) });
+    setNote(`Discard list saved under data/exports — ${(await r.text()).trim()}`);
+  };
+  const wasted = (groups ?? []).reduce((s, g) => s + g.items.filter((i) => !i.is_suggested_keeper).reduce((x, i) => x + i.size_bytes, 0), 0);
 
-  const doExport = async () => {
-    const r = await fetch("/api/dupes/export", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ file_ids: [...discards] }),
-    });
-    setExportResult(await r.text());
+  const more = (e: React.MouseEvent) => {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const items = [];
+    if (isDupeTab) {
+      items.push({ label: "Find Near-Duplicates", disabled: !!running, onSelect: () => run.mutate("/api/dupes/run") });
+      if ((groups ?? []).length) {
+        items.push({ label: "Mark All Non-Keepers", onSelect: markNonKeepers });
+        items.push({ label: `Export Discard List (${discards.size})`, disabled: discards.size === 0, onSelect: exportList });
+      }
+    } else if (tab === "blurry") {
+      items.push({ label: blurry && blurry.unscored > 0 ? `Check ${blurry.unscored.toLocaleString()} Photos` : "Check Again", disabled: !!running, onSelect: () => run.mutate("/api/cleanup/blur/scan?rescore=false") });
+    } else {
+      items.push({ label: `Forget All ${(missing?.total ?? 0).toLocaleString()}`, danger: true, disabled: !missing?.total, onSelect: () => setConfirmForgetAll(true) });
+    }
+    openContextMenu({ clientX: r.right - 220, clientY: r.bottom + 4, preventDefault: () => {} }, items);
   };
 
-  const trashDiscards = async () => {
-    const r = await api.post<{ trashed: number; skipped_offline: number; errors: unknown[] }>(
-      "/api/files/delete",
-      { file_ids: [...discards] }
-    );
-    setDiscards(new Set());
-    setTrashResult(
-      `Moved ${r.trashed} ${r.trashed === 1 ? "file" : "files"} to the system Trash` +
-        (r.skipped_offline ? ` · ${r.skipped_offline} skipped (drive offline)` : "") +
-        (r.errors.length ? ` · ${r.errors.length} failed` : "")
-    );
-    qc.invalidateQueries();
-  };
-
-  const wasted = (groups ?? []).reduce(
-    (s, g) => s + g.items.filter((i) => !i.is_suggested_keeper).reduce((x, i) => x + i.size_bytes, 0),
-    0
-  );
-
+  const count = isDupeTab && wasted > 0 ? `${fmtBytes(wasted)} recoverable` : tab === "missing" && missing ? `${missing.total.toLocaleString()} missing` : null;
   return (
-    <div className="page">
-      <header className="page-head">
-        <div>
-          <h1>Cleanup</h1>
-          <p className="sub">
-            Copies, near-copies, blurry shots and photos whose files are gone. Nothing is deleted
-            until you say so, and deleting goes to the system Trash — recoverable, never erased.
-          </p>
-        </div>
-        <div className="actions">
-          {isDupeTab && wasted > 0 && (
-            <span className="chip">
-              <span className="dot" />
-              potential savings&nbsp;<strong>{fmtBytes(wasted)}</strong>
-            </span>
-          )}
-          {isDupeTab && (
-            <button className="primary" onClick={() => run.mutate()} disabled={run.isPending}>
-              Find near-duplicates
-            </button>
-          )}
-          {tab === "blurry" && (
-            <button className="primary" onClick={() => scanBlur.mutate(false)} disabled={scanBlur.isPending}>
-              {blurry && blurry.unscored > 0
-                ? `Check ${blurry.unscored.toLocaleString()} photos`
-                : "Check again"}
-            </button>
-          )}
-        </div>
-      </header>
-
-      <div className="row" style={{ marginBottom: 18, flexWrap: "wrap" }}>
-        <div className="seg">
-          <button className={tab === "exact" ? "on" : ""} onClick={() => setTab("exact")}>
-            Exact copies
-          </button>
-          <button className={tab === "near" ? "on" : ""} onClick={() => setTab("near")}>
-            Similar
-          </button>
-          <button className={tab === "blurry" ? "on" : ""} onClick={() => setTab("blurry")}>
-            Blurry
-          </button>
-          <button className={tab === "missing" ? "on" : ""} onClick={() => setTab("missing")}>
-            Missing
-          </button>
-        </div>
-        <span className="spacer" />
-        {tab === "blurry" && (
-          <div className="seg" title="How soft a photo has to be before it shows up here">
-            {SENSITIVITIES.map((s) => (
-              <button key={s.key} className={sens === s.key ? "on" : ""} onClick={() => setSens(s.key)}>
-                {s.label}
-              </button>
-            ))}
-          </div>
-        )}
-        {isDupeTab && (groups ?? []).length > 0 && (
-          <>
-            <button onClick={checkNonKeepers}>Mark all non-keepers</button>
-            <button onClick={doExport} disabled={discards.size === 0}>
-              Export list ({discards.size})
-            </button>
-          </>
-        )}
+    <>
+      <Toolbar title="Cleanup" count={count}>
         {(isDupeTab || tab === "blurry") && discards.size > 0 && (
-          <button className="danger" onClick={() => setConfirmingTrash(true)}>
-            Move to Trash ({discards.size})
-          </button>
+          <span className="tsel">
+            <span className="n num">{discards.size} marked</span>
+            <TbButton icon={<IconTrash size={14} />} title="Move marked to Trash" danger onClick={() => actions.trash([...discards])}>Move to Trash</TbButton>
+            <TbButton onClick={() => setDiscards(new Set())}>Clear</TbButton>
+          </span>
         )}
-        {tab === "missing" && (missing?.total ?? 0) > 0 && (
-          <>
-            {missingSel.size > 0 && (
-              <>
-                <button onClick={() => setMissingSel(new Set())}>Clear ({missingSel.size})</button>
-                <button className="danger" onClick={() => forget.mutate([...missingSel])}>
-                  Forget selected ({missingSel.size})
-                </button>
-              </>
-            )}
-            <button className="danger" onClick={() => setConfirmingForget(true)}>
-              Forget all {missing!.total.toLocaleString()}
-            </button>
-          </>
+        {tab === "missing" && missingSel.size > 0 && (
+          <span className="tsel">
+            <span className="n num">{missingSel.size} picked</span>
+            <TbButton danger onClick={() => actions.forgetMissing([...missingSel])}>Forget</TbButton>
+            <TbButton onClick={() => setMissingSel(new Set())}>Clear</TbButton>
+          </span>
         )}
-      </div>
+        <Segmented
+          value={tab}
+          options={[{ value: "exact", label: "Exact" }, { value: "near", label: "Similar" }, { value: "blurry", label: "Blurry" }, { value: "missing", label: "Missing" }]}
+          onChange={(t) => { setTab(t); setNote(null); }}
+        />
+        {tab === "blurry" && <Segmented value={sens} options={SENS} onChange={setSens} />}
+        <TbButton icon={<IconMore size={14} />} title="More" onClick={more} />
+        <InfoToggle />
+      </Toolbar>
 
-      {trashResult && (
-        <div className="row" style={{ marginBottom: 14 }}>
-          <span className="chip"><span className="dot" />{trashResult}</span>
-          <button className="ghost small" onClick={() => setTrashResult(null)}>Dismiss</button>
-        </div>
-      )}
-      {exportResult != null && (
-        <div className="panel">
-          <h2>Discard list (saved under data/exports/)</h2>
-          <pre className="small" style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{exportResult}</pre>
-        </div>
-      )}
-
-      {/* ---- exact / similar ------------------------------------------- */}
-      {isDupeTab && dupesLoading && <Loading label="Looking through your library…" />}
-      {isDupeTab && !dupesLoading &&
-        ((groups ?? []).length === 0 ? (
-          <div className="empty">
-            <ArtDupes className="art" />
-            <p>{tab === "exact" ? "No exact copies found." : "No similar photos found — run the finder above."}</p>
+      <div className="page">
+        {note && (
+          <div className="row" style={{ padding: "8px 0" }}>
+            <span className="pill good">{note}</span>
+            <button className="btn ghost small" onClick={() => setNote(null)}>Dismiss</button>
           </div>
-        ) : (
-          groups!.map((g, gi) => (
-            <div key={g.group_id ?? gi} className="dupe-group">
-              <div className="row">
-                <span className="badge">{g.kind === "video-quick" ? "video · quick-hash match" : g.kind}</span>
-                <span className="muted small">{g.items.length} files</span>
-                <span className="spacer" />
-                {g.kind === "near" && g.group_id != null && (
-                  <button className="small" onClick={() => dismissGroup.mutate(g.group_id!)}>
-                    Not duplicates
-                  </button>
-                )}
-              </div>
+        )}
+
+        {isDupeTab && dupesLoading && <div className="empty row"><div className="spin" />Looking through your library…</div>}
+        {isDupeTab && !dupesLoading &&
+          ((groups ?? []).length === 0 ? (
+            <div className="empty">
+              <p>{tab === "exact" ? "No exact copies found." : "No similar photos found."}</p>
+              <div className="row"><button className="btn" disabled={!!running} onClick={() => run.mutate("/api/dupes/run")}>Find Near-Duplicates</button></div>
+            </div>
+          ) : (
+            <>
+              <p className="note" style={{ padding: "8px 0 0" }}>Click a photo to mark it for the Trash. The one Smriti would keep is outlined in green.</p>
+              {groups!.map((g, gi) => (
+                <div key={g.group_id ?? gi} className="dupe-group">
+                  <div className="row">
+                    <span className="pill">{g.kind === "video-quick" ? "video · quick-hash match" : g.kind}</span>
+                    <span className="muted small num">{g.items.length} files</span>
+                    <span className="grow" />
+                    {g.kind === "near" && g.group_id != null && (
+                      <button className="btn small" onClick={() => dismissGroup.mutate(g.group_id!)}>Not Duplicates</button>
+                    )}
+                  </div>
+                  <div className="dupe-items">
+                    {g.items.map((it) => (
+                      <div key={it.id} className={`dupe-item${discards.has(it.id) ? " discard" : it.is_suggested_keeper ? " keep" : ""}`} onClick={() => toggleDiscard(it.id)}>
+                        <div className="thumb">
+                          <img src={thumbUrl(it.id)} loading="lazy" alt="" />
+                          <PreviewButton id={it.id} onOpen={openPreview} />
+                        </div>
+                        <div className="num" style={{ marginTop: 4 }}>
+                          {it.is_suggested_keeper && <span className="pill good" style={{ marginRight: 4 }}>keep</span>}
+                          {discards.has(it.id) && <span className="pill bad" style={{ marginRight: 4 }}>discard</span>}
+                          {it.width && it.height ? `${it.width}×${it.height} · ` : ""}{fmtBytes(it.size_bytes)}
+                        </div>
+                        <div className="path" title={it.rel_path}>{it.rel_path}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </>
+          ))}
+
+        {tab === "blurry" && blurryLoading && <div className="empty row"><div className="spin" />Reading sharpness scores…</div>}
+        {tab === "blurry" &&
+          (blurry == null ? null : blurry.scored === 0 ? (
+            <div className="empty">
+              <p>Smriti hasn’t checked your photos for blur yet. It reads the thumbnails it already has, so this is quick and changes nothing.</p>
+              <div className="row"><button className="btn primary" disabled={!!running} onClick={() => run.mutate("/api/cleanup/blur/scan?rescore=false")}>Check for Blur</button></div>
+            </div>
+          ) : blurry.items.length === 0 ? (
+            <div className="empty"><p>Nothing blurry at this setting{sens !== "aggressive" ? " — try Catch more for softer shots." : "."}</p></div>
+          ) : (
+            <>
+              <p className="note" style={{ padding: "8px 0 0" }}>
+                Softest first. Fog, snow or a plain sky has little detail by nature and can land here without being a bad photo — look before you delete.
+                {blurry.unscored > 0 ? ` ${blurry.unscored.toLocaleString()} photos still to check.` : ""}
+              </p>
               <div className="dupe-items">
-                {g.items.map((it) => (
-                  <div
-                    key={it.id}
-                    className={`dupe-item ${discards.has(it.id) ? "discard" : it.is_suggested_keeper ? "keeper" : ""}`}
-                    onClick={() => toggleDiscard(it.id)}
-                  >
-                    <div className="dupe-thumb">
+                {blurry.items.map((it) => (
+                  <div key={it.id} className={`dupe-item${discards.has(it.id) ? " discard" : ""}`} onClick={() => toggleDiscard(it.id)}>
+                    <div className="thumb">
                       <img src={thumbUrl(it.id)} loading="lazy" alt="" />
-                      <PreviewButton id={it.id} label={`Preview ${it.filename}`} onOpen={openPreview} />
+                      <PreviewButton id={it.id} onOpen={openPreview} />
                     </div>
-                    <div style={{ margin: "5px 0 2px" }}>
-                      {it.is_suggested_keeper && <span className="badge green">keep</span>}{" "}
-                      {discards.has(it.id) && <span className="badge red">discard</span>}
-                    </div>
-                    <div>
-                      {it.width && it.height ? `${it.width}×${it.height} · ` : ""}
-                      {fmtBytes(it.size_bytes)}
-                    </div>
-                    <div className="path">{it.rel_path}</div>
+                    <div style={{ marginTop: 4 }}>{discards.has(it.id) && <span className="pill bad">discard</span>}</div>
+                    <div className="path" title={it.filename}>{it.filename}</div>
                   </div>
                 ))}
               </div>
-            </div>
-          ))
-        ))}
+            </>
+          ))}
 
-      {/* ---- blurry ----------------------------------------------------- */}
-      {tab === "blurry" && blurryLoading && <Loading label="Reading sharpness scores…" />}
-      {tab === "blurry" &&
-        (blurry == null ? null : blurry.scored === 0 ? (
-          <div className="empty">
-            <ArtDupes className="art" />
-            <p>
-              Smriti hasn&rsquo;t checked your photos for blur yet. It reads the thumbnails it
-              already has, so this is quick and changes nothing.
-            </p>
-          </div>
-        ) : blurry.items.length === 0 ? (
-          <div className="empty">
-            <ArtDupes className="art" />
-            <p>
-              Nothing blurry at this setting
-              {sens !== "aggressive" ? " — try Catch more if you're looking for softer shots." : "."}
-            </p>
-          </div>
-        ) : (
-          <>
-            <p className="muted small" style={{ marginBottom: 12 }}>
-              Softest first. A photo of fog, snow or a plain sky has little detail by nature and can
-              land here without being a bad photo — so have a look before you delete.
-              {blurry.unscored > 0
-                ? ` ${blurry.unscored.toLocaleString()} photos still to check.`
-                : ""}
-            </p>
-            <div className="dupe-items">
-              {blurry.items.map((it) => (
-                <div
-                  key={it.id}
-                  className={`dupe-item ${discards.has(it.id) ? "discard" : ""}`}
-                  onClick={() => toggleDiscard(it.id)}
-                >
-                  <div className="dupe-thumb">
-                    <img src={thumbUrl(it.id)} loading="lazy" alt="" />
-                    <PreviewButton id={it.id} label={`Preview ${it.filename}`} onOpen={openPreview} />
-                  </div>
-                  <div style={{ margin: "5px 0 2px" }}>
-                    {discards.has(it.id) && <span className="badge red">discard</span>}
-                  </div>
-                  <div className="path">{it.filename}</div>
-                </div>
-              ))}
-            </div>
-          </>
-        ))}
-
-      {/* ---- missing ---------------------------------------------------- */}
-      {tab === "missing" && missingLoading && <Loading label="Checking for missing files…" />}
-      {tab === "missing" &&
-        (missing == null ? null : missing.total === 0 ? (
-          <div className="empty">
-            <ArtDupes className="art" />
-            <p>Nothing missing — every photo in your library is still where Smriti left it.</p>
-          </div>
-        ) : (
-          <div className="panel">
-            <p className="muted" style={{ marginBottom: 12 }}>
-              <strong>{missing.total.toLocaleString()} photos</strong> whose files are no longer on
-              disk. You deleted these outside Smriti, so they have already gone from your timeline
-              — forgetting them clears the leftover entries and frees their thumbnails.
-            </p>
-            <p className="muted small" style={{ marginBottom: 14 }}>
-              A disconnected drive never appears here: an interrupted scan deliberately marks
-              nothing as missing, so unplugging a drive can&rsquo;t cost you anything. Click a row
-              to pick it, or open the preview to see what the thumbnail still remembers of it.
-            </p>
-            {missing.items.map((it) => (
-              <div
-                className={`list-row missing-row${missingSel.has(it.id) ? " picked" : ""}`}
-                key={it.id}
-                onClick={() => toggleMissingSel(it.id)}
-              >
-                <span className={`row-check${missingSel.has(it.id) ? " on" : ""}`} aria-hidden="true">
-                  ✓
-                </span>
-                {/* The thumbnail outlives the original — it is the only picture
-                    of this photo left, and the whole reason to look before you
-                    forget it. */}
-                <div className="missing-thumb">
-                  <img src={thumbUrl(it.id)} loading="lazy" alt="" />
-                  <PreviewButton id={it.id} label={`Preview ${it.filename}`} onOpen={openPreview} />
-                </div>
-                <strong style={{ wordBreak: "break-word" }}>{it.filename}</strong>
-                <span className="muted small">{it.volume}</span>
-                <span className="spacer" />
-                <span className="muted small path">{it.rel_path}</span>
-              </div>
-            ))}
-            {missing.total > missing.items.length && (
-              <p className="muted small" style={{ marginTop: 10 }}>
-                Showing the first {missing.items.length.toLocaleString()} of{" "}
-                {missing.total.toLocaleString()}.
+        {tab === "missing" && missingLoading && <div className="empty row"><div className="spin" />Checking for missing files…</div>}
+        {tab === "missing" &&
+          (missing == null ? null : missing.total === 0 ? (
+            <div className="empty"><p>Nothing missing — every photo in your library is still where Smriti left it.</p></div>
+          ) : (
+            <>
+              <p className="note" style={{ padding: "8px 0" }}>
+                Files that are no longer on disk. They were deleted outside Smriti, so they have already gone from Photos — forgetting them clears the leftover entries and their thumbnails.
+                A disconnected drive never appears here.
               </p>
-            )}
-          </div>
-        ))}
+              <div className="list">
+                {missing.items.map((it) => (
+                  <div key={it.id} className={`li clickable${missingSel.has(it.id) ? " picked" : ""}`} onClick={() => toggleMissing(it.id)}>
+                    <span className={`check${missingSel.has(it.id) ? " on" : ""}`}>✓</span>
+                    <div className="dupe-item" style={{ width: 44 }}>
+                      <div className="thumb" style={{ width: 44, height: 32 }}>
+                        <img src={thumbUrl(it.id)} loading="lazy" alt="" />
+                        <PreviewButton id={it.id} onOpen={openPreview} />
+                      </div>
+                    </div>
+                    <span className="path"><strong>{it.filename}</strong> <span className="muted">{it.rel_path}</span></span>
+                    <span className="st">{it.volume}</span>
+                  </div>
+                ))}
+              </div>
+              {missing.total > missing.items.length && <p className="note" style={{ padding: "8px 0" }}>Showing the first {missing.items.length.toLocaleString()} of {missing.total.toLocaleString()}.</p>}
+            </>
+          ))}
+      </div>
 
       {preview && (
-        <Lightbox
+        <Viewer
           item={preview.list[preview.idx]}
+          position={{ index: preview.idx + 1, total: preview.list.length, label: "Cleanup" }}
           onClose={() => setPreview(null)}
           onPrev={preview.idx > 0 ? () => stepPreview(-1) : undefined}
           onNext={preview.idx < preview.list.length - 1 ? () => stepPreview(1) : undefined}
-          // On Missing there is no original left to send to the Trash — the
-          // only thing still here is the row, so that is what the button offers.
-          deleteAction={
-            tab === "missing"
-              ? {
-                  tooltip: "Forget this entry",
-                  title: "Forget this entry?",
-                  body: "The file itself is already gone from your disk. This clears the entry Smriti is still holding for it, and its thumbnail.",
-                  confirmLabel: "Forget it",
-                  run: async () => {
-                    await api.post("/api/cleanup/missing/forget", {
-                      file_ids: [preview.list[preview.idx].id],
-                    });
-                  },
-                }
-              : undefined
-          }
+          deleteAction={tab === "missing" ? { label: "Forget This Entry", run: () => actions.forgetMissing([preview.list[preview.idx].id]) } : undefined}
         />
       )}
-
-      {confirmingTrash && (
-        <ConfirmDialog
-          title={`Move ${discards.size} ${discards.size === 1 ? "photo" : "photos"} to Trash?`}
-          body="Marked files go to the system Trash (recoverable there) and leave the library. Anything you didn't mark stays untouched."
-          confirmLabel="Move to Trash"
-          danger
-          onConfirm={trashDiscards}
-          onClose={() => setConfirmingTrash(false)}
-        />
-      )}
-      {confirmingForget && (
+      {confirmForgetAll && (
         <ConfirmDialog
           title={`Forget ${missing?.total.toLocaleString()} missing photos?`}
-          body={
-            <>
-              <p style={{ marginBottom: 10 }}>
-                These files are already gone from your disk — Smriti is only holding empty entries
-                for them. Forgetting clears those entries and their thumbnails.
-              </p>
-              <p>
-                <strong>Nothing on disk is touched</strong>, because there is nothing left to touch.
-                If a file ever comes back, the next scan will pick it up again.
-              </p>
-            </>
-          }
-          confirmLabel="Forget them"
+          body="These files are already gone from disk — Smriti is only holding empty entries for them. Forgetting clears those entries and their thumbnails. If a file ever comes back, the next scan picks it up again."
+          confirmLabel="Forget Them"
           danger
-          onConfirm={() => forget.mutate(undefined)}
-          onClose={() => setConfirmingForget(false)}
+          onConfirm={() => forgetAll.mutate()}
+          onClose={() => setConfirmForgetAll(false)}
         />
       )}
-    </div>
+    </>
   );
 }

@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import App from "./App";
+import Shell from "./shell/Shell";
 import AlbumPage from "./pages/AlbumPage";
 import AlbumsPage from "./pages/AlbumsPage";
 import DocumentsPage from "./pages/DocumentsPage";
@@ -17,9 +17,8 @@ import SearchPage from "./pages/SearchPage";
 import PersonPage from "./pages/PersonPage";
 import PlaceGridPage from "./pages/PlaceGridPage";
 import PlacesPage from "./pages/PlacesPage";
-import SettingsPage from "./pages/SettingsPage";
-import TimelinePage from "./pages/TimelinePage";
-import "./styles.css";
+import PhotosPage from "./pages/PhotosPage";
+import "./styles/index.css";
 import { isDesktop } from "./lib/desktop";
 
 // Inside the desktop shell the webview's own context menu — Reload, Back,
@@ -62,8 +61,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           {/* the in-app landing page was retired with the desktop rebuild;
               the website carries that story now */}
           <Route path="/welcome" element={<Navigate to="/" replace />} />
-          <Route path="/" element={<App />}>
-            <Route index element={<TimelinePage />} />
+          <Route path="/" element={<Shell />}>
+            <Route index element={<PhotosPage />} />
+            <Route path="videos" element={<PhotosPage variant="videos" />} />
+            <Route path="live" element={<PhotosPage variant="live" />} />
+            <Route path="favourites" element={<PhotosPage variant="favourites" />} />
             <Route path="search" element={<SearchPage />} />
             <Route path="moments" element={<MomentsPage />} />
             <Route path="people" element={<PeoplePage />} />
@@ -76,11 +78,12 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="events" element={<EventsPage />} />
             <Route path="events/:id" element={<EventPage />} />
             <Route path="documents" element={<DocumentsPage />} />
-          <Route path="locked" element={<LockedPage />} />
+            <Route path="locked" element={<LockedPage />} />
             <Route path="cleanup" element={<CleanupPage />} />
             {/* the page was called Duplicates until 0.1.18 */}
             <Route path="dupes" element={<Navigate to="/cleanup" replace />} />
-            <Route path="settings" element={<SettingsPage />} />
+            {/* Preferences is a sheet now; the shell opens it for this path */}
+            <Route path="settings" element={<PhotosPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

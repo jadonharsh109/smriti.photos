@@ -1,22 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
-import type { Item } from "../api/client";
-import { IconLock } from "../components/Icons";
-import JustifiedGrid from "../components/JustifiedGrid";
-import Lightbox from "../components/Lightbox";
+import { useEffect, useState } from "react";
+import FlatGrid from "../components/FlatGrid";
+import { IconLock, IconMore } from "../components/Icons";
 import Portal from "../components/Portal";
-import { Loading } from "../components/Skeletons";
 import { getLockedToken, lockedApi, lockedQS, setLockedToken, useLockedSession, useLockedToken } from "../lockedStore";
+import { openContextMenu } from "../shell/ContextMenu";
+import { GridControls } from "../shell/GridToolbar";
+import { selection, selectionActions } from "../shell/store";
+import { SelectionActions, TbButton, Toolbar } from "../shell/Toolbar";
 
 /** Backup codes, shown exactly once after setup or a passcode change. */
 function BackupCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
-
-  /* A file, because the clipboard is the wrong place to leave the only copy of
-     something shown once — the next thing you copy destroys it, and it is gone
-     without ever having said so. In the desktop app the shell catches this and
-     writes it to Downloads; in a browser it is an ordinary download. */
   const download = () => {
     const body = [
       "Smriti — backup codes for the Locked section",
@@ -38,33 +34,22 @@ function BackupCodes({ codes, onDone }: { codes: string[]; onDone: () => void })
     window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
     setSaved(true);
   };
-
   return (
-    <div className="lock-card wide">
-      <span className="lock-icon"><IconLock size={30} /></span>
+    <div className="lock-card" style={{ width: 440 }}>
+      <span className="icon"><IconLock /></span>
       <h2>Save your backup codes</h2>
-      <p className="muted">
-        If you ever forget your passcode, one of these codes unlocks the section. Each works
-        once. Store them somewhere safe — <strong>they are shown only now</strong>.
+      <p className="muted small">
+        If you ever forget your passcode, one of these codes unlocks the section. Each works once. Store them somewhere safe — <strong>they are shown only now</strong>.
       </p>
       <div className="code-grid">
         {codes.map((c) => (
           <code key={c} className="code-chip">{c}</code>
         ))}
       </div>
-      <div className="row" style={{ justifyContent: "center", marginTop: 18 }}>
-        <button onClick={download}>{saved ? "✓ Downloaded" : "Download codes"}</button>
-        <button
-          className="ghost"
-          onClick={() => {
-            navigator.clipboard.writeText(codes.join("\n")).then(() => setCopied(true));
-          }}
-        >
-          {copied ? "✓ Copied" : "Copy all"}
-        </button>
-        <button className="primary" onClick={onDone}>
-          I saved them — continue
-        </button>
+      <div className="row" style={{ justifyContent: "center", marginTop: 6 }}>
+        <button className="btn" onClick={download}>{saved ? "✓ Downloaded" : "Download"}</button>
+        <button className="btn" onClick={() => navigator.clipboard.writeText(codes.join("\n")).then(() => setCopied(true))}>{copied ? "✓ Copied" : "Copy All"}</button>
+        <button className="btn primary" onClick={onDone}>I Saved Them</button>
       </div>
     </div>
   );
@@ -77,7 +62,6 @@ function SetupCard({ onComplete }: { onComplete: (codes: string[]) => void }) {
   const qc = useQueryClient();
   const mismatch = confirm.length > 0 && pw !== confirm;
   const ready = pw.length >= 4 && pw === confirm;
-
   const submit = async () => {
     if (!ready) return;
     try {
@@ -89,36 +73,16 @@ function SetupCard({ onComplete }: { onComplete: (codes: string[]) => void }) {
       setError(String((e as Error).message));
     }
   };
-
   return (
     <div className="lock-card">
-      <span className="lock-icon"><IconLock size={30} /></span>
+      <span className="icon"><IconLock /></span>
       <h2>Set up Locked</h2>
-      <p className="muted">
-        Photos you move here disappear from Photos, Albums, People, Places, Map and Events
-        until you unlock with your passcode.
-      </p>
-      <input
-        type="password"
-        className="lock-input"
-        placeholder="Passcode (min 4 characters)"
-        value={pw}
-        autoFocus
-        onChange={(e) => setPw(e.target.value)}
-      />
-      <input
-        type="password"
-        className="lock-input"
-        placeholder="Confirm passcode"
-        value={confirm}
-        onChange={(e) => setConfirm(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && submit()}
-      />
-      {mismatch && <p className="small" style={{ color: "var(--danger)" }}>Passcodes don't match</p>}
-      {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
-      <button className="primary" disabled={!ready} onClick={submit} style={{ marginTop: 10 }}>
-        Create Locked section
-      </button>
+      <p className="muted small">Photos you hide here disappear from every other view until you unlock with your passcode.</p>
+      <input type="password" className="input" placeholder="Passcode (at least 4 characters)" value={pw} autoFocus onChange={(e) => setPw(e.target.value)} />
+      <input type="password" className="input" placeholder="Confirm passcode" value={confirm} onChange={(e) => setConfirm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
+      {mismatch && <p className="note bad">Passcodes don’t match</p>}
+      {error && <p className="note bad">{error}</p>}
+      <button className="btn primary" disabled={!ready} onClick={submit} style={{ justifySelf: "center", marginTop: 4 }}>Create Locked Section</button>
     </div>
   );
 }
@@ -128,65 +92,37 @@ function UnlockCard() {
   const [code, setCode] = useState("");
   const [useBackup, setUseBackup] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [usedBackup, setUsedBackup] = useState(false);
   const qc = useQueryClient();
-
   const submit = async () => {
     setError(null);
     try {
-      if (useBackup) {
-        const r = await lockedApi.unlockBackup(code);
-        setLockedToken(r.token);
-        setUsedBackup(true);
-      } else {
-        const r = await lockedApi.unlock(pw);
-        setLockedToken(r.token);
-      }
+      const r = useBackup ? await lockedApi.unlockBackup(code) : await lockedApi.unlock(pw);
+      setLockedToken(r.token);
       qc.invalidateQueries({ queryKey: ["locked"] });
     } catch (e) {
       setError(String((e as Error).message));
     }
   };
-  void usedBackup;
-
   return (
     <div className="lock-card">
-      <span className="lock-icon"><IconLock size={30} /></span>
+      <span className="icon"><IconLock /></span>
       <h2>Locked</h2>
-      <p className="muted">{useBackup ? "Enter one of your backup codes." : "Enter your passcode to view."}</p>
+      <p className="muted small">{useBackup ? "Enter one of your backup codes." : "Enter your passcode to view."}</p>
       {useBackup ? (
-        <input
-          type="text"
-          className="lock-input"
-          placeholder="XXXX-XXXX"
-          value={code}
-          autoFocus
-          onChange={(e) => setCode(e.target.value.toUpperCase())}
-          onKeyDown={(e) => e.key === "Enter" && submit()}
-        />
+        <input type="text" className="input" placeholder="XXXX-XXXX" value={code} autoFocus onChange={(e) => setCode(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === "Enter" && submit()} />
       ) : (
-        <input
-          type="password"
-          className="lock-input"
-          placeholder="Passcode"
-          value={pw}
-          autoFocus
-          onChange={(e) => setPw(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && submit()}
-        />
+        <input type="password" className="input" placeholder="Passcode" value={pw} autoFocus onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
       )}
-      {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
-      <button className="primary" onClick={submit} style={{ marginTop: 10 }}>
-        Unlock
-      </button>
-      <button className="ghost small" style={{ marginTop: 8 }} onClick={() => { setUseBackup((b) => !b); setError(null); }}>
-        {useBackup ? "← Use passcode" : "Forgot passcode? Use a backup code"}
+      {error && <p className="note bad">{error}</p>}
+      <button className="btn primary" onClick={submit} style={{ justifySelf: "center", marginTop: 4 }}>Unlock</button>
+      <button className="btn ghost small" onClick={() => { setUseBackup((b) => !b); setError(null); }}>
+        {useBackup ? "Use passcode instead" : "Forgot passcode? Use a backup code"}
       </button>
     </div>
   );
 }
 
-function ChangePasscodeDialog({ onCodes, onClose }: { onCodes: (codes: string[]) => void; onClose: () => void }) {
+function ChangePasscode({ onCodes, onClose }: { onCodes: (codes: string[]) => void; onClose: () => void }) {
   const [pw, setPw] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -203,20 +139,20 @@ function ChangePasscodeDialog({ onCodes, onClose }: { onCodes: (codes: string[])
   };
   return (
     <Portal>
-      <div className="modal-back" onClick={onClose}>
-        <div className="modal" style={{ width: 420 }} onClick={(e) => e.stopPropagation()}>
-          <header>Change passcode</header>
-          <div className="modal-body" style={{ padding: "12px 24px 6px", display: "grid", gap: 10 }}>
-            <input type="password" autoFocus placeholder="New passcode (min 4 characters)" value={pw} onChange={(e) => setPw(e.target.value)} />
-            <input type="password" placeholder="Confirm new passcode" value={confirm} onChange={(e) => setConfirm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
-            {confirm.length > 0 && pw !== confirm && <p className="small" style={{ color: "var(--danger)" }}>Passcodes don't match</p>}
-            {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
-            <p className="muted small">Changing the passcode also issues a fresh set of backup codes.</p>
+      <div className="scrim" onClick={onClose}>
+        <div className="sheet" role="dialog" onClick={(e) => e.stopPropagation()}>
+          <header>Change Passcode</header>
+          <div className="sbody">
+            <input type="password" className="input" autoFocus placeholder="New passcode (at least 4 characters)" value={pw} onChange={(e) => setPw(e.target.value)} />
+            <input type="password" className="input" placeholder="Confirm new passcode" value={confirm} onChange={(e) => setConfirm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
+            {confirm.length > 0 && pw !== confirm && <p className="note bad">Passcodes don’t match</p>}
+            {error && <p className="note bad">{error}</p>}
+            <p>Changing the passcode also issues a fresh set of backup codes.</p>
           </div>
-          <footer>
-            <button onClick={onClose}>Cancel</button>
-            <button className="primary" disabled={!ready} onClick={submit}>Change passcode</button>
-          </footer>
+          <div className="sfoot">
+            <button className="btn" onClick={onClose}>Cancel</button>
+            <button className="btn primary" disabled={!ready} onClick={submit}>Change Passcode</button>
+          </div>
         </div>
       </div>
     </Portal>
@@ -225,177 +161,89 @@ function ChangePasscodeDialog({ onCodes, onClose }: { onCodes: (codes: string[])
 
 export default function LockedPage() {
   const qc = useQueryClient();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(1000);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [freshCodes, setFreshCodes] = useState<string[] | null>(null);
   const [changing, setChanging] = useState(false);
-
-  // Both from the store rather than read straight off the module, so this
-  // component re-renders the instant the token changes and the key below can
-  // never lag behind the request that is about to be sent.
   const token = useLockedToken();
   const session = useLockedSession();
 
   const { data: status } = useQuery({
     queryKey: ["locked", "status", session],
     queryFn: () => lockedApi.status(),
-    refetchInterval: 60_000, // notice server-side expiry
+    refetchInterval: 60_000,
   });
   const unlocked = !!status?.unlocked && !!token;
 
-  /* Re-lock the moment the session expires.
-     The timer only asks the server again — it never locks on its own say-so.
-     `expires_in` is a snapshot, and using this section renews the idle clock
-     without the page hearing about it, so a client-side countdown would throw
-     somebody out mid-scroll. The server is the one that knows. */
+  // re-lock the moment the server says the session is over — never on a
+  // client-side guess, since using the section renews the idle clock
   const expiresIn = status?.expires_in;
   useEffect(() => {
     if (!unlocked || expiresIn == null) return;
-    const t = window.setTimeout(
-      () => qc.invalidateQueries({ queryKey: ["locked", "status"] }),
-      Math.max(0, expiresIn) * 1000 + 750
-    );
+    const t = window.setTimeout(() => qc.invalidateQueries({ queryKey: ["locked", "status"] }), Math.max(0, expiresIn) * 1000 + 750);
     return () => window.clearTimeout(t);
   }, [unlocked, expiresIn, qc]);
-
-  /* The server has locked us out — drop the token rather than keep sending a
-     dead one on every thumbnail URL. */
   useEffect(() => {
-    // Safe to believe now: `status` is keyed on the session, so it can only
-    // ever be an answer fetched with the token we are still holding.
     if (status && !status.unlocked && token) {
       setLockedToken(null);
-      setSelected(new Set());
-      setLightboxIdx(null);
+      selectionActions.clear();
       qc.invalidateQueries({ queryKey: ["locked"] });
     }
   }, [status, token, qc]);
 
-  const { data: items } = useQuery({
-    queryKey: ["locked", "items"],
-    queryFn: () => lockedApi.items(),
-    enabled: !!unlocked,
-  });
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
-    ro.observe(el);
-    setWidth(el.clientWidth);
-    return () => ro.disconnect();
-  }, [unlocked]);
+  const { data: items } = useQuery({ queryKey: ["locked", "items", session], queryFn: () => lockedApi.items(), enabled: unlocked });
 
   const unhide = useMutation({
     mutationFn: (ids: number[]) => lockedApi.removeItems(ids),
     onSuccess: () => {
-      setSelected(new Set());
+      selectionActions.clear();
       qc.invalidateQueries(); // items reappear everywhere
     },
   });
-
   const lockNow = async () => {
     await lockedApi.lock();
     setLockedToken(null);
-    setSelected(new Set());
-    setLightboxIdx(null);
+    selectionActions.clear();
     qc.invalidateQueries({ queryKey: ["locked"] });
   };
 
-  if (freshCodes) {
-    return (
-      <div className="page lock-center">
-        <BackupCodes codes={freshCodes} onDone={() => setFreshCodes(null)} />
-      </div>
-    );
-  }
+  const more = (e: React.MouseEvent) => {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    openContextMenu({ clientX: r.right - 180, clientY: r.bottom + 4, preventDefault: () => {} }, [{ label: "Change Passcode…", onSelect: () => setChanging(true) }]);
+  };
 
-  // Blank reads as broken, and this is the one page where a blank screen also
-  // looks like it might be hiding something.
-  if (!status)
-    return (
-      <div className="page lock-center">
-        <Loading label="Checking the lock…" />
-      </div>
-    );
-
-  if (!status.configured) {
-    return (
-      <div className="page lock-center">
-        <SetupCard onComplete={(codes) => setFreshCodes(codes)} />
-      </div>
-    );
-  }
-
-  if (!unlocked) {
-    return (
-      <div className="page lock-center">
-        <UnlockCard />
-      </div>
-    );
-  }
-
-  const list = items ?? [];
+  const n = status?.count ?? items?.length ?? 0;
+  const count = unlocked ? `${n.toLocaleString()} hidden · ${status?.codes_remaining ?? 0} backup codes left` : null;
   return (
-    <div className="page" ref={containerRef}>
-      <header className="page-head">
-        <div>
-          <h1>Locked</h1>
-          <p className="sub">
-            {status.count ?? list.length} hidden {(status.count ?? list.length) === 1 ? "item" : "items"} ·{" "}
-            {status.codes_remaining ?? 0} backup codes left
-          </p>
-        </div>
-        <div className="actions">
-          {selected.size > 0 && (
-            <button onClick={() => unhide.mutate([...selected])}>
-              Unhide {selected.size} — back to library
-            </button>
-          )}
-          <button onClick={() => setChanging(true)}>Change passcode</button>
-          <button className="primary" onClick={lockNow}>
-            <span style={{ display: "inline-flex", verticalAlign: "-3px", marginRight: 6 }}><IconLock size={16} /></span>
-            Lock now
-          </button>
-        </div>
-      </header>
-      {list.length === 0 ? (
-        <div className="empty">
-          <span className="lock-icon big"><IconLock size={44} /></span>
-          <p>
-            Nothing hidden yet. Select photos anywhere in your library and choose{" "}
-            <strong>Hide in Locked</strong>.
-          </p>
-        </div>
-      ) : (
-        <JustifiedGrid
-          items={list}
-          width={width - 40}
-          thumbQS={lockedQS()}
-          onOpen={setLightboxIdx}
-          selected={selected}
-          onToggleSelect={(fid) =>
-            setSelected((prev) => {
-              const next = new Set(prev);
-              if (next.has(fid)) next.delete(fid);
-              else next.add(fid);
-              return next;
-            })
-          }
-        />
-      )}
-      {lightboxIdx != null && list[lightboxIdx] && (
-        <Lightbox
-          item={list[lightboxIdx] as Item}
+    <>
+      <Toolbar title="Locked" count={count}>
+        {unlocked && (
+          <>
+            <SelectionActions>
+              <TbButton onClick={() => unhide.mutate([...selection.get().ids])}>Unhide</TbButton>
+            </SelectionActions>
+            <TbButton icon={<IconMore size={14} />} title="More" onClick={more} />
+            <TbButton icon={<IconLock size={14} />} title="Lock now" primary onClick={lockNow}>Lock</TbButton>
+            <GridControls />
+          </>
+        )}
+      </Toolbar>
+      {freshCodes ? (
+        <div className="page center"><BackupCodes codes={freshCodes} onDone={() => setFreshCodes(null)} /></div>
+      ) : !status ? (
+        <div className="page center"><div className="row muted small"><div className="spin" />Checking the lock…</div></div>
+      ) : !status.configured ? (
+        <div className="page center"><SetupCard onComplete={setFreshCodes} /></div>
+      ) : !unlocked ? (
+        <div className="page center"><UnlockCard /></div>
+      ) : items ? (
+        <FlatGrid
+          items={items}
           qs={lockedQS()}
-          onClose={() => setLightboxIdx(null)}
-          onPrev={lightboxIdx > 0 ? () => setLightboxIdx(lightboxIdx - 1) : undefined}
-          onNext={lightboxIdx < list.length - 1 ? () => setLightboxIdx(lightboxIdx + 1) : undefined}
+          positionLabel="Locked"
+          emptyText="Nothing hidden yet. Select photos anywhere in your library and choose Hide in Locked."
+          menuExtras={(ids) => [{ label: "Unhide", onSelect: () => unhide.mutate(ids) }]}
         />
-      )}
-      {changing && <ChangePasscodeDialog onCodes={setFreshCodes} onClose={() => setChanging(false)} />}
-    </div>
+      ) : null}
+      {changing && getLockedToken() && <ChangePasscode onCodes={setFreshCodes} onClose={() => setChanging(false)} />}
+    </>
   );
 }

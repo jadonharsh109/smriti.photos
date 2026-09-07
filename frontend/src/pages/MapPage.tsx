@@ -8,6 +8,7 @@ import world110 from "world-atlas/countries-110m.json";
 import { api, filterQS, type Bucket, type Filters, type Item } from "../api/client";
 import { IconClose } from "../components/Icons";
 import { thumbUrl } from "../lib/images";
+import { Toolbar } from "../shell/Toolbar";
 
 interface Point {
   lat: number;
@@ -420,29 +421,12 @@ export default function MapPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, states, visAngle, showHover, view.scale]);
 
+  const located = (points ?? []).reduce((s, p) => s + p.n, 0);
   return (
-    <div className="page">
-      <header className="page-head">
-        <div>
-          <h1>Map</h1>
-          <p className="sub">Drag to rotate · scroll to zoom · click a pin to fly there</p>
-        </div>
-        <div className="actions">
-          <span className="chip">
-            {pointsLoading ? (
-              <>
-                <span className="spin" />
-                &nbsp;finding your places…
-              </>
-            ) : (
-              <>
-                <span className="dot" />
-                <strong>{(points ?? []).reduce((s, p) => s + p.n, 0).toLocaleString()}</strong>&nbsp;located photos · fully offline
-              </>
-            )}
-          </span>
-        </div>
-      </header>
+    <div className="page" style={{ height: "100%", boxSizing: "border-box", paddingBottom: 12 }}>
+      <Toolbar title="Map" count={pointsLoading ? "finding your places…" : `${located.toLocaleString()} located photos · offline`}>
+        <span className="muted small">Drag to rotate · scroll to zoom · click a pin</span>
+      </Toolbar>
 
       <div className="globe-frame" ref={frameRef}>
         <svg
@@ -522,11 +506,11 @@ export default function MapPage() {
 
           {/* floating controls */}
           <div className="globe-ctl">
-            <button className="icon-btn" title="Zoom in" onClick={() => { cancelFly(); setSpinning(false); setView((v) => ({ ...v, scale: clamp(v.scale * 1.45, 1, MAX_ZOOM) })); }}>＋</button>
-            <button className="icon-btn" title="Zoom out" onClick={() => { cancelFly(); setSpinning(false); setView((v) => ({ ...v, scale: clamp(v.scale / 1.45, 1, MAX_ZOOM) })); }}>－</button>
-            <button className="icon-btn" title="Reset view" onClick={resetView}>⟲</button>
+            <button className="btn" title="Zoom in" onClick={() => { cancelFly(); setSpinning(false); setView((v) => ({ ...v, scale: clamp(v.scale * 1.45, 1, MAX_ZOOM) })); }}>＋</button>
+            <button className="btn" title="Zoom out" onClick={() => { cancelFly(); setSpinning(false); setView((v) => ({ ...v, scale: clamp(v.scale / 1.45, 1, MAX_ZOOM) })); }}>－</button>
+            <button className="btn" title="Reset view" onClick={resetView}>⟲</button>
             <button
-              className={`icon-btn${spinning && !selected ? " on" : ""}`}
+              className={`btn${spinning && !selected ? " on" : ""}`}
               title={spinning ? "Pause rotation" : "Resume rotation"}
               onClick={() => setSpinning((s) => !s)}
             >
@@ -540,12 +524,12 @@ export default function MapPage() {
               <div className="row" style={{ gap: 8 }}>
                 <strong>{selected.city ?? "Unknown place"}</strong>
                 <span className="muted small">{selected.country ?? ""}</span>
-                <span className="spacer" />
-                <button className="icon-btn" style={{ width: 30, height: 30 }} onClick={() => setSelected(null)}>
-                  <IconClose size={15} />
+                <span className="grow" />
+                <button className="iconbtn" onClick={() => setSelected(null)}>
+                  <IconClose size={14} />
                 </button>
               </div>
-              <div className="muted small">{selected.n} photos here</div>
+              <div className="muted small num">{selected.n.toLocaleString()} photos here</div>
               {previewItems && previewItems.length > 0 && (
                 <div className="thumbs">
                   {previewItems.map((it, i) => (
@@ -555,8 +539,8 @@ export default function MapPage() {
               )}
               {selected.country && (
                 <button
-                  className="primary"
-                  style={{ width: "100%", marginTop: 8 }}
+                  className="btn primary"
+                  style={{ width: "100%", marginTop: 8, justifyContent: "center" }}
                   onClick={() =>
                     nav(
                       selected.city

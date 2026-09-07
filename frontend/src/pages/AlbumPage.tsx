@@ -1,17 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, setFavourite, type Item } from "../api/client";
-import BackLink from "../components/BackLink";
 import { ConfirmDialog, TextDialog } from "../components/Dialogs";
-import JustifiedGrid from "../components/JustifiedGrid";
-import { PhotoGridSkeleton } from "../components/Skeletons";
-import Lightbox from "../components/Lightbox";
+import FlatGrid from "../components/FlatGrid";
+import { IconMore } from "../components/Icons";
+import { openContextMenu } from "../shell/ContextMenu";
+import { GridControls, StandardSelection } from "../shell/GridToolbar";
+import { selection } from "../shell/store";
+import { TbButton, Toolbar } from "../shell/Toolbar";
 
 interface AlbumDetail {
   id: number;
   name: string;
-  /** Set on the albums the app owns — Favourites. Absent on the user's own. */
   system?: string | null;
   items: (Item & { position: number })[];
 }
@@ -21,46 +22,19 @@ export default function AlbumPage() {
   const albumId = Number(id);
   const qc = useQueryClient();
   const nav = useNavigate();
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const resizeObs = useRef<ResizeObserver | null>(null);
-  const [width, setWidth] = useState(1000);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const { data: album } = useQuery({
-    queryKey: ["album", albumId],
-    queryFn: () => api.get<AlbumDetail>(`/api/albums/${albumId}`),
-  });
+  const { data: album } = useQuery({ queryKey: ["album", albumId], queryFn: () => api.get<AlbumDetail>(`/api/albums/${albumId}`) });
 
-  const toggleFav = (id: number, on: boolean) =>
-    setFavourite(id, on, (fav) =>
-      qc.setQueryData<AlbumDetail>(["album", albumId], (prev) =>
-        prev && { ...prev, items: prev.items.map((it) => (it.id === id ? { ...it, fav } : it)) })
+  const toggleFav = (fid: number, on: boolean) =>
+    setFavourite(fid, on, (fav) =>
+      qc.setQueryData<AlbumDetail>(["album", albumId], (prev) => prev && { ...prev, items: prev.items.map((it) => (it.id === fid ? { ...it, fav } : it)) })
     )
-      // unhearting from inside Favourites takes the photo out of the album it
-      // is being shown in, so this view has to come back from the server
+      // unhearting inside Favourites takes the photo out of the album being shown
       .then(() => qc.invalidateQueries({ queryKey: ["album", albumId] }))
       .then(() => qc.invalidateQueries({ queryKey: ["albums"] }))
       .catch(() => {});
-
-  /** Callback ref, not an effect: this component returns early while the album
-   *  loads, so an effect with no deps would fire on a render where the
-   *  container does not exist yet and never run again — leaving the grid laid
-   *  out for whatever width it started with. Same trap as TimelineGrid. */
-  const attachContainer = useCallback((el: HTMLDivElement | null) => {
-    containerRef.current = el;
-    resizeObs.current?.disconnect();
-    resizeObs.current = null;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
-    ro.observe(el);
-    resizeObs.current = ro;
-    setWidth(el.clientWidth);
-  }, []);
-
-  useEffect(() => () => resizeObs.current?.disconnect(), []);
 
   const rename = useMutation({
     mutationFn: (name: string) => api.patch(`/api/albums/${albumId}`, { name }),
@@ -73,106 +47,59 @@ export default function AlbumPage() {
   const removeItems = useMutation({
     mutationFn: (ids: number[]) => api.post(`/api/albums/${albumId}/items/remove`, { file_ids: ids }),
     onSuccess: () => {
-      setSelected(new Set());
+      selection.set({ ids: new Set(), anchor: null, last: null });
       qc.invalidateQueries({ queryKey: ["album", albumId] });
+      qc.invalidateQueries({ queryKey: ["albums"] });
     },
   });
   const delAlbum = useMutation({
     mutationFn: () => api.del(`/api/albums/${albumId}`),
     onSuccess: () => {
-      /* Nothing about deleting an album is slow — the server does it in a
-         fraction of a millisecond, empty or not. What looked like a long
-         delete was this: Albums is cached for 30 seconds and we have just
-         come from it, so react-query answered the next render from that
-         cache, which still listed the album. It sat there looking undeleted
-         until the cache went stale AND something happened to refetch it.
-         Drop the detail outright — that album has no server left to fetch
-         from — and mark the list stale so the page we are about to open
-         fetches instead of remembering. */
       qc.removeQueries({ queryKey: ["album", albumId] });
       qc.invalidateQueries({ queryKey: ["albums"] });
       nav("/albums");
     },
   });
 
-  if (!album)
-    return (
-      <div className="page">
-        <header className="page-head">
-          <div>
-            <div className="skeleton line" style={{ width: 220, height: 22 }} />
-            <div className="skeleton line short" style={{ width: 70 }} />
-          </div>
-        </header>
-        <PhotoGridSkeleton />
-      </div>
-    );
-  const items = album.items;
+  const isSystem = !!album?.system;
+  const more = (e: React.MouseEvent) => {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    openContextMenu({ clientX: r.right - 180, clientY: r.bottom + 4, preventDefault: () => {} }, [
+      { label: "Rename…", onSelect: () => setRenaming(true) },
+      "sep",
+      { label: "Delete Album", danger: true, onSelect: () => setDeleting(true) },
+    ]);
+  };
+
   return (
-    <div className="page" ref={attachContainer}>
-      <header className="page-head">
-        <div>
-          <BackLink to="/albums" label="Albums" />
-          <h1>{album.name}</h1>
-          <p className="sub">{items.length} items</p>
-        </div>
-        <div className="actions">
-          {!album.system && <button onClick={() => setRenaming(true)}>Rename</button>}
-          {selected.size > 0 && (
-            <button onClick={() => removeItems.mutate([...selected])}>Remove {selected.size} from album</button>
-          )}
-          {/* The API refuses both for a system album, so offering them here
-              would only ever produce an error the user cannot act on. */}
-          {!album.system && (
-            <button className="danger" onClick={() => setDeleting(true)}>
-              Delete album
-            </button>
-          )}
-        </div>
-      </header>
-      <JustifiedGrid
-        onToggleFav={toggleFav}
-        items={items}
-        width={width - 40}
-        onOpen={setLightboxIdx}
-        selected={selected}
-        onToggleSelect={(fid) =>
-          setSelected((prev) => {
-            const next = new Set(prev);
-            if (next.has(fid)) next.delete(fid);
-            else next.add(fid);
-            return next;
-          })
-        }
-      />
-      {lightboxIdx != null && items[lightboxIdx] && (
-        <Lightbox
-          item={items[lightboxIdx]}
+    <>
+      <Toolbar back="/albums" title={album?.name ?? ""} count={album ? `${album.items.length.toLocaleString()} ${album.items.length === 1 ? "item" : "items"}` : null}>
+        <StandardSelection fav={!isSystem}>
+          <TbButton onClick={() => removeItems.mutate([...selection.get().ids])}>{isSystem ? "Unfavourite" : "Remove from Album"}</TbButton>
+        </StandardSelection>
+        {!isSystem && <TbButton icon={<IconMore size={14} />} title="More" onClick={more} />}
+        <GridControls />
+      </Toolbar>
+      {album && (
+        <FlatGrid
+          items={album.items}
           onToggleFav={toggleFav}
-          onClose={() => setLightboxIdx(null)}
-          onPrev={lightboxIdx > 0 ? () => setLightboxIdx(lightboxIdx - 1) : undefined}
-          onNext={lightboxIdx < items.length - 1 ? () => setLightboxIdx(lightboxIdx + 1) : undefined}
+          positionLabel={album.name}
+          emptyText={isSystem ? "Nothing favourited yet — the heart on any photo puts it here" : "This album is empty. Select photos anywhere and choose Add to Album."}
+          menuExtras={(ids) => [{ label: isSystem ? "Unfavourite" : "Remove from Album", onSelect: () => removeItems.mutate(ids) }]}
         />
       )}
-      {renaming && (
-        <TextDialog
-          title="Rename album"
-          initial={album.name}
-          submitLabel="Rename"
-          onSubmit={(name) => rename.mutate(name)}
-          onClose={() => setRenaming(false)}
-        />
-      )}
+      {renaming && album && <TextDialog title="Rename Album" initial={album.name} submitLabel="Rename" onSubmit={(name) => rename.mutate(name)} onClose={() => setRenaming(false)} />}
       {deleting && (
         <ConfirmDialog
           title="Delete this album?"
-          body="The album is removed but every file stays on disk."
-          confirmLabel="Delete album"
+          body="The album is removed. Every photo in it stays in your library and on disk."
+          confirmLabel="Delete Album"
           danger
           onConfirm={() => delAlbum.mutate()}
           onClose={() => setDeleting(false)}
         />
       )}
-    </div>
+    </>
   );
 }

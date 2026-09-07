@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { UpdateSheet } from "../components/UpdateNotice";
+import { ActionsHost } from "./actions";
 import { ContextMenuHost } from "./ContextMenu";
 import Inspector from "./Inspector";
 import Preferences from "./Preferences";
@@ -110,6 +111,7 @@ export default function Shell() {
         <StatusBar />
       </div>
       {prefsOpen && <Preferences />}
+      <ActionsHost />
       <UpdateSheet />
       <ContextMenuHost />
     </ShellContext.Provider>
