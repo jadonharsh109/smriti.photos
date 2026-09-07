@@ -1,20 +1,44 @@
-/** Where an image comes from.
+/** Where images come from.
  *
- *  In the desktop app the shell serves cached thumbnails, previews, face crops
- *  and originals straight from disk over its own URL scheme, and announces
- *  which form it uses (`smriti://localhost` on macOS and Linux,
- *  `http://smriti.localhost` on Windows) in `data-smriti-images` on <html>.
- *  Anything carrying a Locked-section token stays on the Python routes, which
- *  are the only place the token can be checked; so does every browser. */
+ * In a browser every thumbnail, preview, face crop and original is one HTTP
+ * request to the Python server — about two milliseconds each, and never more
+ * than six at a time, which is the connection limit a browser keeps per host.
+ * Inside the desktop app the shell serves the same files straight from disk
+ * over its own URL scheme, with no connection limit and no Python in the
+ * path (desktop/src-tauri/src/assets.rs). The shell announces that scheme on
+ * `<html data-smriti-images>`; the attribute is absent in a plain browser, so
+ * these helpers fall back to the `/api/` routes there.
+ *
+ * The one exception is deliberate: the Locked section. The shell refuses
+ * anything belonging to a locked file, so a request that carries the unlock
+ * token (`?lt=…`, the only query string these URLs ever take) stays on the
+ * Python route that knows how to check it. */
+
 const base = (): string | null =>
   typeof document === "undefined" ? null : document.documentElement.getAttribute("data-smriti-images");
 
-const pick = (shell: string, api: string, qs: string) => {
-  const b = !qs ? base() : null;
-  return b ? `${b}${shell}` : `${api}${qs}`;
+/** The grid thumbnail (512 px WebP). */
+export const thumbUrl = (id: number, qs = ""): string => {
+  const b = base();
+  return b && !qs ? `${b}/thumb/${id}` : `/api/thumb/${id}${qs}`;
 };
 
-export const thumbUrl = (id: number, qs = "") => pick(`/thumb/${id}`, `/api/thumb/${id}`, qs);
-export const previewUrl = (id: number, qs = "") => pick(`/preview/${id}`, `/api/preview/${id}`, qs);
-export const faceUrl = (faceId: number, qs = "") => pick(`/face/${faceId}`, `/api/faces/${faceId}/thumb`, qs);
-export const mediaUrl = (id: number, qs = "") => pick(`/media/${id}`, `/api/media/${id}`, qs);
+/** The 1600 px viewer preview; for a video, its poster frame. */
+export const previewUrl = (id: number, qs = ""): string => {
+  const b = base();
+  return b && !qs ? `${b}/preview/${id}` : `/api/preview/${id}${qs}`;
+};
+
+/** The crop the People page draws for one face. */
+export const faceUrl = (faceId: number, qs = ""): string => {
+  const b = base();
+  return b && !qs ? `${b}/face/${faceId}` : `/api/faces/${faceId}/thumb${qs}`;
+};
+
+/** The original, for the viewer's <video> and the Live Photo clip. Not for
+ *  downloads: those keep the Python route, whose path ends in the filename so
+ *  the saved file gets its name. */
+export const mediaUrl = (id: number, qs = ""): string => {
+  const b = base();
+  return b && !qs ? `${b}/media/${id}` : `/api/media/${id}${qs}`;
+};

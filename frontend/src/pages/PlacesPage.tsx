@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, cardDelay } from "../api/client";
 import { ArtPlaces } from "../components/Illustrations";
+import { thumbUrl } from "../lib/images";
 import SearchBox from "../components/SearchBox";
 import { CardGridSkeleton } from "../components/Skeletons";
 import CardGrid from "../components/CardGrid";
@@ -145,7 +146,7 @@ export default function PlacesPage() {
                         style={cardDelay(i)}
                         to={`/places/view?${withState}&city=${encodeURIComponent(city.city)}`}
                       >
-                        <img className="cover wide" src={`/api/thumb/${city.cover}`} loading="lazy" alt="" />
+                        <img className="cover wide" src={thumbUrl(city.cover)} loading="lazy" alt="" />
                         <div className="meta">
                           <div className="name">{city.city}</div>
                           <div className="sub">{city.count} photos</div>

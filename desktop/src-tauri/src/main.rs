@@ -4,6 +4,7 @@
 // white window, which is the usual failure mode for this architecture.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod assets;
 mod paths;
 mod supervisor;
 mod updates;
@@ -154,6 +155,9 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        // smriti://thumb/…, smriti://media/… — images and originals served by
+        // the shell straight from disk. See assets.rs for the per-platform URL.
+        .register_asynchronous_uri_scheme_protocol(assets::SCHEME, assets::handle)
         .plugin(tauri_plugin_opener::init())
         // second launch focuses the existing window instead of starting a
         // second server against the same SQLite file
@@ -189,13 +193,17 @@ fn main() {
                 .resizable(true)
                 .visible(true)
                 // Marks the document so the shared stylesheet can make room for
-                // the floating traffic lights. Runs at document-start on every
-                // navigation, including onto the served origin — which is why
-                // this is a webview script rather than a build-time flag: the
-                // same CSS file also ships to plain browsers.
-                .initialization_script(
-                    "try{document.documentElement.setAttribute('data-smriti-desktop','1')}catch(e){}",
-                )
+                // the floating traffic lights, and tells the page where images
+                // come from in this build (see assets.rs). Runs at
+                // document-start on every navigation, including onto the served
+                // origin — which is why this is a webview script rather than a
+                // build-time flag: the same CSS file also ships to plain
+                // browsers, where neither attribute exists.
+                .initialization_script(format!(
+                    "try{{var d=document.documentElement;d.setAttribute('data-smriti-desktop','1');\
+                     d.setAttribute('data-smriti-images','{}')}}catch(e){{}}",
+                    assets::image_base()
+                ))
                 // WKWebView ignores <a download> unless the host handles it, so
                 // without this the ZIP export and the lightbox's "download
                 // original" button silently do nothing inside the app.
@@ -238,6 +246,17 @@ fn main() {
                     .hidden_title(true);
             }
 
+            // Debug builds only: SMRITI_DEBUG_SCRIPT=<file.js> runs that script
+            // in every page the window loads. It is how the image path is
+            // checked end to end from inside the webview — the served page has
+            // no console anyone can read — and it does not exist in a release.
+            #[cfg(debug_assertions)]
+            if let Some(js) = std::env::var_os("SMRITI_DEBUG_SCRIPT")
+                .and_then(|p| std::fs::read_to_string(p).ok())
+            {
+                builder = builder.initialization_script(js);
+            }
+
             let window = builder.build()?;
 
             // Returning to the app is the moment a waiting update matters most,
@@ -269,6 +288,8 @@ fn main() {
                 match result {
                     Ok((server, ready)) => {
                         handle.state::<AppState>().server.lock().unwrap().replace(server);
+                        // the image scheme proxies cache misses to this server
+                        assets::set_server_url(&ready.url);
                         if let Some(w) = handle.get_webview_window("main") {
                             let _ = w.navigate(ready.url.parse().expect("valid url"));
                             // the served page carries <title>Smriti</title>; make sure

@@ -6,6 +6,7 @@ import { IconExpand } from "../components/Icons";
 import { ArtDupes } from "../components/Illustrations";
 import Lightbox from "../components/Lightbox";
 import { Loading } from "../components/Skeletons";
+import { thumbUrl } from "../lib/images";
 
 interface DupeItem {
   id: number;
@@ -356,7 +357,7 @@ export default function CleanupPage() {
                     onClick={() => toggleDiscard(it.id)}
                   >
                     <div className="dupe-thumb">
-                      <img src={`/api/thumb/${it.id}`} loading="lazy" alt="" />
+                      <img src={thumbUrl(it.id)} loading="lazy" alt="" />
                       <PreviewButton id={it.id} label={`Preview ${it.filename}`} onOpen={openPreview} />
                     </div>
                     <div style={{ margin: "5px 0 2px" }}>
@@ -411,7 +412,7 @@ export default function CleanupPage() {
                   onClick={() => toggleDiscard(it.id)}
                 >
                   <div className="dupe-thumb">
-                    <img src={`/api/thumb/${it.id}`} loading="lazy" alt="" />
+                    <img src={thumbUrl(it.id)} loading="lazy" alt="" />
                     <PreviewButton id={it.id} label={`Preview ${it.filename}`} onOpen={openPreview} />
                   </div>
                   <div style={{ margin: "5px 0 2px" }}>
@@ -457,7 +458,7 @@ export default function CleanupPage() {
                     of this photo left, and the whole reason to look before you
                     forget it. */}
                 <div className="missing-thumb">
-                  <img src={`/api/thumb/${it.id}`} loading="lazy" alt="" />
+                  <img src={thumbUrl(it.id)} loading="lazy" alt="" />
                   <PreviewButton id={it.id} label={`Preview ${it.filename}`} onOpen={openPreview} />
                 </div>
                 <strong style={{ wordBreak: "break-word" }}>{it.filename}</strong>

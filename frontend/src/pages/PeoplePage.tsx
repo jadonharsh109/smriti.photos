@@ -6,6 +6,7 @@ import { ArtPeople } from "../components/Illustrations";
 import SearchBox from "../components/SearchBox";
 import { PeopleGridSkeleton } from "../components/Skeletons";
 import CardGrid from "../components/CardGrid";
+import { faceUrl } from "../lib/images";
 
 export default function PeoplePage() {
   const [showHidden, setShowHidden] = useState(false);
@@ -155,7 +156,7 @@ export default function PeoplePage() {
                 {p.cover_face_id ? (
                   <img
                     className="face-cover"
-                    src={`/api/faces/${p.cover_face_id}/thumb`}
+                    src={faceUrl(p.cover_face_id)}
                     /* Every other card grid already loads its covers lazily; this one
                        did not, so opening People fetched and decoded one thumbnail per
                        person — 253 of them — before the dozen you can actually see. */

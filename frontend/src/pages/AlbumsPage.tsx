@@ -5,6 +5,7 @@ import { api, cardDelay } from "../api/client";
 import { TextDialog } from "../components/Dialogs";
 import { ArtAlbums } from "../components/Illustrations";
 import { CardGridSkeleton } from "../components/Skeletons";
+import { thumbUrl } from "../lib/images";
 import CardGrid from "../components/CardGrid";
 
 interface Album {
@@ -53,7 +54,7 @@ export default function AlbumsPage() {
         <CardGrid>
           {albums!.map((a, i) => (
             <Link key={a.id} to={`/albums/${a.id}`} className="card" style={cardDelay(i)}>
-              {a.cover ? <img className="cover" src={`/api/thumb/${a.cover}`} loading="lazy" alt="" /> : <div className="cover" />}
+              {a.cover ? <img className="cover" src={thumbUrl(a.cover)} loading="lazy" alt="" /> : <div className="cover" />}
               <div className="meta">
                 <div className="name">{a.name}</div>
                 <div className="sub">{a.count} items</div>

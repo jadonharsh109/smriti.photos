@@ -17,6 +17,7 @@ import {
 import PlaceInset from "./PlaceInset";
 import Portal from "./Portal";
 import { openInMaps } from "../lib/desktop";
+import { mediaUrl, previewUrl, thumbUrl } from "../lib/images";
 
 interface Detail {
   id: number;
@@ -118,7 +119,7 @@ export default function Lightbox({ item, onClose, onPrev, onNext, qs = "", onTog
     // be fetched at all is the one worth going to look for.
     setMediaError("unreadable");
     try {
-      const r = await fetch(`/api/media/${item.id}${qs}`, { headers: { Range: "bytes=0-1" } });
+      const r = await fetch(mediaUrl(item.id, qs), { headers: { Range: "bytes=0-1" } });
       // The bytes are right there and the player still refused them, so it is
       // the encoding this browser lacks, not the file.
       if (r.ok) setMediaError("format");
@@ -276,7 +277,7 @@ export default function Lightbox({ item, onClose, onPrev, onNext, qs = "", onTog
       key={item.id}
       ref={imgRef}
       className="lb-media"
-      src={`/api/preview/${item.id}${qs}`}
+      src={previewUrl(item.id, qs)}
       alt=""
       draggable={false}
       style={{
@@ -307,7 +308,7 @@ export default function Lightbox({ item, onClose, onPrev, onNext, qs = "", onTog
             it is shown, and the chip below says why it is the cached one. */}
         {item.media_type === "video" && mediaError && !noOriginal ? (
           <div className="lb-unavailable">
-            <img src={`/api/thumb/${item.id}${qs}`} alt="" className="lb-unavail-poster" />
+            <img src={thumbUrl(item.id, qs)} alt="" className="lb-unavail-poster" />
             <div className="lb-unavail-body">
               <span className="lb-unavail-icon">{mediaError === "format" ? "🎞" : "🗄"}</span>
               <strong>
@@ -330,8 +331,8 @@ export default function Lightbox({ item, onClose, onPrev, onNext, qs = "", onTog
           <video
             key={item.id}
             className="lb-media"
-            src={`/api/media/${item.id}${qs}`}
-            poster={`/api/thumb/${item.id}${qs}`}
+            src={mediaUrl(item.id, qs)}
+            poster={thumbUrl(item.id, qs)}
             controls
             autoPlay
             onError={diagnoseMediaError}
@@ -342,8 +343,8 @@ export default function Lightbox({ item, onClose, onPrev, onNext, qs = "", onTog
           <video
             key={`live-${item.id}`}
             className="lb-media"
-            src={`/api/media/${detail.motion_file_id}${qs}`}
-            poster={`/api/preview/${item.id}${qs}`}
+            src={mediaUrl(detail.motion_file_id, qs)}
+            poster={previewUrl(item.id, qs)}
             autoPlay
             muted
             playsInline

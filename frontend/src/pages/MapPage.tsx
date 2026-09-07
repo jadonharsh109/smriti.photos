@@ -7,6 +7,7 @@ import type { FeatureCollection, GeoJsonProperties, Geometry } from "geojson";
 import world110 from "world-atlas/countries-110m.json";
 import { api, filterQS, type Bucket, type Filters, type Item } from "../api/client";
 import { IconClose } from "../components/Icons";
+import { thumbUrl } from "../lib/images";
 
 interface Point {
   lat: number;
@@ -548,7 +549,7 @@ export default function MapPage() {
               {previewItems && previewItems.length > 0 && (
                 <div className="thumbs">
                   {previewItems.map((it, i) => (
-                    <img key={it.id} src={`/api/thumb/${it.id}`} alt="" style={{ animationDelay: `${i * 0.06}s` }} />
+                    <img key={it.id} src={thumbUrl(it.id)} alt="" style={{ animationDelay: `${i * 0.06}s` }} />
                   ))}
                 </div>
               )}
