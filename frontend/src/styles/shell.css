@@ -244,9 +244,13 @@ input[type="range"] { accent-color: var(--accent); }
 .note.bad { color: var(--bad); }
 
 /* ---- empty states ------------------------------------------------------ */
-.empty { padding: 56px 20px; text-align: center; color: var(--muted); max-width: 46ch; margin: 0 auto; font-size: 13px; }
-.empty h2 { font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+/* An empty view sits in the middle of the stage, like a Finder folder with
+   nothing in it — not tucked under the toolbar. */
+.empty { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--muted); font-size: 13px; padding: 40px 20px; min-height: calc(100vh - var(--toolbar-h) - var(--status-h) - 48px); }
+.empty h2 { font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 6px; max-width: 46ch; }
+.empty p { max-width: 46ch; }
 .empty .row { justify-content: center; margin-top: 14px; }
+.empty .spin { width: 16px; height: 16px; margin-bottom: 10px; }
 .skel { background: var(--rule-soft); border-radius: 4px; animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.55; } }
 

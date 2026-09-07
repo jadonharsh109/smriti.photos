@@ -81,8 +81,19 @@ export default function CleanupPage() {
   const [confirmForgetAll, setConfirmForgetAll] = useState(false);
   const [preview, setPreview] = useState<{ list: Item[]; idx: number } | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const running = runningJob(jobs.use((s) => s.byId));
+  const byId = jobs.use((s) => s.byId);
+  const running = runningJob(byId);
   const isDupeTab = tab === "exact" || tab === "near";
+  // the newest job of a kind this window has seen — what the empty states
+  // report on, so pressing a button visibly does something
+  const latest = (kind: string) => Object.values(byId).filter((j) => j.kind === kind).sort((a, b) => b.id - a.id)[0];
+  const dupeJob = latest("neardup");
+  const blurJob = latest("blur");
+  const findSimilar = () => {
+    setTab("near");
+    setNote(null);
+    run.mutate("/api/dupes/run");
+  };
 
   const { data: groups, isLoading: dupesLoading } = useQuery({ queryKey: ["dupes", tab], queryFn: () => api.get<Group[]>(`/api/dupes/${tab}`), enabled: isDupeTab });
   const { data: blurry, isLoading: blurryLoading } = useQuery({ queryKey: ["blurry", sens], queryFn: () => api.get<Blurry>(`/api/cleanup/blurry?sensitivity=${sens}`), enabled: tab === "blurry" });
@@ -190,13 +201,33 @@ export default function CleanupPage() {
           </div>
         )}
 
-        {isDupeTab && dupesLoading && <div className="empty row"><div className="spin" />Looking through your library…</div>}
+        {isDupeTab && dupesLoading && <div className="empty"><div className="spin" /><p>Looking through your library…</p></div>}
         {isDupeTab && !dupesLoading &&
-          ((groups ?? []).length === 0 ? (
+          (tab === "near" && dupeJob?.status === "running" ? (
             <div className="empty">
-              <p>{tab === "exact" ? "No exact copies found." : "No similar photos found."}</p>
-              <div className="row"><button className="btn" disabled={!!running} onClick={() => run.mutate("/api/dupes/run")}>Find Near-Duplicates</button></div>
+              <div className="spin" />
+              <p>{dupeJob.total > 0 ? `Comparing ${dupeJob.done.toLocaleString()} of ${dupeJob.total.toLocaleString()} photos…` : "Comparing photos…"}</p>
             </div>
+          ) : (groups ?? []).length === 0 ? (
+            tab === "exact" ? (
+              <div className="empty">
+                <h2>No exact copies</h2>
+                <p>Every file is hashed as it is indexed, so this list is always up to date. Photos that are nearly the same — resized, re-saved, lightly edited — are found separately.</p>
+                <div className="row"><button className="btn" disabled={!!running} onClick={findSimilar}>Find Similar Photos</button></div>
+              </div>
+            ) : dupeJob && dupeJob.status !== "failed" ? (
+              <div className="empty">
+                <h2>Nothing similar</h2>
+                <p>Compared {dupeJob.total.toLocaleString()} photos; none were close enough to count as copies of each other.</p>
+                <div className="row"><button className="btn" disabled={!!running} onClick={findSimilar}>Look Again</button></div>
+              </div>
+            ) : (
+              <div className="empty">
+                <h2>{dupeJob ? "The last search didn’t finish" : "Similar photos haven’t been looked for yet"}</h2>
+                <p>{dupeJob?.message ?? "Smriti compares every photo’s fingerprint against the rest and groups the ones that are nearly the same — resized, re-saved, lightly edited."}</p>
+                <div className="row"><button className="btn primary" disabled={!!running} onClick={findSimilar}>Find Similar Photos</button></div>
+              </div>
+            )
           ) : (
             <>
               <p className="note" style={{ padding: "8px 0 0" }}>Click a photo to mark it for the Trash. The one Smriti would keep is outlined in green.</p>
@@ -231,8 +262,14 @@ export default function CleanupPage() {
             </>
           ))}
 
-        {tab === "blurry" && blurryLoading && <div className="empty row"><div className="spin" />Reading sharpness scores…</div>}
-        {tab === "blurry" &&
+        {tab === "blurry" && blurryLoading && <div className="empty"><div className="spin" /><p>Reading sharpness scores…</p></div>}
+        {tab === "blurry" && !blurryLoading && blurJob?.status === "running" && (
+          <div className="empty">
+            <div className="spin" />
+            <p>{blurJob.total > 0 ? `Checking ${blurJob.done.toLocaleString()} of ${blurJob.total.toLocaleString()} photos…` : "Checking photos…"}</p>
+          </div>
+        )}
+        {tab === "blurry" && !blurryLoading && blurJob?.status !== "running" &&
           (blurry == null ? null : blurry.scored === 0 ? (
             <div className="empty">
               <p>Smriti hasn’t checked your photos for blur yet. It reads the thumbnails it already has, so this is quick and changes nothing.</p>
@@ -261,7 +298,7 @@ export default function CleanupPage() {
             </>
           ))}
 
-        {tab === "missing" && missingLoading && <div className="empty row"><div className="spin" />Checking for missing files…</div>}
+        {tab === "missing" && missingLoading && <div className="empty"><div className="spin" /><p>Checking for missing files…</p></div>}
         {tab === "missing" &&
           (missing == null ? null : missing.total === 0 ? (
             <div className="empty"><p>Nothing missing — every photo in your library is still where Smriti left it.</p></div>
