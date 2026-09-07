@@ -415,7 +415,7 @@ input[type="range"] { accent-color: var(--accent); }
 .setup-hero p { color: var(--muted); margin-bottom: 16px; }
 
 /* ---- time rail (right edge of the timeline) ----------------------------- */
-.tscrub { position: absolute; right: 2px; top: 8px; bottom: 8px; z-index: 5; pointer-events: none; user-select: none; }
+.tscrub { position: absolute; right: 12px; top: calc(var(--toolbar-h) + 8px); bottom: 8px; z-index: 5; pointer-events: none; user-select: none; }
 .tscrub-track { position: relative; width: 44px; height: 100%; pointer-events: auto; cursor: pointer; touch-action: none; opacity: 0.6; }
 .tscrub:hover .tscrub-track, .tscrub.drag .tscrub-track { opacity: 1; }
 .tscrub-line { position: absolute; right: 9px; top: 0; bottom: 0; width: 1px; background: var(--rule); }

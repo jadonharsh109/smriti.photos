@@ -1,5 +1,7 @@
 import { useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Bucket } from "../api/client";
+import { useShell } from "../shell/Toolbar";
 
 interface Props {
   buckets: Bucket[]; // newest-first
@@ -18,6 +20,7 @@ export default function TimeScrubber({ buckets, currentIndex, edge, onJump }: Pr
   const trackRef = useRef<HTMLDivElement>(null);
   const [hoverFrac, setHoverFrac] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
+  const { contentEl } = useShell();
 
   const newest = ms(buckets[0].day);
   const oldest = ms(buckets[buckets.length - 1].day);
@@ -96,9 +99,11 @@ export default function TimeScrubber({ buckets, currentIndex, edge, onJump }: Pr
   const currentFrac =
     edge === "top" ? 0 : edge === "bottom" ? 1 : fracForDay(buckets[Math.min(currentIndex, buckets.length - 1)].day);
 
-  // Rendered inside the stage, pinned to its right edge: nothing above it
-  // animates any more, so no ancestor transform can hijack its position.
-  return (
+  // Rendered into the content column, beside the scroller rather than inside
+  // it: an absolutely positioned child of the scrolling element scrolls away
+  // with the content, which is exactly what a rail for jumping around the
+  // library must not do the moment it is used.
+  const rail = (
       <div className={`tscrub${dragging ? " drag" : ""}`}>
         <div
           ref={trackRef}
@@ -145,4 +150,5 @@ export default function TimeScrubber({ buckets, currentIndex, edge, onJump }: Pr
         </div>
       </div>
   );
+  return contentEl ? createPortal(rail, contentEl) : rail;
 }

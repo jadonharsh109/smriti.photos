@@ -349,7 +349,7 @@ export default function DayGrid({ filters, emptyText = "Nothing here yet", menuE
           ))}
         </div>
       </div>
-      {scrubber && (
+      {scrubber && !viewing && (
         <TimeScrubber buckets={buckets} currentIndex={scrubber.centerIndex} edge={scrubber.edge} onJump={(i) => virtualizer.scrollToIndex(i, { align: "start" })} />
       )}
       {viewing && (
