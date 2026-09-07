@@ -117,7 +117,7 @@ section{padding:70px 0; position:relative}
 
 .shot{margin:44px auto 0; max-width:1000px; border-radius:var(--r-card); overflow:hidden;
   border:1px solid var(--stroke-2); box-shadow:var(--shadow), var(--edge-lit); background:rgba(9,12,24,.72)}
-.shot video{width:100%; height:auto; display:block; background:#0a0e1c}
+.shot img,.shot video{width:100%; height:auto; display:block; background:#0a0e1c}
 .shot figcaption{padding:12px 18px; border-top:1px solid var(--stroke);
   color:var(--fg-dimmer); font-size:13px; text-align:center}
 
@@ -239,17 +239,11 @@ footer{padding:44px 0 40px; border-top:1px solid var(--stroke); margin-top:30px}
     </div>
 
     <figure class="shot">
-      <video
-        id="demo"
-        poster="demo-poster.jpg"
-        autoplay loop muted playsinline preload="metadata"
-        aria-label="Smriti moving through the timeline, places, the globe and events">
-        <source src="demo.webm" type="video/webm" />
-        <source src="demo.mp4" type="video/mp4" />
-      </video>
+      <img src="screenshot-dark.jpg" width="1440" height="900" loading="eager" decoding="async"
+           alt="Smriti: one window with a sidebar, a date-grouped photo grid, and an Info panel showing the selected photo's camera and place." />
       <figcaption>
-        Smriti itself — timeline, places, the offline globe, trips found on their own.
-        Recorded against a library built from public-domain photographs.
+        Smriti itself — one window: your library, the Info panel, a viewer that fills it.
+        Light and dark follow your system. The library shown is built from public photographs.
       </figcaption>
     </figure>
   </div>
@@ -445,19 +439,6 @@ footer{padding:44px 0 40px; border-top:1px solid var(--stroke); margin-top:30px}
 </div>
 
 <script>
-// Someone who has asked their system for less motion should not be handed an
-// autoplaying loop. Hold the poster frame and give them controls instead.
-(function () {
-  var v = document.getElementById("demo");
-  if (!v || !window.matchMedia) return;
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    v.autoplay = false;
-    v.loop = false;
-    v.controls = true;
-    v.pause();
-  }
-})();
-
 // Name the visitor's platform on the hero button and flag the matching card.
 // A convenience only — both cards stay, and the link works whatever this guesses.
 (function () {

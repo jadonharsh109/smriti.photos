@@ -46,7 +46,8 @@ h1, h2, h3, h4, p, dl, dd { margin: 0; }
 /* ---- sidebar ---------------------------------------------------------- */
 .side { background: var(--side); border-right: 1px solid var(--rule); display: flex; flex-direction: column; min-height: 0; }
 /* the desktop shell's overlay titlebar: the traffic lights float here */
-[data-smriti-desktop] .side { padding-top: 26px; }
+/* the desktop shell on macOS floats its traffic lights over the sidebar */
+[data-smriti-desktop="macos"] .side { padding-top: 26px; }
 .brand { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px; font-weight: 600; font-size: 13px; }
 .brand .dev { margin-left: auto; color: var(--faint); font-weight: 500; font-size: 12px; }
 .nav { flex: 1; overflow-y: auto; padding: 0 8px 10px; }

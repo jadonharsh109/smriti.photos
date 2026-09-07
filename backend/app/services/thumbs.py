@@ -164,11 +164,17 @@ def ensure_face_crop(face_row, abs_path: str | None) -> str | None:
         if img is not None:
             img = ImageOps.exif_transpose(img)
     if img is None:
-        pv = preview_path(face_row["file_id"])
-        if pv.exists():
+        # The preview, then the grid thumbnail. A crop from a 512px thumbnail is
+        # soft, but it is a face — and once written it is served straight from
+        # disk, where a face with no crop was proxied to Python on every visit
+        # to People for as long as its original stayed on an unplugged drive.
+        for cached in (preview_path(face_row["file_id"]), thumb_path(face_row["file_id"])):
+            if not cached.exists():
+                continue
             try:
-                img = Image.open(pv)
+                img = Image.open(cached)
                 img.load()
+                break
             except Exception:
                 img = None
     fallback = str(legacy) if legacy.exists() else None

@@ -9,14 +9,40 @@ modified. The two optional model packs — face recognition (~280 MB) and search
 are each downloaded once, on request; after that Smriti works with the network unplugged.
 
 <p align="center">
-  <img src="website/demo.gif" width="900"
-       alt="Smriti: a date-grouped timeline, places resolved offline, an interactive globe, and trips detected automatically." />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="website/screenshot-dark.jpg" />
+    <img src="website/screenshot-light.jpg" width="900"
+         alt="Smriti: one window with a sidebar, a date-grouped photo grid, and an Info panel showing the selected photo's camera and place." />
+  </picture>
 </p>
 
 <p align="center"><sub>
-  Timeline, Places, the offline globe, and trips found on their own. Recorded against a demo
-  library built from public-domain photographs — not anyone's real one.
+  One window: sidebar, toolbar, grid, Info panel. Light and dark follow your system.
+  Every screenshot here is of a demo library built from public photographs — not anyone's real one.
 </sub></p>
+
+<table align="center">
+  <tr>
+    <td><picture>
+        <source media="(prefers-color-scheme: dark)" srcset="website/shot-search-dark.jpg" />
+        <img src="website/shot-search-light.jpg" alt="Search: “sunset over the sea” answered by a vision model on your CPU" />
+      </picture></td>
+    <td><picture>
+        <source media="(prefers-color-scheme: dark)" srcset="website/shot-map-dark.jpg" />
+        <img src="website/shot-map-light.jpg" alt="Map: every located photo on an offline globe" />
+      </picture></td>
+  </tr>
+  <tr>
+    <td><picture>
+        <source media="(prefers-color-scheme: dark)" srcset="website/shot-events-dark.jpg" />
+        <img src="website/shot-events-light.jpg" alt="Events: trips found from gaps in the timeline" />
+      </picture></td>
+    <td><picture>
+        <source media="(prefers-color-scheme: dark)" srcset="website/shot-viewer-dark.jpg" />
+        <img src="website/shot-viewer-light.jpg" alt="The viewer fills the window, with the Info panel beside it" />
+      </picture></td>
+  </tr>
+</table>
 
 ---
 
@@ -46,8 +72,10 @@ makes. Everything after that runs on your machine.
 
 ## What it does
 
-- **Timeline** — date-grouped justified grid, virtualized for six-figure libraries, with a
-  time-proportional year scrubber and a lightbox with double-click zoom.
+- **Timeline** — a date-grouped grid virtualized for six-figure libraries, a year scrubber, a
+  viewer that fills the window with double-click zoom, and an Info panel with the photo's camera,
+  place and people. Click, ⌘-click and shift to select, arrow keys to move, and every action —
+  album, favourite, Locked, export, Trash — in the right-click menu.
 - **Search** — type what the photo *shows* — "sunset over the sea", "a qr code" — and it is
   found, ranked by a small vision model (MobileCLIP) on your CPU. Names, places and dates in
   the query are answered exactly from the index, not guessed at: *"solo photos of yash in
@@ -73,6 +101,10 @@ makes. Everything after that runs on your machine.
   is re-encoded, and nothing joins your library unless you say so. See below.
 - **Export** — select anything and save the originals as a `.zip`, or jump straight to any
   file in Finder / File Explorer.
+- **A desktop app, not a page** — one window with a sidebar, toolbar, Info panel and status
+  bar; Preferences in a sheet (⌘,); light and dark follow the system. Large libraries stay
+  quick: the day list, People, Places and Events are read from maintained tables, and inside
+  the app every thumbnail is served by the shell itself, never through Python.
 - **Locked** — a passcode-protected section; hidden photos vanish from every other view.
 - **Videos** — ffprobe metadata, poster frames, scrubbing via HTTP range requests.
 - **Drive-aware** — external drives are tracked by disk identity, so unplugging and replugging
@@ -159,7 +191,7 @@ brew services start smriti  # alternative: launchd keeps it running at login
 |---|---|
 | `library.db` | SQLite index (WAL) |
 | `thumbs/` | grid thumbnails (WebP, precomputed) |
-| `previews/` | 1600px lightbox previews (lazy, LRU-capped ~10 GB) |
+| `previews/` | 1600px viewer previews (lazy, LRU-capped ~10 GB) |
 | `models/` | face-recognition and search ONNX models |
 | `moments/` | rendered Moments videos — safe to delete, remade on demand |
 | `desktop.log` | server log — the first place to look if something misbehaves |

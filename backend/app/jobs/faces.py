@@ -320,10 +320,12 @@ def _manual_cover_holds(person_id: int, own_face_ids: set[int]) -> bool:
 
 def _cover_score(r) -> float:
     """A big, confident face — strongly preferring solo photos over someone in
-    the background of a group shot."""
+    the background of a group shot, and a drive that is plugged in over one
+    that is not (an offline original may have nothing on disk to draw)."""
     area = max(float(r["w"] or 0) * float(r["h"] or 0), 1e-6)
     solo_bonus = 1.5 if r["nfaces"] == 1 else 1.0
-    return (r["det_score"] or 0) * (area ** 0.5) * solo_bonus
+    online = 1.0 if r["online"] else 0.001
+    return (r["det_score"] or 0) * (area ** 0.5) * solo_bonus * online
 
 
 def repick_cover(person_id: int) -> int | None:
@@ -334,9 +336,9 @@ def repick_cover(person_id: int) -> int | None:
     missing, or on a drive that is not plugged in, or behind the Locked
     section, makes for a cover that renders as a hole on the People page."""
     rows = db.query(
-        "SELECT fa.id, fa.det_score, fa.w, fa.h, "
+        "SELECT fa.id, fa.det_score, fa.w, fa.h, v.is_online AS online, "
         "(SELECT COUNT(*) FROM faces f2 WHERE f2.file_id=fa.file_id) AS nfaces "
-        "FROM faces fa JOIN files f ON f.id=fa.file_id "
+        "FROM faces fa JOIN files f ON f.id=fa.file_id JOIN volumes v ON v.id=f.volume_id "
         "WHERE fa.person_id=? AND f.status='active' AND f.locked=0",
         (person_id,),
     )

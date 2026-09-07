@@ -152,12 +152,17 @@ def refresh_people(person_ids=None) -> None:
             "OR f.status IS NOT 'active' OR f.locked IS NOT 0)", params).fetchall()]
         for chunk in _chunks(stale):
             marks = ",".join("?" * len(chunk))
+            # A face whose original is on a drive that is plugged in ranks far
+            # ahead of one that is not: the offline one may have no crop and no
+            # thumbnail to draw, which is a hole on the People page.
             best = conn.execute(
                 "SELECT person_id, id FROM ("
                 " SELECT fa.person_id, fa.id, ROW_NUMBER() OVER (PARTITION BY fa.person_id ORDER BY "
                 "  fa.det_score * fa.det_score * MAX(fa.w * fa.h, 0.000001) "
-                "  * (CASE WHEN nf.n = 1 THEN 2.25 ELSE 1.0 END) DESC) AS rn "
+                "  * (CASE WHEN nf.n = 1 THEN 2.25 ELSE 1.0 END) "
+                "  * (CASE WHEN v.is_online THEN 1.0 ELSE 0.001 END) DESC) AS rn "
                 " FROM faces fa JOIN files f ON f.id = fa.file_id "
+                " JOIN volumes v ON v.id = f.volume_id "
                 " JOIN (SELECT file_id, COUNT(*) AS n FROM faces GROUP BY file_id) nf ON nf.file_id = fa.file_id "
                 f" WHERE fa.person_id IN ({marks}) AND f.status = 'active' AND f.locked = 0"
                 ") WHERE rn = 1", chunk).fetchall()

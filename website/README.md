@@ -32,21 +32,23 @@ When there are screenshots worth publishing, drop them in beside `og.png` and
 replace the `<svg>` inside each `<figure class="shot">` with an `<img>`. The
 figure, caption and framing already fit.
 
-## The demo footage
+## The screenshots
 
-`demo.mp4` / `demo.webm` play in the hero; `demo-poster.jpg` holds the first frame
-until they do; `demo.gif` is the same tour for the repo README, where video does
-not embed reliably.
+`screenshot-dark.jpg` is the hero; `screenshot-light.jpg` is its light-theme
+twin. The `shot-*-dark.jpg` / `shot-*-light.jpg` pairs are the root README's
+gallery — search, the globe, events, the viewer — where a `<picture>` element
+hands each reader the theme their system is in.
 
-All four were recorded from the real app driven through Timeline → Places → Map
-→ Events, then crossfaded and encoded locally with ffmpeg. Nothing was uploaded
-to a hosted recorder — which would be a strange thing to do for an app whose
-argument is that nothing leaves your machine.
+They are real screenshots of the real app, taken with Chrome at 1440×900 and 2×,
+driven by Playwright against a local server. Nothing was uploaded to a hosted
+recorder — which would be a strange thing to do for an app whose argument is
+that nothing leaves your machine.
 
-The library on screen is **not a real one**. It was built from public-domain and
-CC0 photographs fetched from Wikimedia Commons and stamped with plausible dates
-and GPS, so the timeline, places and trips have something true to group. A real
-library would mean publishing real faces.
+The library on screen is **not a real one**. `scripts/make_demo_library.py`
+builds it from public photographs (picsum.photos, which serves Unsplash-licensed
+images) stamped with plausible dates and GPS, so the timeline, places and trips
+have something true to group. A real library would mean publishing real faces —
+which is also why there is no People screenshot.
 
 ## The share card
 
@@ -58,21 +60,6 @@ python scripts/make_og_image.py
 ```
 
 It is Latin-only on purpose — see the note at the top of that script.
-
-## The Status cut
-
-`demo-status.mp4` is a 1080x1920 version for WhatsApp / Instagram Status —
-19 seconds, 1.4 MB, the tour looped twice. `demo-status.jpg` is its first frame,
-for anywhere that wants a still.
-
-It lives here rather than in a downloads folder so it can be fetched from a
-phone: open <https://smriti.jadonharsh.in/demo-status.mp4>, hold, save, post.
-
-    python scripts/make_status_video.py
-
-The footage is 2:1 because the app is, so this composes rather than crops —
-cropping to 9:16 would cut the sidebar, which is the part that shows there is a
-library here and not just a grid of photos.
 
 ## The download counter
 

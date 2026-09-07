@@ -192,16 +192,18 @@ fn main() {
                 .min_inner_size(940.0, 600.0)
                 .resizable(true)
                 .visible(true)
-                // Marks the document so the shared stylesheet can make room for
-                // the floating traffic lights, and tells the page where images
-                // come from in this build (see assets.rs). Runs at
+                // Marks the document with the platform so the shared stylesheet
+                // can make room for the floating traffic lights — on macOS only;
+                // Windows keeps its own title bar — and tells the page where
+                // images come from in this build (see assets.rs). Runs at
                 // document-start on every navigation, including onto the served
                 // origin — which is why this is a webview script rather than a
                 // build-time flag: the same CSS file also ships to plain
                 // browsers, where neither attribute exists.
                 .initialization_script(format!(
-                    "try{{var d=document.documentElement;d.setAttribute('data-smriti-desktop','1');\
+                    "try{{var d=document.documentElement;d.setAttribute('data-smriti-desktop','{}');\
                      d.setAttribute('data-smriti-images','{}')}}catch(e){{}}",
+                    std::env::consts::OS,
                     assets::image_base()
                 ))
                 // WKWebView ignores <a download> unless the host handles it, so
