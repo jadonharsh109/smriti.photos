@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { api, type Filters } from "../api/client";
 import DayGrid from "../components/DayGrid";
+import { IconSearch } from "../components/Icons";
 import { GridControls, StandardSelection } from "../shell/GridToolbar";
 import { openPrefs } from "../shell/store";
-import { Toolbar } from "../shell/Toolbar";
+import { TbButton, Toolbar } from "../shell/Toolbar";
 
 interface Stats {
   photos: number;
@@ -28,6 +30,7 @@ const EMPTY: Record<PhotosVariant, string> = {
 
 /** The library, newest first — and its three standing views. */
 export default function PhotosPage({ variant = "all" }: { variant?: PhotosVariant }) {
+  const nav = useNavigate();
   const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: () => api.get<Stats>("/api/stats") });
   const { data: albums } = useQuery({
     queryKey: ["albums"],
@@ -46,6 +49,7 @@ export default function PhotosPage({ variant = "all" }: { variant?: PhotosVarian
     <>
       <Toolbar title={TITLE[variant]} count={count != null ? count.toLocaleString() : null}>
         <StandardSelection fav={variant !== "favourites"} />
+        <TbButton icon={<IconSearch size={14} />} title="Search (⌘F)" onClick={() => nav("/search")} />
         <GridControls />
       </Toolbar>
       {empty ? (

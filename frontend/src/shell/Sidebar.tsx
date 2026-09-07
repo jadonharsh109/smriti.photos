@@ -1,15 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
-import { api, type Root } from "../api/client";
+import { api } from "../api/client";
 import {
   IconAlbum,
   IconChevronR,
   IconCopy,
   IconDoc,
-  IconDrive,
   IconFilm,
-  IconFolder,
   IconGear,
   IconGlobe,
   IconHeart,
@@ -18,6 +16,7 @@ import {
   IconPeople,
   IconPhotos,
   IconPin,
+  IconSearch,
   IconSparkle,
   IconVideo,
 } from "../components/Icons";
@@ -66,7 +65,6 @@ function Row({
 export default function Sidebar() {
   const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: () => api.get<Stats>("/api/stats") });
   const { data: albums } = useQuery({ queryKey: ["albums"], queryFn: () => api.get<Album[]>("/api/albums") });
-  const { data: roots } = useQuery({ queryKey: ["roots"], queryFn: () => api.get<Root[]>("/api/roots") });
   const { data: years } = useQuery({
     queryKey: ["events", "years"],
     queryFn: () => api.get<{ year: number; events: number }[]>("/api/events/years"),
@@ -104,6 +102,7 @@ export default function Sidebar() {
         <Row to="/videos" icon={<IconVideo />} label="Videos" count={n(stats?.videos)} />
         {(stats?.live ?? 0) > 0 && <Row to="/live" icon={<IconLive />} label="Live Photos" count={n(stats?.live)} />}
         <Row to="/favourites" icon={<IconHeart />} label="Favourites" count={fav ? n(fav.count) : ""} />
+        <Row to="/search" icon={<IconSearch />} label="Search" />
 
         <div className="sec">Collections</div>
         <div className="row" style={{ gap: 0 }}>
@@ -138,23 +137,6 @@ export default function Sidebar() {
         <Row to="/locked" icon={<IconLock />} label="Locked" />
         <Row to="/cleanup" icon={<IconCopy />} label="Cleanup" />
 
-        {(roots ?? []).length > 0 && <div className="sec">Folders</div>}
-        {(roots ?? []).map((r) => {
-          const external = r.abs_path.startsWith("/Volumes/") || /^[A-Z]:\\/.test(r.abs_path) && !r.abs_path.startsWith("C:\\");
-          const name = r.rel_path ? r.rel_path.split("/").pop() : r.label;
-          return (
-            <button
-              key={r.id}
-              className={`srow${r.is_online ? "" : " off"}`}
-              title={r.abs_path + (r.is_online ? "" : " — drive not connected")}
-              onClick={() => openPrefs("library")}
-            >
-              {external ? <IconDrive /> : <IconFolder />}
-              <span className="trunc">{external ? `${r.label} · ${name}` : name}</span>
-              <span className={`dot${r.is_online ? "" : " off"}`} />
-            </button>
-          );
-        })}
       </nav>
       <div className="side-foot">
         <button className="iconbtn" title="Preferences (⌘,)" onClick={() => openPrefs()}>
