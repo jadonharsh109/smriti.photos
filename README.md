@@ -102,9 +102,11 @@ makes. Everything after that runs on your machine.
 - **Export** — select anything and save the originals as a `.zip`, or jump straight to any
   file in Finder / File Explorer.
 - **A desktop app, not a page** — one window with a sidebar, toolbar, Info panel and status
-  bar; Preferences in a sheet (⌘,); light and dark follow the system, with six accent colours,
-  a quiet Minimal style or a tinted Vibrant one, and a UI size of your own — all remembered
-  with the library, not the browser. Large libraries stay
+  bar; Preferences in a sheet (⌘,). Light and dark follow the system, or pick one of fourteen
+  themes — Catppuccin, Nord, Dracula, Tokyo Night, Rosé Pine, Gruvbox, Solarized, One Dark and
+  Smriti's own Midnight and Paper — plus an accent colour, a quiet Minimal or tinted Vibrant
+  style, and a UI size. All of it is remembered with the library, not the browser. Large
+  libraries stay
   quick: the day list, People, Places and Events are read from maintained tables, and inside
   the app every thumbnail is served by the shell itself, never through Python.
 - **Locked** — a passcode-protected section; hidden photos vanish from every other view.

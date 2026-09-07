@@ -7,6 +7,7 @@
 import { useSyncExternalStore } from "react";
 import type { Job } from "../api/client";
 import { isDesktop, setUiZoom } from "../lib/desktop";
+import { PALETTES, type PaletteId } from "./palettes";
 
 export function createStore<T extends object>(initial: T) {
   let state = initial;
@@ -50,9 +51,14 @@ export const theme = createStore<{ mode: ThemeMode }>({ mode: read<ThemeMode>("s
 
 export function applyTheme(mode: ThemeMode) {
   const el = document.documentElement;
-  if (mode === "system") el.removeAttribute("data-theme");
-  else el.setAttribute("data-theme", mode);
+  // a palette is light or dark by nature and says so for the window
+  const pal = PALETTES.find((p) => p.id === currentPalette());
+  const effective = pal && pal.scheme !== "auto" ? pal.scheme : mode;
+  if (effective === "system") el.removeAttribute("data-theme");
+  else el.setAttribute("data-theme", effective);
 }
+let paletteId: PaletteId = "smriti";
+const currentPalette = () => paletteId;
 export function setTheme(mode: ThemeMode) {
   theme.set({ mode });
   write("smriti.theme", mode);
@@ -62,9 +68,12 @@ export function setTheme(mode: ThemeMode) {
 applyTheme(theme.get().mode);
 
 /* ---- appearance: accent, style, size --------------------------------- */
-export type Accent = "saffron" | "rani" | "teal" | "blue" | "violet" | "graphite";
+export type Accent = "auto" | "saffron" | "rani" | "teal" | "blue" | "violet" | "graphite";
 export type UiStyle = "minimal" | "vibrant";
+/** "auto" is the palette's own accent — saffron for Smriti's, mauve for
+ *  Catppuccin, frost for Nord — and the others override it. */
 export const ACCENTS: { id: Accent; label: string; swatch: string }[] = [
+  { id: "auto", label: "Theme's own", swatch: "" },
   { id: "saffron", label: "Saffron", swatch: "#d8781a" },
   { id: "rani", label: "Rani", swatch: "#d8397a" },
   { id: "teal", label: "Teal", swatch: "#1a9a8f" },
@@ -78,20 +87,31 @@ export const UI_SCALES: { value: number; label: string }[] = [
   { value: 1.1, label: "Large" },
   { value: 1.25, label: "Larger" },
 ];
-export const ui = createStore<{ accent: Accent; style: UiStyle; scale: number }>({
-  accent: read<Accent>("smriti.accent", "saffron"),
+export const ui = createStore<{ palette: PaletteId; accent: Accent; style: UiStyle; scale: number }>({
+  palette: read<PaletteId>("smriti.palette", "smriti"),
+  accent: read<Accent>("smriti.accent", "auto"),
   style: read<UiStyle>("smriti.style", "minimal"),
   scale: read<number>("smriti.scale", 1),
 });
 export function applyUi() {
   const u = ui.get();
   const el = document.documentElement;
-  if (u.accent === "saffron") el.removeAttribute("data-accent");
+  paletteId = PALETTES.some((p) => p.id === u.palette) ? u.palette : "smriti";
+  if (paletteId === "smriti") el.removeAttribute("data-palette");
+  else el.setAttribute("data-palette", paletteId);
+  applyTheme(theme.get().mode);
+  if (u.accent === "auto") el.removeAttribute("data-accent");
   else el.setAttribute("data-accent", u.accent);
   if (u.style === "minimal") el.removeAttribute("data-style");
   else el.setAttribute("data-style", u.style);
   // the shell scales the page the way browser zoom would; a plain browser has its own
-  if (isDesktop()) setUiZoom(u.scale).catch(() => {});
+  if (isDesktop()) setUiZoom(u.scale).catch((e) => console.warn("ui zoom:", e));
+}
+export function setPalette(palette: PaletteId) {
+  ui.set({ palette });
+  write("smriti.palette", palette);
+  applyUi();
+  savePrefs();
 }
 export function setAccent(accent: Accent) {
   ui.set({ accent });
@@ -203,6 +223,7 @@ export function setInspectorOpen(open: boolean) {
  *  are the copy that lasts; this loads them once and writes every change back. */
 interface UiPrefs {
   theme?: ThemeMode;
+  palette?: PaletteId;
   tile?: number;
   inspector?: boolean;
   accent?: Accent;
@@ -215,6 +236,7 @@ let saveTimer: ReturnType<typeof setTimeout> | undefined;
 function collectPrefs(): UiPrefs {
   return {
     theme: theme.get().mode,
+    palette: ui.get().palette,
     tile: view.get().tileHeight,
     inspector: inspector.get().open,
     accent: ui.get().accent,
@@ -253,11 +275,13 @@ export async function loadPrefs() {
       side.set({ albumsOpen: u.sideAlbums });
       write("smriti.side.albums", u.sideAlbums);
     }
+    const palette = PALETTES.find((p) => p.id === u.palette)?.id;
     const accent = ACCENTS.find((a) => a.id === u.accent)?.id;
     const style = u.style === "vibrant" || u.style === "minimal" ? u.style : undefined;
     const scale = UI_SCALES.find((x) => x.value === u.scale)?.value;
-    if (accent || style || scale) {
-      ui.set({ ...(accent ? { accent } : {}), ...(style ? { style } : {}), ...(scale ? { scale } : {}) });
+    if (palette || accent || style || scale) {
+      ui.set({ ...(palette ? { palette } : {}), ...(accent ? { accent } : {}), ...(style ? { style } : {}), ...(scale ? { scale } : {}) });
+      write("smriti.palette", ui.get().palette);
       write("smriti.accent", ui.get().accent);
       write("smriti.style", ui.get().style);
       write("smriti.scale", ui.get().scale);

@@ -9,6 +9,7 @@ import TakeoutImport from "../components/TakeoutImport";
 import { isDesktop } from "../lib/desktop";
 import { friendlyError, stageLabel, stageSentence } from "../lib/stages";
 import { check as checkForUpdates, openSheet, useUpdates } from "../lib/updates";
+import { PALETTES } from "./palettes";
 import {
   ACCENTS,
   TILE_MAX,
@@ -19,6 +20,7 @@ import {
   prefs,
   runningJob,
   setAccent,
+  setPalette,
   setTheme,
   setTileHeight,
   setUiScale,
@@ -387,31 +389,60 @@ function AppearanceTab() {
   const accent = ui.use((s) => s.accent);
   const style = ui.use((s) => s.style);
   const scale = ui.use((s) => s.scale);
+  const palette = ui.use((s) => s.palette);
+  const pal = PALETTES.find((p) => p.id === palette) ?? PALETTES[0];
+  const paletteDecides = pal.scheme !== "auto";
   return (
     <>
       <h3>Appearance</h3>
       <p>Remembered with the library, so the window looks the same next time it opens.</p>
+      <div className="prow" style={{ display: "block" }}>
+        <div className="t">Theme</div>
+        <div className="d" style={{ marginBottom: 8 }}>Smriti’s own follows the system or your choice below; the others are whole looks, each light or dark by nature.</div>
+        <div className="pals" role="radiogroup" aria-label="Theme">
+          {PALETTES.map((p) => (
+            <button key={p.id} className={`pal${palette === p.id ? " on" : ""}`} role="radio" aria-checked={palette === p.id} onClick={() => setPalette(p.id)}>
+              <span className="pal-pre" style={{ background: p.ground }}>
+                <i className="pal-side" style={{ background: p.side }} />
+                <i className="pal-line" style={{ background: p.ink }} />
+                <i className="pal-line short" style={{ background: p.ink }} />
+                <i className="pal-dot" style={{ background: p.accent }} />
+              </span>
+              <span className="pal-name">{p.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="prow">
         <div>
-          <div className="t">Theme</div>
-          <div className="d">Follow the system, or pick one.</div>
+          <div className="t">Light or dark</div>
+          <div className="d">{paletteDecides ? `${pal.label} is a ${pal.scheme} theme; pick Smriti above to follow the system.` : "Follow the system, or pick one."}</div>
         </div>
         <span className="grow" />
-        <span className="seg">
+        <span className="seg" style={paletteDecides ? { opacity: 0.45, pointerEvents: "none" } : undefined} aria-disabled={paletteDecides}>
           {(["system", "light", "dark"] as const).map((m) => (
-            <button key={m} className={mode === m ? "on" : ""} onClick={() => setTheme(m)}>{m[0].toUpperCase() + m.slice(1)}</button>
+            <button key={m} className={(paletteDecides ? pal.scheme : mode) === m ? "on" : ""} onClick={() => setTheme(m)}>{m[0].toUpperCase() + m.slice(1)}</button>
           ))}
         </span>
       </div>
       <div className="prow">
         <div>
           <div className="t">Accent</div>
-          <div className="d">The one colour that means “selected”, “on”, and “here”.</div>
+          <div className="d">The one colour that means “selected”, “on”, and “here”. The first is the theme’s own.</div>
         </div>
         <span className="grow" />
         <span className="swatches" role="radiogroup" aria-label="Accent colour">
           {ACCENTS.map((a) => (
-            <button key={a.id} className={`swatch${accent === a.id ? " on" : ""}`} style={{ background: a.swatch }} title={a.label} role="radio" aria-checked={accent === a.id} aria-label={a.label} onClick={() => setAccent(a.id)} />
+            <button
+              key={a.id}
+              className={`swatch${a.id === "auto" ? " auto" : ""}${accent === a.id ? " on" : ""}`}
+              style={a.swatch ? { background: a.swatch } : { background: `linear-gradient(135deg, ${pal.accent}, ${pal.side})` }}
+              title={a.id === "auto" ? `${pal.label}’s own` : a.label}
+              role="radio"
+              aria-checked={accent === a.id}
+              aria-label={a.label}
+              onClick={() => setAccent(a.id)}
+            />
           ))}
         </span>
       </div>

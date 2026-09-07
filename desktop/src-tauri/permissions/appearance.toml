@@ -1,0 +1,9 @@
+# The SPA is a remote origin, so an app-level command needs a manifest before it
+# can be granted. The Size control in Preferences → Appearance calls this; without
+# the grant the shell refused the call and the page had nothing to show for it.
+"$schema" = "schemas/schema.json"
+
+[[permission]]
+identifier = "allow-set-ui-zoom"
+description = "Allows the Size control to scale the whole window through the webview's own zoom."
+commands.allow = ["set_ui_zoom"]
