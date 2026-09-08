@@ -222,6 +222,12 @@ section{padding:76px 0; position:relative}
 .bob.d2{animation-delay:.4s}
 @keyframes bob{from{transform:translateY(0)}to{transform:translateY(-6px)}}
 
+.showcase-track{position:relative; height:260vh}
+.showcase-pin{position:sticky; top:80px}
+@media(prefers-reduced-motion:reduce){
+  .showcase-track{height:auto !important}
+  .showcase-pin{position:static}
+}
 .showcase{margin-top:8px}
 .tabs{position:relative; display:flex; gap:2px; flex-wrap:wrap; justify-content:center;
   background:var(--glass); border:1px solid var(--stroke); border-radius:999px; padding:5px;
@@ -416,43 +422,47 @@ footer{padding:44px 0 40px; border-top:1px solid var(--stroke); margin-top:30px}
     <div class="wrap">
       <div class="sec-head reveal">
         <h2>This is Smriti</h2>
-        <p>Not a mockup — click through the actual app.</p>
+        <p>Not a mockup — scroll to flip through the actual app, or click a tab.</p>
       </div>
-      <div class="showcase reveal">
-        <div class="tabs" role="tablist" aria-label="Smriti screens">
-          <span class="tab-indicator" id="tab-indicator" aria-hidden="true"></span>
-          <button class="tab" role="tab" id="tabbtn-timeline" aria-controls="panel-timeline" aria-selected="true" data-target="panel-timeline">Timeline</button>
-          <button class="tab" role="tab" id="tabbtn-search" aria-controls="panel-search" aria-selected="false" tabindex="-1" data-target="panel-search">Search</button>
-          <button class="tab" role="tab" id="tabbtn-map" aria-controls="panel-map" aria-selected="false" tabindex="-1" data-target="panel-map">Map</button>
-          <button class="tab" role="tab" id="tabbtn-events" aria-controls="panel-events" aria-selected="false" tabindex="-1" data-target="panel-events">Events</button>
-          <button class="tab" role="tab" id="tabbtn-viewer" aria-controls="panel-viewer" aria-selected="false" tabindex="-1" data-target="panel-viewer">Viewer <span class="new">New</span></button>
-        </div>
-        <div class="showcase-stage">
-          <figure class="shot tabpanel active" id="panel-timeline" role="tabpanel" aria-labelledby="tabbtn-timeline">
-            <img src="screenshot-dark.jpg" width="1440" height="900" loading="eager" decoding="async"
-                 alt="Smriti's Photos view: a date-grouped grid of 174 photos with the Info panel open." />
-            <figcaption>Every photo, grouped by the day it was taken. Smooth at six figures.</figcaption>
-          </figure>
-          <figure class="shot tabpanel" id="panel-search" role="tabpanel" aria-labelledby="tabbtn-search">
-            <img src="shot-search-dark.jpg" width="1440" height="900" loading="lazy" decoding="async"
-                 alt="Smriti's search results for “sunset over the sea” — four closest matches, ranked with the query never leaving the machine." />
-            <figcaption>Search by what the photo shows. Ranked and returned without a single byte leaving your machine.</figcaption>
-          </figure>
-          <figure class="shot tabpanel" id="panel-map" role="tabpanel" aria-labelledby="tabbtn-map">
-            <img src="shot-map-dark.jpg" width="1440" height="900" loading="lazy" decoding="async"
-                 alt="Smriti's offline globe showing pinned photo locations across continents, with no map tiles fetched from anywhere." />
-            <figcaption>Every place you've been, on a globe that fetches no tiles — offline geocoding, offline rendering.</figcaption>
-          </figure>
-          <figure class="shot tabpanel" id="panel-events" role="tabpanel" aria-labelledby="tabbtn-events">
-            <img src="shot-events-dark.jpg" width="1440" height="900" loading="lazy" decoding="async"
-                 alt="Smriti's Events view grouping photos into trips detected automatically from gaps in the timeline." />
-            <figcaption>Trips found automatically from gaps in your timeline — no tagging required.</figcaption>
-          </figure>
-          <figure class="shot tabpanel" id="panel-viewer" role="tabpanel" aria-labelledby="tabbtn-viewer">
-            <img src="shot-viewer-dark.jpg" width="1440" height="900" loading="lazy" decoding="async"
-                 alt="Smriti's viewer showing a single hot-air-balloon photo full-frame, with EXIF, camera and place detail in the Info panel." />
-            <figcaption>The viewer now goes full screen — the F key, a button, or a double-click on a video.</figcaption>
-          </figure>
+      <div class="showcase-track" id="showcase-track">
+        <div class="showcase-pin">
+          <div class="showcase reveal">
+            <div class="tabs" role="tablist" aria-label="Smriti screens">
+              <span class="tab-indicator" id="tab-indicator" aria-hidden="true"></span>
+              <button class="tab" role="tab" id="tabbtn-timeline" aria-controls="panel-timeline" aria-selected="true" data-target="panel-timeline">Timeline</button>
+              <button class="tab" role="tab" id="tabbtn-search" aria-controls="panel-search" aria-selected="false" tabindex="-1" data-target="panel-search">Search</button>
+              <button class="tab" role="tab" id="tabbtn-map" aria-controls="panel-map" aria-selected="false" tabindex="-1" data-target="panel-map">Map</button>
+              <button class="tab" role="tab" id="tabbtn-events" aria-controls="panel-events" aria-selected="false" tabindex="-1" data-target="panel-events">Events</button>
+              <button class="tab" role="tab" id="tabbtn-viewer" aria-controls="panel-viewer" aria-selected="false" tabindex="-1" data-target="panel-viewer">Viewer <span class="new">New</span></button>
+            </div>
+            <div class="showcase-stage">
+              <figure class="shot tabpanel active" id="panel-timeline" role="tabpanel" aria-labelledby="tabbtn-timeline">
+                <img src="screenshot-dark.jpg" width="1440" height="900" loading="eager" decoding="async"
+                     alt="Smriti's Photos view: a date-grouped grid of 174 photos with the Info panel open." />
+                <figcaption>Every photo, grouped by the day it was taken. Smooth at six figures.</figcaption>
+              </figure>
+              <figure class="shot tabpanel" id="panel-search" role="tabpanel" aria-labelledby="tabbtn-search">
+                <img src="shot-search-dark.jpg" width="1440" height="900" loading="lazy" decoding="async"
+                     alt="Smriti's search results for “sunset over the sea” — four closest matches, ranked with the query never leaving the machine." />
+                <figcaption>Search by what the photo shows. Ranked and returned without a single byte leaving your machine.</figcaption>
+              </figure>
+              <figure class="shot tabpanel" id="panel-map" role="tabpanel" aria-labelledby="tabbtn-map">
+                <img src="shot-map-dark.jpg" width="1440" height="900" loading="lazy" decoding="async"
+                     alt="Smriti's offline globe showing pinned photo locations across continents, with no map tiles fetched from anywhere." />
+                <figcaption>Every place you've been, on a globe that fetches no tiles — offline geocoding, offline rendering.</figcaption>
+              </figure>
+              <figure class="shot tabpanel" id="panel-events" role="tabpanel" aria-labelledby="tabbtn-events">
+                <img src="shot-events-dark.jpg" width="1440" height="900" loading="lazy" decoding="async"
+                     alt="Smriti's Events view grouping photos into trips detected automatically from gaps in the timeline." />
+                <figcaption>Trips found automatically from gaps in your timeline — no tagging required.</figcaption>
+              </figure>
+              <figure class="shot tabpanel" id="panel-viewer" role="tabpanel" aria-labelledby="tabbtn-viewer">
+                <img src="shot-viewer-dark.jpg" width="1440" height="900" loading="lazy" decoding="async"
+                     alt="Smriti's viewer showing a single hot-air-balloon photo full-frame, with EXIF, camera and place detail in the Info panel." />
+                <figcaption>The viewer now goes full screen — the F key, a button, or a double-click on a video.</figcaption>
+              </figure>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -742,10 +752,16 @@ footer{padding:44px 0 40px; border-top:1px solid var(--stroke); margin-top:30px}
 </script>
 
 <script>
-// Product-showcase tabs — click or Left/Right/Home/End on the tablist.
+// Product-showcase tabs — click or Left/Right/Home/End on the tablist, or
+// just scroll: the stage pins in place while #showcase-track scrolls past
+// underneath it, and how far you've scrolled through that track picks the
+// tab. Scroll up and it steps backward the same way. Reduced motion drops
+// the pin (see CSS) and leaves this a plain click/keyboard tab strip.
 (function () {
   var tabs = Array.prototype.slice.call(document.querySelectorAll(".tab"));
   var indicator = document.getElementById("tab-indicator");
+  var track = document.getElementById("showcase-track");
+  var pin = document.querySelector(".showcase-pin");
   if (!tabs.length) return;
 
   function moveIndicator(tab) {
@@ -784,6 +800,30 @@ footer{padding:44px 0 40px; border-top:1px solid var(--stroke); margin-top:30px}
   });
 
   requestAnimationFrame(function () { moveIndicator(tabs[0]); });
+
+  if (!track || !pin || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  var STICKY_TOP = 80;
+  var lastIndex = 0, ticking = false;
+
+  function onScroll() {
+    ticking = false;
+    var rect = track.getBoundingClientRect();
+    var pinnedRange = rect.height - pin.offsetHeight;
+    if (pinnedRange <= 0) return;
+    var progress = (STICKY_TOP - rect.top) / pinnedRange;
+    progress = Math.max(0, Math.min(1, progress));
+    var idx = Math.min(tabs.length - 1, Math.floor(progress * tabs.length));
+    if (idx !== lastIndex) { lastIndex = idx; activate(tabs[idx], false); }
+  }
+
+  function requestUpdate() {
+    if (!ticking) { ticking = true; requestAnimationFrame(onScroll); }
+  }
+
+  window.addEventListener("scroll", requestUpdate, { passive: true });
+  window.addEventListener("resize", requestUpdate);
+  requestUpdate();
 })();
 </script>
 
